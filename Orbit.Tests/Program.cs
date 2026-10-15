@@ -165,6 +165,14 @@ public static class Program
         m.SetFullscreen(true);
         m.SetFullscreen(false);
         Check("ilha: tela cheia recolhe o painel", m.Mode == IslandMode.Repouso);
+
+        var x1 = new Peek("X", null, null);
+        var x2 = new Peek("X", null, null);
+        m.RaisePeek(x1);
+        m.RaisePeek(x2);
+        m.PeekDone();
+        Check("ilha: alertas iguais em sequência são eventos distintos", m.CurrentPeek == x2 && !ReferenceEquals(x1, x2));
+        m.PeekDone();
     }
 
     private static void IslandGeometryTests()

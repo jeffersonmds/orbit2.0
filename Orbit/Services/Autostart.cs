@@ -7,6 +7,7 @@ public static class Autostart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "Orbit2";
+    private const string LegacyValueName = "Orbit"; // Orbit 1.0 — o 2.0 o substitui; não devem subir juntos.
 
     public static bool IsEnabled()
     {
@@ -22,6 +23,7 @@ public static class Autostart
         {
             var exe = Environment.ProcessPath;
             if (exe is not null) key.SetValue(ValueName, $"\"{exe}\"");
+            key.DeleteValue(LegacyValueName, throwOnMissingValue: false);
         }
         else
         {

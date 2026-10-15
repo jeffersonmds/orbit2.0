@@ -9,7 +9,20 @@ public enum IslandMode { Repouso, Atividade, Alerta, Expandida, Oculta }
 public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2 }
 
 // Evento pontual que a pílula mostra por alguns segundos. TabId = aba aberta ao clicar.
-public sealed record Peek(string Title, string? Detail, string? TabId);
+// Classe (não record): dois alertas iguais seguidos são eventos distintos — igualdade por referência.
+public sealed class Peek
+{
+    public Peek(string title, string? detail, string? tabId)
+    {
+        Title = title;
+        Detail = detail;
+        TabId = tabId;
+    }
+
+    public string Title { get; }
+    public string? Detail { get; }
+    public string? TabId { get; }
+}
 
 // Lógica pura dos estados da ilha (sem WPF) — testada no harness.
 public sealed class IslandMachine

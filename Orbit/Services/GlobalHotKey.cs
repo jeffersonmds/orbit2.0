@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using Serilog;
 
 namespace Orbit.Services;
 
@@ -22,8 +23,9 @@ public sealed class GlobalHotKey : IDisposable
         _hwnd = hwnd;
         _source = HwndSource.FromHwnd(hwnd)!;
         _source.AddHook(WndProc);
-        // Se falhar (combinação em uso), ignora: ainda dá pra abrir pelo hover.
-        RegisterHotKey(hwnd, Id, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O);
+        // Se falhar (combinação em uso), só loga: ainda dá pra abrir pelo hover.
+        if (!RegisterHotKey(hwnd, Id, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O))
+            Log.Warning("Hotkey Ctrl+Alt+O indisponível (Win32 {Erro}) — outro app (Orbit 1.0?) já usa", Marshal.GetLastWin32Error());
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -42,6 +44,6 @@ public sealed class GlobalHotKey : IDisposable
         UnregisterHotKey(_hwnd, Id);
     }
 
-    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }
