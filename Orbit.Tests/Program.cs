@@ -7,6 +7,7 @@ using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
+using Orbit.Tabs.Controles;
 using Orbit.Tabs.Ajustes;
 
 namespace Orbit.Tests;
@@ -32,6 +33,7 @@ public static class Program
         TabVisibilityTests();
         PomodoroTests();
         HojeTests();
+        NowPlayingTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -351,6 +353,23 @@ public static class Program
         var built = WeatherViewModel.BuildForecast(fc);
         Check("clima: previsão pula hoje", built.Count == 1);
         Check("clima: formato máx/mín e ícone", built[0].MaxMin == "26°/17°" && built[0].Icon == "☀");
+    }
+
+    private static void NowPlayingTests()
+    {
+        Check("mídia: título normal", NowPlayingViewModel.DisplayTitle("Lucky Man") == "Lucky Man");
+        Check("mídia: título nulo/vazio vira fallback", NowPlayingViewModel.DisplayTitle(null) == "Tocando…"
+            && NowPlayingViewModel.DisplayTitle("  ") == "Tocando…");
+        Check("mídia: glifo pausa tocando / play pausado", NowPlayingViewModel.PlayPauseGlyphFor(true) == ""
+            && NowPlayingViewModel.PlayPauseGlyphFor(false) == "");
+
+        Check("mídia: sem sessão = sem atividade", NowPlayingViewModel.BuildActivity(null) is null);
+        Check("mídia: pausado = sem atividade",
+            NowPlayingViewModel.BuildActivity(new NowPlayingInfo("x", "y", null, IsPlaying: false)) is null);
+        Check("mídia: tocando com artista",
+            NowPlayingViewModel.BuildActivity(new NowPlayingInfo("Faixa", "Banda", null, IsPlaying: true)) == "▶  Faixa · Banda");
+        Check("mídia: tocando sem artista",
+            NowPlayingViewModel.BuildActivity(new NowPlayingInfo("Faixa", "", null, IsPlaying: true)) == "▶  Faixa");
     }
 
     public static void Check(string name, bool ok)

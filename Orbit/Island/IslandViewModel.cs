@@ -8,6 +8,7 @@ using Orbit.Models;
 using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Ajustes;
+using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
 using Serilog;
@@ -29,6 +30,7 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public ObservableCollection<TabViewModel> Tabs { get; } = new();
     public PomodoroViewModel Pomodoro { get; }
+    public NowPlayingViewModel NowPlaying { get; } = new();
 
     [ObservableProperty] private TabViewModel? _selectedTab;
     [ObservableProperty] private IslandMode _mode = IslandMode.Repouso;
@@ -46,6 +48,12 @@ public sealed partial class IslandViewModel : ObservableObject
             if (e.PropertyName == nameof(PomodoroViewModel.ActivityText))
                 SetActivity(ActivityKind.Pomodoro, Pomodoro.ActivityText);
         };
+        NowPlaying.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(NowPlayingViewModel.ActivityText))
+                SetActivity(ActivityKind.Midia, NowPlaying.ActivityText);
+        };
+        NowPlaying.Start();
         // Sem DI: abas e serviços de fundo são criados aqui na mão.
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility));
