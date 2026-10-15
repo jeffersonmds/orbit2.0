@@ -22,6 +22,7 @@ public static class Program
         IslandGeometryTests();
         AccentTests();
         PowerTests();
+        FullscreenTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -63,6 +64,22 @@ public static class Program
             EnergiaViewModel.Decide(PowerAction.Reiniciar, PowerAction.Desligar) == (false, (PowerAction?)PowerAction.Reiniciar));
         Check("energia: armado em desligar, clique em bloquear executa e desarma",
             EnergiaViewModel.Decide(PowerAction.Bloquear, PowerAction.Desligar) == (true, (PowerAction?)null));
+    }
+
+    private static void FullscreenTests()
+    {
+        Check("tela cheia: app comum no mesmo monitor esconde",
+            FullscreenWatcher.ShouldHide(true, "UnityWndClass", sameMonitor: true));
+        Check("tela cheia: aviso de saída mostra",
+            !FullscreenWatcher.ShouldHide(false, "UnityWndClass", sameMonitor: true));
+        Check("tela cheia: outro monitor não esconde",
+            !FullscreenWatcher.ShouldHide(true, "UnityWndClass", sameMonitor: false));
+        Check("tela cheia: área de trabalho (Progman) é falso positivo",
+            !FullscreenWatcher.ShouldHide(true, "Progman", sameMonitor: true));
+        Check("tela cheia: área de trabalho (WorkerW) é falso positivo",
+            !FullscreenWatcher.ShouldHide(true, "WorkerW", sameMonitor: true));
+        Check("tela cheia: barra de tarefas é falso positivo",
+            !FullscreenWatcher.ShouldHide(true, "Shell_TrayWnd", sameMonitor: true));
     }
 
     private static void SmokeTest() => Check("harness roda", 1 + 1 == 2);
