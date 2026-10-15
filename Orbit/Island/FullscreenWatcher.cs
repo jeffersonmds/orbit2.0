@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Interop;
+using Serilog;
 
 namespace Orbit.Island;
 
@@ -16,6 +17,7 @@ public sealed class FullscreenWatcher : IDisposable
     private readonly IntPtr _hwnd;
     private readonly HwndSource _source;
     private readonly uint _callbackMsg;
+    private readonly uint _taskbarCreatedMsg;
 
     public event Action<bool>? Changed;
 
@@ -23,10 +25,17 @@ public sealed class FullscreenWatcher : IDisposable
     {
         _hwnd = hwnd;
         _callbackMsg = RegisterWindowMessage("Orbit2.AppBar");
-        _source = HwndSource.FromHwnd(hwnd)!;
+        _taskbarCreatedMsg = RegisterWindowMessage("TaskbarCreated");
+        _source = HwndSource.FromHwnd(hwnd) ?? throw new InvalidOperationException("FullscreenWatcher precisa ser criado em OnSourceInitialized (HWND do WPF).");
         _source.AddHook(WndProc);
+        Register();
+    }
+
+    private void Register()
+    {
         var data = NewData();
-        SHAppBarMessage(ABM_NEW, ref data);
+        if (SHAppBarMessage(ABM_NEW, ref data) == UIntPtr.Zero)
+            Log.Warning("Appbar não registrado; detecção de tela cheia pode não funcionar");
     }
 
     // O shell também avisa "tela cheia" quando a área de trabalho/barra ganha foco,
@@ -46,6 +55,8 @@ public sealed class FullscreenWatcher : IDisposable
             Changed?.Invoke(ShouldHide(lParam != IntPtr.Zero, cls.ToString(), same));
             handled = true;
         }
+        // Quando o explorer.exe reinicia, a lista de appbars se perde.
+        else if (msg == (int)_taskbarCreatedMsg) Register();
         return IntPtr.Zero;
     }
 

@@ -34,13 +34,14 @@ public sealed partial class EnergiaViewModel : TabViewModel
     // Glifos da Segoe Fluent Icons.
     public IReadOnlyList<PowerButton> Botoes { get; } = new[]
     {
-        new PowerButton(PowerAction.Bloquear, "", "Bloquear"),
-        new PowerButton(PowerAction.Suspender, "", "Suspender"),
-        new PowerButton(PowerAction.Reiniciar, "", "Reiniciar"),
-        new PowerButton(PowerAction.Desligar, "", "Desligar"),
+        new PowerButton(PowerAction.Bloquear, "\uE72E", "Bloquear"),
+        new PowerButton(PowerAction.Suspender, "\uE708", "Suspender"),
+        new PowerButton(PowerAction.Reiniciar, "\uE72C", "Reiniciar"),
+        new PowerButton(PowerAction.Desligar, "\uE7E8", "Desligar"),
     };
 
     private PowerAction? _pending;
+    private DateTime _armedAt;
     private readonly DispatcherTimer _disarm = new() { Interval = TimeSpan.FromSeconds(3) };
 
     public EnergiaViewModel()
@@ -59,6 +60,8 @@ public sealed partial class EnergiaViewModel : TabViewModel
     private void Click(PowerButton button)
     {
         var (execute, pending) = Decide(button.Action, _pending);
+        // Duplo clique rápido não vale como confirmação.
+        if (execute && Power.NeedsConfirmation(button.Action) && DateTime.UtcNow - _armedAt < TimeSpan.FromMilliseconds(400)) return;
         SetPending(pending);
         if (!execute) return;
         try
@@ -80,6 +83,7 @@ public sealed partial class EnergiaViewModel : TabViewModel
     private void SetPending(PowerAction? pending)
     {
         _pending = pending;
+        if (pending is not null) _armedAt = DateTime.UtcNow;
         foreach (var b in Botoes)
         {
             b.IsPending = b.Action == pending;

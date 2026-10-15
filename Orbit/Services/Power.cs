@@ -1,5 +1,8 @@
+using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
+using Serilog;
 
 namespace Orbit.Services;
 
@@ -23,13 +26,13 @@ public static class Power
         switch (action)
         {
             case PowerAction.Bloquear:
-                LockWorkStation();
+                if (!LockWorkStation()) LogFalha(action);
                 break;
             case PowerAction.Suspender:
-                SetSuspendState(hibernate: false, forceCritical: false, disableWakeEvent: false);
+                if (!SetSuspendState(hibernate: false, forceCritical: false, disableWakeEvent: false)) LogFalha(action);
                 break;
             default:
-                Process.Start(new ProcessStartInfo("shutdown", ShutdownArgs(action)!)
+                Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "shutdown.exe"), ShutdownArgs(action)!)
                 {
                     CreateNoWindow = true,
                     UseShellExecute = false,
@@ -38,9 +41,16 @@ public static class Power
         }
     }
 
+    private static void LogFalha(PowerAction action) =>
+        Log.Warning("{Acao} falhou (Win32 {Erro})", action, Marshal.GetLastWin32Error());
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool LockWorkStation();
 
     [DllImport("powrprof.dll", SetLastError = true)]
-    private static extern bool SetSuspendState(bool hibernate, bool forceCritical, bool disableWakeEvent);
+    [return: MarshalAs(UnmanagedType.U1)]
+    private static extern bool SetSuspendState(
+        [MarshalAs(UnmanagedType.U1)] bool hibernate,
+        [MarshalAs(UnmanagedType.U1)] bool forceCritical,
+        [MarshalAs(UnmanagedType.U1)] bool disableWakeEvent);
 }
