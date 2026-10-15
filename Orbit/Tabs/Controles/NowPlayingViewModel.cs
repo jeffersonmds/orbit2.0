@@ -18,7 +18,7 @@ public sealed partial class NowPlayingViewModel : ObservableObject
     [ObservableProperty] private string _title = "";
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private BitmapImage? _thumbnail;
-    [ObservableProperty] private string _playPauseGlyph = "";
+    [ObservableProperty] private string _playPauseGlyph = "\uE768";
     [ObservableProperty] private string? _activityText;
 
     public NowPlayingViewModel()
@@ -71,7 +71,7 @@ public sealed partial class NowPlayingViewModel : ObservableObject
         string.IsNullOrWhiteSpace(title) ? "Tocando…" : title;
 
     // Pause (E769) enquanto toca, Play (E768) quando pausado.
-    public static string PlayPauseGlyphFor(bool isPlaying) => isPlaying ? "" : "";
+    public static string PlayPauseGlyphFor(bool isPlaying) => isPlaying ? "\uE769" : "\uE768";
 
     // Texto da pílula: só enquanto toca (pausado não ocupa a pílula).
     public static string? BuildActivity(NowPlayingInfo? info)

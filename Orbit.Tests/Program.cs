@@ -360,8 +360,8 @@ public static class Program
         Check("mídia: título normal", NowPlayingViewModel.DisplayTitle("Lucky Man") == "Lucky Man");
         Check("mídia: título nulo/vazio vira fallback", NowPlayingViewModel.DisplayTitle(null) == "Tocando…"
             && NowPlayingViewModel.DisplayTitle("  ") == "Tocando…");
-        Check("mídia: glifo pausa tocando / play pausado", NowPlayingViewModel.PlayPauseGlyphFor(true) == ""
-            && NowPlayingViewModel.PlayPauseGlyphFor(false) == "");
+        Check("mídia: glifo pausa tocando / play pausado", NowPlayingViewModel.PlayPauseGlyphFor(true) == "\uE769"
+            && NowPlayingViewModel.PlayPauseGlyphFor(false) == "\uE768");
 
         Check("mídia: sem sessão = sem atividade", NowPlayingViewModel.BuildActivity(null) is null);
         Check("mídia: pausado = sem atividade",

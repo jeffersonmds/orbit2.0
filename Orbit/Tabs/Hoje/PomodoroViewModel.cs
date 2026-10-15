@@ -32,7 +32,7 @@ public sealed partial class PomodoroViewModel : ObservableObject
 
     [ObservableProperty] private string _display = "25:00";
     [ObservableProperty] private string _mode = "Foco";
-    [ObservableProperty] private string _playGlyph = "";
+    [ObservableProperty] private string _playGlyph = "\uE768";
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private DoubleCollection _ringDashArray = new() { 0, 0 };
     [ObservableProperty] private string? _activityText;
@@ -73,7 +73,7 @@ public sealed partial class PomodoroViewModel : ObservableObject
         if (_timer.IsEnabled) _timer.Stop();
         else _timer.Start();
         IsRunning = _timer.IsEnabled;
-        PlayGlyph = IsRunning ? "" : "";
+        PlayGlyph = IsRunning ? "\uE769" : "\uE768";
         UpdateActivity();
     }
 
@@ -82,7 +82,7 @@ public sealed partial class PomodoroViewModel : ObservableObject
     {
         _timer.Stop();
         IsRunning = false;
-        PlayGlyph = "";
+        PlayGlyph = "\uE768";
         _completedCycles = 0;
         EnterPhase(PomodoroPhase.Focus);
     }
@@ -110,12 +110,13 @@ public sealed partial class PomodoroViewModel : ObservableObject
         UpdateDisplay();
     }
 
-    private int PhaseMinutes(PomodoroPhase phase) => phase switch
+    // Mínimo 1: um settings.json editado à mão com 0 trocaria de fase (e alertaria) a cada segundo.
+    private int PhaseMinutes(PomodoroPhase phase) => Math.Max(1, phase switch
     {
         PomodoroPhase.Focus => _focusMinutes,
         PomodoroPhase.ShortBreak => _shortBreakMinutes,
         _ => _longBreakMinutes,
-    };
+    });
 
     private void RebuildCycleDots()
     {
