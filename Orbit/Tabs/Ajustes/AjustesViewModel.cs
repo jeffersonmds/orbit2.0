@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.Input;
@@ -17,16 +17,18 @@ public sealed partial class AjustesViewModel : TabViewModel
     public override string Id => "ajustes";
     public override string Title => "Ajustes";
 
-    public IReadOnlyList<AccentOption> Opcoes { get; }
+    public ObservableCollection<AccentOption> Opcoes { get; }
 
     public AjustesViewModel(OrbitSettings settings)
     {
         _settings = settings;
-        var sistema = new AccentOption("Windows", null, new SolidColorBrush(Accent.ReadSystem()));
-        Opcoes = new[] { sistema }
-            .Concat(Accent.Paleta.Select(p => new AccentOption(p.Nome, p.Hex, new SolidColorBrush(Accent.ParseHex(p.Hex)!.Value))))
-            .ToList();
+        Opcoes = new ObservableCollection<AccentOption>(new[] { SystemOption() }
+            .Concat(Accent.Paleta.Select(p => new AccentOption(p.Nome, p.Hex, new SolidColorBrush(Accent.ParseHex(p.Hex)!.Value)))));
+        // A amostra "Windows" acompanha a cor do sistema (antes ficava congelada na abertura).
+        Accent.Changed += () => Opcoes[0] = SystemOption();
     }
+
+    private static AccentOption SystemOption() => new("Windows", null, new SolidColorBrush(Accent.ReadSystem()));
 
     [RelayCommand]
     private void EscolherAcento(AccentOption opcao)

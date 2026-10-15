@@ -117,17 +117,17 @@ public static class Program
     private static void FullscreenTests()
     {
         Check("tela cheia: app comum no mesmo monitor esconde",
-            FullscreenWatcher.ShouldHide(true, "UnityWndClass", sameMonitor: true));
+            FullscreenWatcher.Decide(true, "UnityWndClass", sameMonitor: true) == true);
         Check("tela cheia: aviso de saída mostra",
-            !FullscreenWatcher.ShouldHide(false, "UnityWndClass", sameMonitor: true));
-        Check("tela cheia: outro monitor não esconde",
-            !FullscreenWatcher.ShouldHide(true, "UnityWndClass", sameMonitor: false));
+            FullscreenWatcher.Decide(false, "UnityWndClass", sameMonitor: true) == false);
+        Check("tela cheia: outro monitor é ignorado (não mostra nem esconde)",
+            FullscreenWatcher.Decide(true, "UnityWndClass", sameMonitor: false) is null);
         Check("tela cheia: área de trabalho (Progman) é falso positivo",
-            !FullscreenWatcher.ShouldHide(true, "Progman", sameMonitor: true));
+            FullscreenWatcher.Decide(true, "Progman", sameMonitor: true) == false);
         Check("tela cheia: área de trabalho (WorkerW) é falso positivo",
-            !FullscreenWatcher.ShouldHide(true, "WorkerW", sameMonitor: true));
+            FullscreenWatcher.Decide(true, "WorkerW", sameMonitor: true) == false);
         Check("tela cheia: barra de tarefas é falso positivo",
-            !FullscreenWatcher.ShouldHide(true, "Shell_TrayWnd", sameMonitor: true));
+            FullscreenWatcher.Decide(true, "Shell_TrayWnd", sameMonitor: true) == false);
     }
 
     private static void SmokeTest() => Check("harness roda", 1 + 1 == 2);

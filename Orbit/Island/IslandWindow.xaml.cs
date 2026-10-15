@@ -8,6 +8,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Orbit.Services;
+using Serilog;
 
 namespace Orbit.Island;
 
@@ -22,6 +23,7 @@ public partial class IslandWindow : Window
     private FullscreenWatcher? _fullscreen;
     private bool _userHidden;
     private bool _exiting;
+    private bool _released;
     private int _layoutGen;
     private IntPtr _prevFg;
 #if DEBUG
@@ -44,7 +46,7 @@ public partial class IslandWindow : Window
         {
             if (e.PropertyName == nameof(IslandViewModel.Mode)) OnModeChanged();
             // Próximo alerta da fila: o modo continua Alerta, então reinicia o timer aqui.
-            else if (e.PropertyName == nameof(IslandViewModel.Peek) && _vm.Mode == IslandMode.Alerta)
+            else if (e.PropertyName == nameof(IslandViewModel.Peek) && _vm.Mode == IslandMode.Alerta && !_userHidden)
             {
                 _peek.Stop();
                 _peek.Start();
@@ -52,7 +54,14 @@ public partial class IslandWindow : Window
         };
 
         _tray = new TrayIcon();
-        _tray.ToggleVisibility += () => { _userHidden = !_userHidden; UpdateVisibility(); };
+        _tray.ToggleVisibility += () =>
+        {
+            _userHidden = !_userHidden;
+            UpdateVisibility();
+            // Alerta só conta tempo visível: escondida, ele espera; ao mostrar, começa a contar.
+            if (_userHidden) _peek.Stop();
+            else if (_vm.Mode == IslandMode.Alerta) _peek.Start();
+        };
         _tray.SettingsRequested += () =>
         {
             if (_vm.Mode == IslandMode.Oculta) return; // não rouba o foco do jogo/vídeo em tela cheia
@@ -105,11 +114,27 @@ public partial class IslandWindow : Window
     {
         // Só sai pela bandeja; Alt+F4 na ilha ativa é ignorado.
         if (!_exiting) { e.Cancel = true; return; }
-        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: vaza se não soltar
-        _hotKey?.Dispose();
-        _fullscreen?.Dispose();
-        _tray.Dispose();
+        ReleaseResources();
         base.OnClosing(e);
+    }
+
+    // Idempotente. Chamado no "Sair" (OnClosing) e pelo App (OnExit e falha no startup) —
+    // cobre encerramentos que não passam pela bandeja, senão o ícone fica fantasma.
+    public void ReleaseResources()
+    {
+        if (_released) return;
+        _released = true;
+        try
+        {
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: vaza se não soltar
+            _hotKey?.Dispose();
+            _fullscreen?.Dispose();
+            _tray.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Falha ao liberar recursos da ilha");
+        }
     }
 
     // Resolução/DPI/monitor principal mudou: recentraliza no topo do principal.
@@ -120,7 +145,7 @@ public partial class IslandWindow : Window
     private void OnModeChanged()
     {
         var mode = _vm.Mode;
-        if (mode == IslandMode.Alerta) _peek.Start();
+        if (mode == IslandMode.Alerta && !_userHidden) _peek.Start();
         else _peek.Stop();
         UpdateVisibility();
         // Devolve o teclado pra quem estava digitando antes da hotkey/clique.

@@ -25,6 +25,7 @@ public static class Accent
     private static readonly Regex HexRx = new("^#[0-9A-Fa-f]{6}$");
 
     // Guardado em campo: se o UISettings for coletado, o evento ColorValuesChanged para.
+    public static event Action? Changed; // depois de cada Refresh (cor nova aplicada)
     private static UISettings? _ui;
     private static Func<string?> _override = () => null;
 
@@ -76,6 +77,7 @@ public static class Accent
         var res = Application.Current.Resources;
         res["AccentBrush"] = Frozen(c);
         res["AccentSoftBrush"] = Frozen(Soft(c));
+        Changed?.Invoke();
     }
 
     private static SolidColorBrush Frozen(Color c)

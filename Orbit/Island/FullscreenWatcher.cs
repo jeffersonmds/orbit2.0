@@ -38,11 +38,17 @@ public sealed class FullscreenWatcher : IDisposable
             Log.Warning("Appbar não registrado; detecção de tela cheia pode não funcionar");
     }
 
-    // O shell também avisa "tela cheia" quando a área de trabalho/barra ganha foco,
-    // e quando o app está em outro monitor — os dois casos não devem esconder a ilha.
-    public static bool ShouldHide(bool shellSaysFullscreen, string foregroundClass, bool sameMonitor) =>
-        shellSaysFullscreen && sameMonitor &&
-        foregroundClass is not ("Progman" or "WorkerW" or "Shell_TrayWnd");
+    // true = esconder, false = mostrar, null = ignorar o aviso.
+    // A área de trabalho/barra também dispara "tela cheia" (falso positivo → mostrar).
+    // App em tela cheia em OUTRO monitor não diz respeito à ilha: ignorar, senão um vídeo
+    // no secundário faria a ilha reaparecer sobre um jogo no monitor dela.
+    // ponytail: o aviso de SAÍDA não diz de qual monitor veio; tratado sempre como "mostrar".
+    public static bool? Decide(bool shellSaysFullscreen, string foregroundClass, bool sameMonitor)
+    {
+        if (!shellSaysFullscreen) return false;
+        if (foregroundClass is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
+        return sameMonitor ? true : null;
+    }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -52,7 +58,7 @@ public sealed class FullscreenWatcher : IDisposable
             var cls = new StringBuilder(256);
             GetClassName(fg, cls, cls.Capacity);
             bool same = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST) == MonitorFromWindow(_hwnd, MONITOR_DEFAULTTONEAREST);
-            Changed?.Invoke(ShouldHide(lParam != IntPtr.Zero, cls.ToString(), same));
+            if (Decide(lParam != IntPtr.Zero, cls.ToString(), same) is bool hide) Changed?.Invoke(hide);
             handled = true;
         }
         // Quando o explorer.exe reinicia, a lista de appbars se perde.
