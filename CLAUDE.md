@@ -27,7 +27,8 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **Uma janela fixa** (`Island/IslandWindow`, 760×400, transparente, topmost). Só a `Border`
   "Pill" anima; pixels alpha 0 deixam o clique passar.
 - **`IslandMachine`** (puro) decide o estado: Repouso, Atividade, Alerta, Expandida, Oculta.
-  `IslandViewModel` orquestra a máquina e as abas; a janela só reage a `Mode`.
+  `IslandViewModel` orquestra a máquina e as abas; a janela reage a `Mode` (layout/animação)
+  e a `Peek` (reinicia o timer do alerta).
 - **Abas** herdam `Tabs/TabViewModel` e ficam em `Tabs/<Nome>/`. São criadas na mão no
   construtor de `IslandViewModel` (sem DI). **Contrato de leveza:** só a aba visível do painel
   expandido recebe `SetActive(true)`; timers e fetches só rodam ativos. `SafeSetActive` isola exceções.
@@ -36,7 +37,11 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   de Ajustes; recursos `AccentBrush`/`AccentSoftBrush` — sempre `DynamicResource`.
 - **Settings:** `%AppData%\Orbit2\settings.json`; `Load()` nunca lança, `Save()` engole I/O.
   Logs Serilog em `%AppData%\Orbit2\logs\`.
-- Hotkey global: Ctrl+Alt+O. Instância única: mutex `Orbit2_SingleInstance`.
+- Hotkey global: Ctrl+Alt+O — a mesma do 1.0 (o 2.0 o substitui; com o 1.0 aberto o registro
+  falha e vai pro log). Ignorada com a ilha Oculta (tela cheia) ou escondida pela bandeja.
+- Ligar "Iniciar com o Windows" apaga a entrada `Run\Orbit` do 1.0.
+- Itens "Debug: …" da bandeja (alerta/atividade de teste) só existem em build Debug.
+- Instância única: mutex `Orbit2_SingleInstance`.
 
 ## Convenções
 

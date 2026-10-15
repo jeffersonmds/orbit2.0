@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using Orbit.Services;
 
 namespace Orbit.Island;
@@ -32,8 +33,9 @@ public partial class IslandWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        Left = IslandGeometry.LeftFor(SystemParameters.PrimaryScreenWidth);
         Top = 0;
+        Recenter();
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         _hover.Tick += (_, _) => { _hover.Stop(); _vm.Expand(); };
         _leave.Tick += (_, _) => { _leave.Stop(); _vm.Collapse(); };
@@ -51,7 +53,12 @@ public partial class IslandWindow : Window
 
         _tray = new TrayIcon();
         _tray.ToggleVisibility += () => { _userHidden = !_userHidden; UpdateVisibility(); };
-        _tray.SettingsRequested += () => { _userHidden = false; UpdateVisibility(); _vm.OpenTab("ajustes"); Activate(); };
+        _tray.SettingsRequested += () =>
+        {
+            if (_vm.Mode == IslandMode.Oculta) return; // não rouba o foco do jogo/vídeo em tela cheia
+            _userHidden = false; UpdateVisibility(); _vm.OpenTab("ajustes");
+            Activate();
+        };
         _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };
 #if DEBUG
         _tray.DebugPeek += () => _vm.RaisePeek(new Peek("Alerta de teste", "github.com/… · abrindo no navegador", "energia"));
@@ -83,7 +90,8 @@ public partial class IslandWindow : Window
         _hotKey = new GlobalHotKey(hwnd);
         _hotKey.Pressed += () =>
         {
-            if (_userHidden) return;
+            // Oculta = app em tela cheia: Activate() tiraria o foco do jogo.
+            if (_userHidden || _vm.Mode == IslandMode.Oculta) return;
             if (_vm.Mode == IslandMode.Expandida) _vm.Collapse();
             else ExpandFocused();
         };
@@ -97,11 +105,17 @@ public partial class IslandWindow : Window
     {
         // Só sai pela bandeja; Alt+F4 na ilha ativa é ignorado.
         if (!_exiting) { e.Cancel = true; return; }
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: vaza se não soltar
         _hotKey?.Dispose();
         _fullscreen?.Dispose();
         _tray.Dispose();
         base.OnClosing(e);
     }
+
+    // Resolução/DPI/monitor principal mudou: recentraliza no topo do principal.
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(Recenter);
+
+    private void Recenter() => Left = IslandGeometry.LeftFor(SystemParameters.PrimaryScreenWidth);
 
     private void OnModeChanged()
     {
