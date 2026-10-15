@@ -31,6 +31,7 @@ public static class Program
         SharedInfraTests();
         TabVisibilityTests();
         PomodoroTests();
+        HojeTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -312,6 +313,44 @@ public static class Program
         var d = new Orbit.Models.OrbitSettings();
         Check("settings: pomodoro defaults", d.PomodoroFocusMinutes == 25 && d.PomodoroShortBreakMinutes == 5
             && d.PomodoroLongBreakMinutes == 15 && d.PomodoroCyclesUntilLongBreak == 4 && d.PomodoroSoundEnabled);
+    }
+
+    private static void HojeTests()
+    {
+        // Semana começa na segunda; quinta 15/10/2026.
+        var week = HojeViewModel.BuildWeek(new DateTime(2026, 10, 15));
+        Check("hoje: semana tem 7 dias", week.Count == 7);
+        Check("hoje: começa na segunda 12", week[0].Label == "Seg" && week[0].Day == 12);
+        Check("hoje: termina no domingo 18", week[6].Label == "Dom" && week[6].Day == 18);
+        Check("hoje: só quinta é hoje", week.FindAll(d => d.IsToday).Count == 1 && week[3].IsToday);
+        var sunday = HojeViewModel.BuildWeek(new DateTime(2026, 10, 18));
+        Check("hoje: domingo pertence à semana que começou na segunda", sunday[0].Day == 12 && sunday[6].IsToday);
+
+        var todos = new List<TodoItem> { new("a", true), new("b", false), new("c", false) };
+        Check("hoje: contador de tarefas", HojeViewModel.Counter(todos) == "1/3");
+        Check("hoje: contador vazio", HojeViewModel.Counter(new List<TodoItem>()) == "0/0");
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "todos.json");
+        Check("todos: arquivo inexistente = vazio", TodoStore.Load(path).Count == 0);
+        TodoStore.Save(todos, path);
+        var back = TodoStore.Load(path);
+        Check("todos: round-trip", back.Count == 3 && back[0].Text == "a" && back[0].Done && !back[1].Done);
+        File.WriteAllText(path, "{ quebrado");
+        Check("todos: corrompido = vazio", TodoStore.Load(path).Count == 0);
+        Directory.Delete(dir, recursive: true);
+
+        // Clima (portado do 1.0)
+        Check("clima: alerta de chuva acima de 60", !WeatherViewModel.IsRainAlert(60) && WeatherViewModel.IsRainAlert(61));
+        var fc = new List<ForecastResult>
+        {
+            new(new DateTime(2026, 7, 3), 3, 24, 18, new DateTime(2026, 7, 3, 6, 12, 0), new DateTime(2026, 7, 3, 17, 47, 0), 20),
+            new(new DateTime(2026, 7, 4), 0, 26, 17, new DateTime(2026, 7, 4, 6, 12, 0), new DateTime(2026, 7, 4, 17, 47, 0), 0),
+        };
+        var built = WeatherViewModel.BuildForecast(fc);
+        Check("clima: previsão pula hoje", built.Count == 1);
+        Check("clima: formato máx/mín e ícone", built[0].MaxMin == "26°/17°" && built[0].Icon == "☀");
     }
 
     public static void Check(string name, bool ok)

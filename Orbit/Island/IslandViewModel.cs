@@ -24,6 +24,7 @@ public sealed partial class IslandViewModel : ObservableObject
 
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;
+    private readonly ApiService _api = new();
     private readonly List<TabViewModel> _allTabs = new();
 
     public ObservableCollection<TabViewModel> Tabs { get; } = new();
@@ -48,6 +49,7 @@ public sealed partial class IslandViewModel : ObservableObject
         // Sem DI: abas e serviços de fundo são criados aqui na mão.
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility));
+        Register(new HojeViewModel(_api, Pomodoro, TodoStore.FilePath));
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;

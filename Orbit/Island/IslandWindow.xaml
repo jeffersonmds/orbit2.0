@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:energia="clr-namespace:Orbit.Tabs.Energia"
         xmlns:ajustes="clr-namespace:Orbit.Tabs.Ajustes"
+        xmlns:hoje="clr-namespace:Orbit.Tabs.Hoje"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
@@ -11,6 +12,9 @@
     <Window.Resources>
         <DataTemplate DataType="{x:Type energia:EnergiaViewModel}">
             <energia:EnergiaView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type hoje:HojeViewModel}">
+            <hoje:HojeView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type ajustes:AjustesViewModel}">
             <ajustes:AjustesView/>
