@@ -12,7 +12,8 @@ public static class Ring
     public static DoubleCollection DashArray(double progress, double diameter, double strokeThickness)
     {
         double p = Math.Clamp(progress, 0.0, 1.0);
-        double circumference = Math.PI * diameter / strokeThickness;
+        // A Ellipse desenha o traço para dentro: a circunferência real usa (diameter - strokeThickness).
+        double circumference = Math.PI * (diameter - strokeThickness) / strokeThickness;
         return new DoubleCollection { p * circumference, (1 - p) * circumference };
     }
 }

@@ -56,7 +56,7 @@ public static class Program
         Check("sparkline: série curta inalterada", Sparkline.Subsample(new double[] { 1, 2, 3 }, 40).Length == 3);
 
         // Ring (era PomodoroTileViewModel.BuildRingDashArray no 1.0)
-        double circ = Math.PI * 92 / 4;
+        double circ = Math.PI * (92 - 4) / 4;
         var d0 = Ring.DashArray(0, 92, 4);
         Check("anel: 0 sem traço", Math.Abs(d0[0]) < 0.01 && Math.Abs(d0[1] - circ) < 0.01);
         var d50 = Ring.DashArray(0.5, 92, 4);

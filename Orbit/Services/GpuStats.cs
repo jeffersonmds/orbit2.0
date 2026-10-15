@@ -7,36 +7,28 @@ using Serilog;
 namespace Orbit.Services;
 
 // Uso de GPU como o Gerenciador de Tarefas: soma da "Utilization Percentage" dos motores
-// 3D (contadores "GPU Engine"). Só é lido com a aba Stats aberta.
-public sealed class GpuStats : IDisposable
+// 3D (contadores "GPU Engine"). Uma leitura da categoria por amostra; a 1ª leitura após
+// abrir a aba é 0 (sem amostra anterior). Só é lido com a aba Stats aberta.
+public sealed class GpuStats
 {
-    private readonly Dictionary<string, PerformanceCounter> _counters = new();
+    private Dictionary<string, CounterSample> _prev = new();
     private bool _warned;
 
-    // ponytail: relista as instâncias a cada leitura (processos entram/saem) — custa alguns ms
-    // a cada 2 s com a aba aberta. Cachear a lista por alguns ciclos se pesar.
     public double Read()
     {
         try
         {
-            var names = new PerformanceCounterCategory("GPU Engine").GetInstanceNames()
-                .Where(n => n.Contains("engtype_3D", StringComparison.Ordinal))
-                .ToHashSet();
-            foreach (var gone in _counters.Keys.Where(k => !names.Contains(k)).ToList())
-            {
-                _counters[gone].Dispose();
-                _counters.Remove(gone);
-            }
+            var data = new PerformanceCounterCategory("GPU Engine").ReadCategory()["Utilization Percentage"];
+            var now = new Dictionary<string, CounterSample>();
             var samples = new List<float>();
-            foreach (var name in names)
+            foreach (InstanceData d in data.Values)
             {
-                if (!_counters.TryGetValue(name, out var c))
-                {
-                    c = new PerformanceCounter("GPU Engine", "Utilization Percentage", name, readOnly: true);
-                    _counters[name] = c;
-                }
-                samples.Add(c.NextValue()); // 1ª leitura de um contador novo é 0; corrige no tick seguinte
+                // ReadCategory devolve nomes em minúsculas ("engtype_3d"): comparar sem caixa.
+                if (!d.InstanceName.Contains("engtype_3d", StringComparison.OrdinalIgnoreCase)) continue;
+                now[d.InstanceName] = d.Sample;
+                if (_prev.TryGetValue(d.InstanceName, out var p)) samples.Add(CounterSample.Calculate(p, d.Sample));
             }
+            _prev = now;
             return Aggregate(samples);
         }
         catch (Exception ex)
@@ -47,12 +39,9 @@ public sealed class GpuStats : IDisposable
         }
     }
 
+    // Aba fechada: a próxima leitura recomeça (sem média do tempo parado).
+    public void Reset() => _prev = new();
+
     public static double Aggregate(IEnumerable<float> engine3DSamples) =>
         Math.Clamp(engine3DSamples.Sum(), 0, 100);
-
-    public void Dispose()
-    {
-        foreach (var c in _counters.Values) c.Dispose();
-        _counters.Clear();
-    }
 }

@@ -50,6 +50,7 @@ public sealed partial class StatsViewModel : TabViewModel
         {
             _timer.Stop();
             _net.Reset();
+            _gpu.Reset();
             return;
         }
         Sample();

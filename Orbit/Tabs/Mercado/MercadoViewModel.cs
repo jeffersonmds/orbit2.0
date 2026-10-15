@@ -112,15 +112,21 @@ public sealed partial class MercadoViewModel : TabViewModel
                     row.Price = "R$ " + p.Price.ToString("0.00", CultureInfo.InvariantCulture);
                     (row.Change, row.ChangeColor) = ChangeIndicator.Format(p.Change, 2);
                 }
-        if (crypto is not null || fx is not null) _pricesAt = DateTime.Now;
+        if (crypto is not null && fx is not null) _pricesAt = DateTime.Now;
     }
 
     // ponytail: 1 chamada por cripto; limitar ao top-N se bater no rate limit.
     private async Task RefreshSparksAsync()
     {
+        bool any = false;
         foreach (var row in Rows.Where(r => r.Kind == MarketKind.Crypto).ToList())
-            row.SetSparkline(await _api.GetSparklineAsync(row.Id));
-        _sparksAt = DateTime.Now;
+        {
+            var s = await _api.GetSparklineAsync(row.Id);
+            if (s is null) continue; // falha (ex.: 429): mantém a linha anterior
+            row.SetSparkline(s);
+            any = true;
+        }
+        if (any) _sparksAt = DateTime.Now;
     }
 
     [RelayCommand]
