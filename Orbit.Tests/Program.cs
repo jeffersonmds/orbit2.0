@@ -25,9 +25,55 @@ public static class Program
         PowerTests();
         FullscreenTests();
         TabIsolationTests();
+        SharedInfraTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static void SharedInfraTests()
+    {
+        // Sparkline (portado do 1.0)
+        var big = new double[100];
+        for (int i = 0; i < big.Length; i++) big[i] = i;
+        var s = Sparkline.Subsample(big, 40);
+        Check("sparkline: subsample tamanho", s.Length == 40);
+        Check("sparkline: preserva primeiro", s[0] == big[0]);
+        Check("sparkline: preserva último", s[^1] == big[^1]);
+        Check("sparkline: série curta inalterada", Sparkline.Subsample(new double[] { 1, 2, 3 }, 40).Length == 3);
+
+        // Ring (era PomodoroTileViewModel.BuildRingDashArray no 1.0)
+        double circ = Math.PI * 92 / 4;
+        var d0 = Ring.DashArray(0, 92, 4);
+        Check("anel: 0 sem traço", Math.Abs(d0[0]) < 0.01 && Math.Abs(d0[1] - circ) < 0.01);
+        var d50 = Ring.DashArray(0.5, 92, 4);
+        Check("anel: 0,5 metade/metade", Math.Abs(d50[0] - circ / 2) < 0.01 && Math.Abs(d50[1] - circ / 2) < 0.01);
+        var d100 = Ring.DashArray(1, 92, 4);
+        Check("anel: 1 cheio", Math.Abs(d100[0] - circ) < 0.01 && Math.Abs(d100[1]) < 0.01);
+        Check("anel: negativo clampa em 0", Math.Abs(Ring.DashArray(-0.5, 92, 4)[0]) < 0.01);
+        Check("anel: >1 clampa em 1", Math.Abs(Ring.DashArray(1.5, 92, 4)[0] - circ) < 0.01);
+
+        // Freshness
+        var now = new DateTime(2026, 10, 15, 12, 0, 0);
+        var ten = TimeSpan.FromMinutes(10);
+        Check("frescor: nunca buscou = velho", Freshness.IsStale(null, ten, now));
+        Check("frescor: 3 min = fresco", !Freshness.IsStale(now.AddMinutes(-3), ten, now));
+        Check("frescor: exatamente 10 min = velho", Freshness.IsStale(now.AddMinutes(-10), ten, now));
+
+        // ApiService: URLs e parsers (portados do 1.0)
+        Check("api: url cripto", ApiService.BuildCryptoUrl(new[] { "bitcoin", "ethereum" }).Contains("ids=bitcoin,ethereum"));
+        Check("api: url câmbio", ApiService.BuildExchangeUrl(new[] { "USD", "EUR" }).EndsWith("/USD-BRL,EUR-BRL"));
+        var json = "{\"daily\":{\"time\":[\"2026-07-03\",\"2026-07-04\"]," +
+                   "\"weather_code\":[3,0],\"temperature_2m_max\":[24,26],\"temperature_2m_min\":[18,17]," +
+                   "\"sunrise\":[\"2026-07-03T06:12\",\"2026-07-04T06:12\"]," +
+                   "\"sunset\":[\"2026-07-03T17:47\",\"2026-07-04T17:47\"]," +
+                   "\"precipitation_probability_max\":[20,null]}}";
+        var fc = ApiService.ParseForecast(json);
+        Check("api: previsão conta dias", fc.Count == 2);
+        Check("api: previsão nascer do sol", fc[0].Sunrise.Hour == 6 && fc[0].Sunrise.Minute == 12);
+        Check("api: previsão chuva null vira 0", fc[1].PrecipProb == 0);
+        var news = ApiService.ParseNewsItem("{\"id\":456,\"title\":\"Ask HN\"}");
+        Check("api: notícia sem url cai no thread do HN", news.Url == "https://news.ycombinator.com/item?id=456");
     }
 
     private static void AccentTests()
