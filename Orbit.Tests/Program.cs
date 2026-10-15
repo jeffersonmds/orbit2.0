@@ -9,6 +9,7 @@ using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Stats;
+using Orbit.Tabs.Mercado;
 using Orbit.Tabs.Ajustes;
 
 namespace Orbit.Tests;
@@ -37,6 +38,7 @@ public static class Program
         NowPlayingTests();
         ControlesTests();
         StatsTests();
+        MercadoTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -389,6 +391,23 @@ public static class Program
 
         Check("uptime: horas", StatsViewModel.FormatUptime(new TimeSpan(5, 12, 0)) == "5h 12m");
         Check("uptime: dias", StatsViewModel.FormatUptime(new TimeSpan(2, 3, 40, 0)) == "2d 3h");
+    }
+
+    private static void MercadoTests()
+    {
+        Check("mercado: catálogo acha bitcoin/USD", MarketCatalog.FindCrypto("bitcoin")?.Name == "Bitcoin"
+            && MarketCatalog.FindCurrency("USD")?.Name == "Dólar");
+        Check("mercado: id desconhecido = null", MarketCatalog.FindCrypto("nao-existe") is null);
+        Check("mercado: usd grande sem decimais", MercadoViewModel.FormatUsd(104235) == "$104,235");
+        Check("mercado: usd médio 2 casas", MercadoViewModel.FormatUsd(3.5) == "$3.50");
+        Check("mercado: usd sub-dólar 4 casas", MercadoViewModel.FormatUsd(0.6234) == "$0.6234");
+        var ordered = MercadoViewModel.OrderCatalog(new List<string> { "a", "b", "c", "d" }, new List<string> { "c", "a" });
+        Check("mercado: selecionados primeiro na ordem salva", string.Join(",", ordered) == "c,a,b,d");
+        var ordered2 = MercadoViewModel.OrderCatalog(new List<string> { "a", "b", "c", "d" }, new List<string> { "z", "b" });
+        Check("mercado: id fora do catálogo é ignorado", string.Join(",", ordered2) == "b,a,c,d");
+        var d = new Orbit.Models.OrbitSettings();
+        Check("settings: mercado defaults", string.Join(",", d.MarketCryptos) == "bitcoin,ethereum"
+            && string.Join(",", d.MarketCurrencies) == "USD,EUR");
     }
 
     private static void NowPlayingTests()

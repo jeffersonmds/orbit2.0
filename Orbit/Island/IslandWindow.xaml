@@ -5,6 +5,7 @@
         xmlns:ajustes="clr-namespace:Orbit.Tabs.Ajustes"
         xmlns:controles="clr-namespace:Orbit.Tabs.Controles"
         xmlns:stats="clr-namespace:Orbit.Tabs.Stats"
+        xmlns:mercado="clr-namespace:Orbit.Tabs.Mercado"
         xmlns:hoje="clr-namespace:Orbit.Tabs.Hoje"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
@@ -26,6 +27,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type stats:StatsViewModel}">
             <stats:StatsView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type mercado:MercadoViewModel}">
+            <mercado:MercadoView/>
         </DataTemplate>
     </Window.Resources>
 

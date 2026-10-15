@@ -14,6 +14,10 @@ public sealed class OrbitSettings
     // Abas escondidas em Ajustes (ids). "ajustes" nunca é escondida.
     public List<string> HiddenTabs { get; set; } = new();
 
+    // Mercado: ids selecionados, na ordem escolhida.
+    public List<string> MarketCryptos { get; set; } = new() { "bitcoin", "ethereum" };
+    public List<string> MarketCurrencies { get; set; } = new() { "USD", "EUR" };
+
     // Em tela cheia, alerta vira toast do Windows em vez de esperar na fila.
     public bool AlertsAsToastInFullscreen { get; set; }
 
