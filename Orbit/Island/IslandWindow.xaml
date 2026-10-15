@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:energia="clr-namespace:Orbit.Tabs.Energia"
         xmlns:ajustes="clr-namespace:Orbit.Tabs.Ajustes"
+        xmlns:controles="clr-namespace:Orbit.Tabs.Controles"
         xmlns:hoje="clr-namespace:Orbit.Tabs.Hoje"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
@@ -18,6 +19,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type ajustes:AjustesViewModel}">
             <ajustes:AjustesView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type controles:ControlesViewModel}">
+            <controles:ControlesView/>
         </DataTemplate>
     </Window.Resources>
 

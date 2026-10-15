@@ -58,6 +58,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility));
         Register(new HojeViewModel(_api, Pomodoro, TodoStore.FilePath));
+        Register(new ControlesViewModel(NowPlaying));
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;

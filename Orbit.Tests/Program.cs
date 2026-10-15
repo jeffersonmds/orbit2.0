@@ -34,6 +34,7 @@ public static class Program
         PomodoroTests();
         HojeTests();
         NowPlayingTests();
+        ControlesTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -353,6 +354,16 @@ public static class Program
         var built = WeatherViewModel.BuildForecast(fc);
         Check("clima: previsão pula hoje", built.Count == 1);
         Check("clima: formato máx/mín e ícone", built[0].MaxMin == "26°/17°" && built[0].Icon == "☀");
+    }
+
+    private static void ControlesTests()
+    {
+        Check("volume: escalar → %", Volume.ToPercent(0.64f) == 64);
+        Check("volume: % → escalar", Math.Abs(Volume.ToScalar(25) - 0.25f) < 0.0001);
+        Check("volume: clampa", Volume.ToPercent(1.5f) == 100 && Volume.ToScalar(-10) == 0f);
+        Check("modo escuro: valor do registro", DarkMode.RegistryValue(true) == 0 && DarkMode.RegistryValue(false) == 1);
+        Check("controles: status ligado/desligado/indisponível", ControlesViewModel.Status(true) == "Ligado"
+            && ControlesViewModel.Status(false) == "Desligado" && ControlesViewModel.Status(null) == "Indisponível");
     }
 
     private static void NowPlayingTests()

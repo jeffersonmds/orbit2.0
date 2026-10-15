@@ -1,0 +1,72 @@
+<UserControl x:Class="Orbit.Tabs.Controles.ControlesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <UniformGrid Columns="3" Margin="0,0,0,12">
+            <Button Style="{StaticResource ToggleCard}" Tag="{Binding WifiOn}" Command="{Binding ToggleWifiCommand}" Height="72" Margin="0,0,6,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE701;" FontFamily="{StaticResource IconFont}" FontSize="18" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <StackPanel>
+                        <TextBlock Text="Wi‑Fi" FontSize="13" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding WifiStatus}" FontSize="11" Opacity="0.7"/>
+                    </StackPanel>
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource ToggleCard}" Tag="{Binding BluetoothOn}" Command="{Binding ToggleBluetoothCommand}" Height="72" Margin="3,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE702;" FontFamily="{StaticResource IconFont}" FontSize="18" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <StackPanel>
+                        <TextBlock Text="Bluetooth" FontSize="13" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding BluetoothStatus}" FontSize="11" Opacity="0.7"/>
+                    </StackPanel>
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource ToggleCard}" Tag="{Binding DarkOn}" Command="{Binding ToggleDarkCommand}" Height="72" Margin="6,0,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE706;" FontFamily="{StaticResource IconFont}" FontSize="18" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <StackPanel>
+                        <TextBlock Text="Modo escuro" FontSize="13" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding DarkStatus}" FontSize="11" Opacity="0.7"/>
+                    </StackPanel>
+                </StackPanel>
+            </Button>
+        </UniformGrid>
+
+        <DockPanel Margin="0,0,0,12" Visibility="{Binding HasAudio, Converter={StaticResource BoolToVis}}">
+            <Button DockPanel.Dock="Left" Style="{StaticResource RoundButton}" Content="{Binding MuteGlyph}"
+                    Command="{Binding ToggleMuteCommand}" Margin="0,0,12,0"/>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding VolumePercent, StringFormat={}{0:0}%}" FontSize="12"
+                       Foreground="{StaticResource InkLo}" VerticalAlignment="Center" Width="40" TextAlignment="Right"/>
+            <Slider Style="{StaticResource AccentSlider}" Value="{Binding VolumePercent}" VerticalAlignment="Center"/>
+        </DockPanel>
+
+        <Border Style="{StaticResource Card}" DataContext="{Binding NowPlaying}">
+            <Grid>
+                <TextBlock Text="Nada tocando" Foreground="{StaticResource InkLo}" FontSize="13"
+                           Visibility="{Binding HasSession, Converter={StaticResource NotBoolToVis}}"/>
+                <DockPanel Visibility="{Binding HasSession, Converter={StaticResource BoolToVis}}">
+                    <Border DockPanel.Dock="Left" Width="64" Height="64" CornerRadius="10" Background="{StaticResource CardHover}" Margin="0,0,14,0">
+                        <Grid>
+                            <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="22"
+                                       Foreground="{StaticResource InkLo}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Border CornerRadius="10">
+                                <Border.Background>
+                                    <ImageBrush ImageSource="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource RoundButton}" Content="&#xE892;" Command="{Binding PreviousCommand}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource RoundButton}" Content="{Binding PlayPauseGlyph}" Command="{Binding PlayPauseCommand}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource RoundButton}" Content="&#xE893;" Command="{Binding NextCommand}"/>
+                    </StackPanel>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{StaticResource InkLo}" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </DockPanel>
+            </Grid>
+        </Border>
+    </StackPanel>
+</UserControl>
