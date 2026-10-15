@@ -12,6 +12,7 @@ using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
 using Orbit.Tabs.Mercado;
+using Orbit.Tabs.Noticias;
 using Orbit.Tabs.Stats;
 using Serilog;
 
@@ -63,6 +64,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new ControlesViewModel(NowPlaying));
         Register(new StatsViewModel());
         Register(new MercadoViewModel(_api, settings));
+        Register(new NoticiasViewModel(_api, settings));
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;

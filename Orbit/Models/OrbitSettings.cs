@@ -18,6 +18,9 @@ public sealed class OrbitSettings
     public List<string> MarketCryptos { get; set; } = new() { "bitcoin", "ethereum" };
     public List<string> MarketCurrencies { get; set; } = new() { "USD", "EUR" };
 
+    // Notícias: ids do HN ignorados (não reaparecem). Limitado a 200 pelo Prune.
+    public List<int> DismissedNewsIds { get; set; } = new();
+
     // Em tela cheia, alerta vira toast do Windows em vez de esperar na fila.
     public bool AlertsAsToastInFullscreen { get; set; }
 

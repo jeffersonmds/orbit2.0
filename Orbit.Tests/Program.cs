@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows.Media;
 using Orbit.Island;
 using Orbit.Services;
@@ -11,6 +12,7 @@ using Orbit.Tabs.Controles;
 using Orbit.Tabs.Stats;
 using Orbit.Tabs.Mercado;
 using Orbit.Tabs.Ajustes;
+using Orbit.Tabs.Noticias;
 
 namespace Orbit.Tests;
 
@@ -39,9 +41,24 @@ public static class Program
         ControlesTests();
         StatsTests();
         MercadoTests();
+        NoticiasTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static void NoticiasTests()
+    {
+        var pool = new List<NewsItem> { new(1, "a", "u1"), new(2, "b", "u2"), new(3, "c", "u3"), new(4, "d", "u4") };
+        var vis = NoticiasViewModel.SelectVisible(pool, new HashSet<int> { 2 }, 2);
+        Check("notícias: filtra ignorado", vis.All(i => i.Id != 2));
+        Check("notícias: limita e mantém ordem", vis.Count == 2 && vis[0].Id == 1 && vis[1].Id == 3);
+        Check("notícias: prune mantém os maiores", string.Join(",", NoticiasViewModel.Prune(new List<int> { 10, 20, 30 }, 25, 2)) == "30,25");
+        Check("notícias: prune sem duplicar", string.Join(",", NoticiasViewModel.Prune(new List<int> { 10, 20 }, 20, 5)) == "20,10");
+        Check("notícias: domínio sem www", NoticiasViewModel.Domain("https://www.example.com/a/b") == "example.com");
+        Check("notícias: domínio do HN", NoticiasViewModel.Domain("https://news.ycombinator.com/item?id=1") == "news.ycombinator.com");
+        Check("notícias: url inválida = vazio", NoticiasViewModel.Domain("isso não é url") == "");
+        Check("settings: ignorados default vazio", new Orbit.Models.OrbitSettings().DismissedNewsIds.Count == 0);
     }
 
     private static void SharedInfraTests()
