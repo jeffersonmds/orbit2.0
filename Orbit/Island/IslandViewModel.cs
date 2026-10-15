@@ -9,6 +9,7 @@ using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Ajustes;
 using Orbit.Tabs.Energia;
+using Orbit.Tabs.Hoje;
 using Serilog;
 
 namespace Orbit.Island;
@@ -26,6 +27,7 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly List<TabViewModel> _allTabs = new();
 
     public ObservableCollection<TabViewModel> Tabs { get; } = new();
+    public PomodoroViewModel Pomodoro { get; }
 
     [ObservableProperty] private TabViewModel? _selectedTab;
     [ObservableProperty] private IslandMode _mode = IslandMode.Repouso;
@@ -35,15 +37,26 @@ public sealed partial class IslandViewModel : ObservableObject
     public IslandViewModel(OrbitSettings settings)
     {
         _settings = settings;
+        // Serviços de fundo (rodam com a ilha recolhida e alimentam a pílula).
+        Pomodoro = new PomodoroViewModel(settings.PomodoroFocusMinutes, settings.PomodoroShortBreakMinutes,
+            settings.PomodoroLongBreakMinutes, settings.PomodoroCyclesUntilLongBreak, OnPomodoroPhase);
+        Pomodoro.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PomodoroViewModel.ActivityText))
+                SetActivity(ActivityKind.Pomodoro, Pomodoro.ActivityText);
+        };
         // Sem DI: abas e serviços de fundo são criados aqui na mão.
         Register(new EnergiaViewModel());
-        Register(new AjustesViewModel(settings, () => _allTabs, ApplyTabVisibility));
+        Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility));
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
         ApplyTabVisibility();
         SelectedTab = Tabs.FirstOrDefault(t => t.Id == last) ?? Tabs.FirstOrDefault();
     }
+
+    private void OnPomodoroPhase(PomodoroPhase phase, int minutes) =>
+        Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "hoje"), _settings.PomodoroSoundEnabled);
 
     private void Register(TabViewModel tab) => _allTabs.Add(tab);
 

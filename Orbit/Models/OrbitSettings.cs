@@ -16,4 +16,11 @@ public sealed class OrbitSettings
 
     // Em tela cheia, alerta vira toast do Windows em vez de esperar na fila.
     public bool AlertsAsToastInFullscreen { get; set; }
+
+    // Pomodoro (defaults = clássico).
+    public int PomodoroFocusMinutes { get; set; } = 25;
+    public int PomodoroShortBreakMinutes { get; set; } = 5;
+    public int PomodoroLongBreakMinutes { get; set; } = 15;
+    public int PomodoroCyclesUntilLongBreak { get; set; } = 4;
+    public bool PomodoroSoundEnabled { get; set; } = true;
 }

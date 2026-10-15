@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Orbit.Island;
 using Orbit.Models;
 using Orbit.Services;
+using Orbit.Tabs.Hoje;
 
 namespace Orbit.Tabs.Ajustes;
 
@@ -38,6 +39,7 @@ public sealed partial class TabToggle : ObservableObject
 public sealed partial class AjustesViewModel : TabViewModel
 {
     private readonly OrbitSettings _settings;
+    private readonly PomodoroViewModel _pomodoro;
     private readonly Func<IEnumerable<TabViewModel>> _allTabs;
     private readonly Action _tabsChanged;
 
@@ -49,9 +51,10 @@ public sealed partial class AjustesViewModel : TabViewModel
 
     [ObservableProperty] private bool _alertasComoToast;
 
-    public AjustesViewModel(OrbitSettings settings, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged)
+    public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged)
     {
         _settings = settings;
+        _pomodoro = pomodoro;
         _allTabs = allTabs;
         _tabsChanged = tabsChanged;
         Opcoes = new ObservableCollection<AccentOption>(new[] { SystemOption() }
@@ -59,7 +62,52 @@ public sealed partial class AjustesViewModel : TabViewModel
         // A amostra "Windows" acompanha a cor do sistema (antes ficava congelada na abertura).
         Accent.Changed += () => Opcoes[0] = SystemOption();
         AlertasComoToast = settings.AlertsAsToastInFullscreen;
+        FocoTexto = settings.PomodoroFocusMinutes.ToString();
+        PausaTexto = settings.PomodoroShortBreakMinutes.ToString();
+        PausaLongaTexto = settings.PomodoroLongBreakMinutes.ToString();
+        CiclosTexto = settings.PomodoroCyclesUntilLongBreak.ToString();
+        SomPomodoro = settings.PomodoroSoundEnabled;
     }
+
+    // Campos de texto (gravam ao perder o foco). Valor inválido volta ao anterior.
+    [ObservableProperty] private string _focoTexto = "";
+    [ObservableProperty] private string _pausaTexto = "";
+    [ObservableProperty] private string _pausaLongaTexto = "";
+    [ObservableProperty] private string _ciclosTexto = "";
+    [ObservableProperty] private bool _somPomodoro;
+
+    partial void OnFocoTextoChanged(string value) =>
+        FocoTexto = SavePomodoro(value, _settings.PomodoroFocusMinutes, 180, v => _settings.PomodoroFocusMinutes = v);
+    partial void OnPausaTextoChanged(string value) =>
+        PausaTexto = SavePomodoro(value, _settings.PomodoroShortBreakMinutes, 180, v => _settings.PomodoroShortBreakMinutes = v);
+    partial void OnPausaLongaTextoChanged(string value) =>
+        PausaLongaTexto = SavePomodoro(value, _settings.PomodoroLongBreakMinutes, 180, v => _settings.PomodoroLongBreakMinutes = v);
+    partial void OnCiclosTextoChanged(string value) =>
+        CiclosTexto = SavePomodoro(value, _settings.PomodoroCyclesUntilLongBreak, 12, v => _settings.PomodoroCyclesUntilLongBreak = v);
+
+    partial void OnSomPomodoroChanged(bool value)
+    {
+        if (_settings.PomodoroSoundEnabled == value) return;
+        _settings.PomodoroSoundEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    // Devolve o texto normalizado (o valor gravado). Reatribuir o mesmo texto não re-dispara.
+    private string SavePomodoro(string text, int current, int max, Action<int> set)
+    {
+        int v = ParseRange(text, current, 1, max);
+        if (v != current)
+        {
+            set(v);
+            SettingsStore.Save(_settings);
+            _pomodoro.UpdateConfig(_settings.PomodoroFocusMinutes, _settings.PomodoroShortBreakMinutes,
+                _settings.PomodoroLongBreakMinutes, _settings.PomodoroCyclesUntilLongBreak);
+        }
+        return v.ToString();
+    }
+
+    public static int ParseRange(string? text, int fallback, int min, int max) =>
+        int.TryParse(text, out var v) && v >= min && v <= max ? v : fallback;
 
     private static AccentOption SystemOption() => new("Windows", null, new SolidColorBrush(Accent.ReadSystem()));
 

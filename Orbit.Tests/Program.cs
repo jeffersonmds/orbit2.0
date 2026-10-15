@@ -6,6 +6,8 @@ using Orbit.Island;
 using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Energia;
+using Orbit.Tabs.Hoje;
+using Orbit.Tabs.Ajustes;
 
 namespace Orbit.Tests;
 
@@ -28,6 +30,7 @@ public static class Program
         TabIsolationTests();
         SharedInfraTests();
         TabVisibilityTests();
+        PomodoroTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -281,6 +284,34 @@ public static class Program
         try { IslandViewModel.SafeSetActive(null, true); }
         catch { threw = true; }
         Check("abas: SafeSetActive aceita null", !threw);
+    }
+
+    private static void PomodoroTests()
+    {
+        Check("pomodoro: rótulos", PomodoroViewModel.PhaseLabel(PomodoroPhase.Focus) == "Foco"
+            && PomodoroViewModel.PhaseLabel(PomodoroPhase.ShortBreak) == "Pausa"
+            && PomodoroViewModel.PhaseLabel(PomodoroPhase.LongBreak) == "Pausa longa");
+
+        var (p1, c1) = PomodoroViewModel.NextPhase(PomodoroPhase.Focus, completedCycles: 1, cyclesUntilLongBreak: 4);
+        Check("pomodoro: foco → pausa curta soma ciclo", p1 == PomodoroPhase.ShortBreak && c1 == 2);
+        var (p2, c2) = PomodoroViewModel.NextPhase(PomodoroPhase.Focus, completedCycles: 3, cyclesUntilLongBreak: 4);
+        Check("pomodoro: foco fecha ciclo → pausa longa zera", p2 == PomodoroPhase.LongBreak && c2 == 0);
+        var (p3, c3) = PomodoroViewModel.NextPhase(PomodoroPhase.ShortBreak, completedCycles: 2, cyclesUntilLongBreak: 4);
+        Check("pomodoro: pausa → foco preserva contador", p3 == PomodoroPhase.Focus && c3 == 2);
+        var (p4, c4) = PomodoroViewModel.NextPhase(PomodoroPhase.Focus, completedCycles: 0, cyclesUntilLongBreak: 0);
+        Check("pomodoro: ciclos <= 0 vira 1", p4 == PomodoroPhase.LongBreak && c4 == 0);
+
+        Check("pomodoro: texto da pílula parado = null", PomodoroViewModel.BuildActivity(false, "Foco", "25:00") is null);
+        Check("pomodoro: texto da pílula rodando", PomodoroViewModel.BuildActivity(true, "Foco", "12:04") == "Foco · 12:04");
+
+        Check("ajustes: número válido", AjustesViewModel.ParseRange("50", 25, 1, 180) == 50);
+        Check("ajustes: lixo volta ao anterior", AjustesViewModel.ParseRange("abc", 25, 1, 180) == 25);
+        Check("ajustes: fora da faixa volta ao anterior", AjustesViewModel.ParseRange("0", 25, 1, 180) == 25
+            && AjustesViewModel.ParseRange("999", 25, 1, 180) == 25);
+
+        var d = new Orbit.Models.OrbitSettings();
+        Check("settings: pomodoro defaults", d.PomodoroFocusMinutes == 25 && d.PomodoroShortBreakMinutes == 5
+            && d.PomodoroLongBreakMinutes == 15 && d.PomodoroCyclesUntilLongBreak == 4 && d.PomodoroSoundEnabled);
     }
 
     public static void Check(string name, bool ok)

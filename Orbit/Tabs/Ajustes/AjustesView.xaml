@@ -43,6 +43,27 @@
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AlertasComoToast}"
                           Content="Em tela cheia, virar notificação do Windows"/>
             </WrapPanel>
+            <TextBlock Text="Pomodoro (minutos)" Style="{StaticResource Label}"/>
+            <WrapPanel Margin="0,0,0,10">
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Text="Foco" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding FocoTexto, UpdateSourceTrigger=LostFocus}"/>
+                </StackPanel>
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Text="Pausa" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding PausaTexto, UpdateSourceTrigger=LostFocus}"/>
+                </StackPanel>
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Text="Pausa longa" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding PausaLongaTexto, UpdateSourceTrigger=LostFocus}"/>
+                </StackPanel>
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Text="Ciclos" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding CiclosTexto, UpdateSourceTrigger=LostFocus}"/>
+                </StackPanel>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding SomPomodoro}" Content="Som na troca de fase"
+                          VerticalAlignment="Bottom"/>
+            </WrapPanel>
             <!-- novas seções entram acima desta linha -->
         </StackPanel>
     </ScrollViewer>
