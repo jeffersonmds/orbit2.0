@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
@@ -223,7 +224,8 @@ public partial class IslandWindow : Window
     private void OnPillLeave(object sender, MouseEventArgs e)
     {
         _hover.Stop();
-        if (_vm.Mode == IslandMode.Expandida) _leave.Start();
+        // Digitando num campo: só recolhe por Esc/clique fora/hotkey, não pela saída do mouse.
+        if (_vm.Mode == IslandMode.Expandida && Keyboard.FocusedElement is not TextBox) _leave.Start();
     }
 
     private void OnPillWheel(object sender, MouseWheelEventArgs e)

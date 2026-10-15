@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:island="clr-namespace:Orbit.Island">
 
     <SolidColorBrush x:Key="IslandBg" Color="#0E0E10"/>
     <SolidColorBrush x:Key="CardBg" Color="#1B1B1E"/>
@@ -79,6 +80,138 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bg" Property="Background" Value="{StaticResource CardHover}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <island:BoolToVisibility x:Key="BoolToVis"/>
+    <island:BoolToVisibility x:Key="NotBoolToVis" Invert="True"/>
+
+    <!-- Rótulo de seção -->
+    <Style x:Key="Label" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource InkLo}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,0,0,8"/>
+    </Style>
+
+    <!-- Cartão estático -->
+    <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource CardBg}"/>
+        <Setter Property="CornerRadius" Value="14"/>
+        <Setter Property="Padding" Value="14"/>
+    </Style>
+
+    <!-- Botão de texto pequeno (Editar, Cancelar...) -->
+    <Style x:Key="SmallButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource InkHi}"/>
+        <Setter Property="Background" Value="{StaticResource CardHover}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="10" Padding="12,5">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bg" Property="Opacity" Value="0.85"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Botão de ação principal (Salvar, Ativar...) -->
+    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+        <Setter Property="Foreground" Value="#111111"/>
+    </Style>
+
+    <!-- Botão redondo com glifo (mídia, mudo) -->
+    <Style x:Key="RoundButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource InkHi}"/>
+        <Setter Property="Background" Value="{StaticResource CardHover}"/>
+        <Setter Property="Width" Value="36"/>
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="18">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="#34343A"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Botão-glifo discreto (✕ das listas) -->
+    <Style x:Key="GhostRound" TargetType="Button" BasedOn="{StaticResource RoundButton}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource InkLo}"/>
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="FontSize" Value="10"/>
+    </Style>
+
+    <!-- CheckBox em forma de pílula (abas, opções, catálogo do Mercado) -->
+    <Style x:Key="Chip" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{StaticResource InkLo}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Margin" Value="0,0,6,6"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="bg" Background="{StaticResource CardBg}" CornerRadius="12" Padding="12,6">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{StaticResource CardHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Campo de texto escuro -->
+    <Style x:Key="Field" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{StaticResource InkHi}"/>
+        <Setter Property="CaretBrush" Value="{StaticResource InkHi}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="bg" Background="{StaticResource CardBg}" CornerRadius="10" Padding="10,6"
+                            BorderThickness="1" BorderBrush="Transparent">
+                        <ScrollViewer x:Name="PART_ContentHost"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

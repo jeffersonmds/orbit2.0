@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows.Media;
 using Orbit.Island;
@@ -26,6 +27,7 @@ public static class Program
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
+        TabVisibilityTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -74,6 +76,30 @@ public static class Program
         Check("api: previsão chuva null vira 0", fc[1].PrecipProb == 0);
         var news = ApiService.ParseNewsItem("{\"id\":456,\"title\":\"Ask HN\"}");
         Check("api: notícia sem url cai no thread do HN", news.Url == "https://news.ycombinator.com/item?id=456");
+    }
+
+    private static void TabVisibilityTests()
+    {
+        var registered = new List<string> { "ajustes", "energia", "hoje", "controles" };
+        var none = new List<string>();
+        Check("abas: ordem segue TabOrder", string.Join(",", IslandViewModel.VisibleIds(registered, none)) == "controles,hoje,energia,ajustes");
+        Check("abas: escondida some", !IslandViewModel.VisibleIds(registered, new List<string> { "hoje" }).Contains("hoje"));
+        Check("abas: ajustes nunca some", IslandViewModel.VisibleIds(registered, new List<string> { "ajustes" }).Contains("ajustes"));
+        Check("abas: id não registrado não aparece", !IslandViewModel.VisibleIds(registered, none).Contains("stats"));
+
+        Check("alerta: tela cheia + preferência = toast", IslandViewModel.ShouldToast(fullscreen: true, preferToast: true));
+        Check("alerta: tela cheia sem preferência = fila", !IslandViewModel.ShouldToast(fullscreen: true, preferToast: false));
+        Check("alerta: fora da tela cheia nunca toast", !IslandViewModel.ShouldToast(fullscreen: false, preferToast: true));
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "settings.json");
+        var d = Orbit.Services.SettingsStore.Load(path);
+        Check("settings: HiddenTabs default vazio", d.HiddenTabs.Count == 0 && !d.AlertsAsToastInFullscreen);
+        Orbit.Services.SettingsStore.Save(new Orbit.Models.OrbitSettings { HiddenTabs = new List<string> { "stats" }, AlertsAsToastInFullscreen = true }, path);
+        var r = Orbit.Services.SettingsStore.Load(path);
+        Check("settings: HiddenTabs/alertas round-trip", r.HiddenTabs.Contains("stats") && r.AlertsAsToastInFullscreen);
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void AccentTests()
