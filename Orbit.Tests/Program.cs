@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows.Media;
 using Orbit.Island;
 using Orbit.Services;
+using Orbit.Tabs;
 using Orbit.Tabs.Energia;
 
 namespace Orbit.Tests;
@@ -23,6 +24,7 @@ public static class Program
         AccentTests();
         PowerTests();
         FullscreenTests();
+        TabIsolationTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -179,6 +181,26 @@ public static class Program
         Check("geometria: janela centralizada em 1920", IslandGeometry.LeftFor(1920) == 580);
         Check("geometria: raio cresce com o estado",
             IslandGeometry.RadiusFor(IslandMode.Repouso) < IslandGeometry.RadiusFor(IslandMode.Expandida));
+    }
+
+    private sealed class BoomTab : TabViewModel
+    {
+        public override string Id => "boom";
+        public override string Title => "Boom";
+        public override void SetActive(bool active) => throw new InvalidOperationException("boom");
+    }
+
+    private static void TabIsolationTests()
+    {
+        bool threw = false;
+        try { IslandViewModel.SafeSetActive(new BoomTab(), true); }
+        catch { threw = true; }
+        Check("abas: exceção em SetActive não vaza pra ilha", !threw);
+
+        threw = false;
+        try { IslandViewModel.SafeSetActive(null, true); }
+        catch { threw = true; }
+        Check("abas: SafeSetActive aceita null", !threw);
     }
 
     public static void Check(string name, bool ok)
