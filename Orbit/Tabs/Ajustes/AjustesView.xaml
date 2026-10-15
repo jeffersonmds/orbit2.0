@@ -42,6 +42,7 @@
             <WrapPanel Margin="0,0,0,10">
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AlertasComoToast}"
                           Content="Em tela cheia, virar notificação do Windows"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding SomClaude}" Content="Som nos alertas do Claude"/>
             </WrapPanel>
             <TextBlock Text="Pomodoro (minutos)" Style="{StaticResource Label}"/>
             <WrapPanel Margin="0,0,0,10">

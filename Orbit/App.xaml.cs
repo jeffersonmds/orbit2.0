@@ -15,6 +15,15 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Chamado pelo hook do Claude Code: `Orbit.exe --claude-hook` lê o evento do stdin,
+        // repassa pro pipe da instância principal e sai — sem mutex, sem log, sem janela.
+        if (e.Args.Length > 0 && e.Args[0] == "--claude-hook")
+        {
+            ClaudeHookClient.SendFromStdin();
+            Shutdown();
+            return;
+        }
+
         base.OnStartup(e);
 
         // Instância única ANTES do log: a 2ª instância não pode escrever no log da 1ª.

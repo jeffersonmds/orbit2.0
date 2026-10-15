@@ -21,6 +21,9 @@ public sealed class OrbitSettings
     // Notícias: ids do HN ignorados (não reaparecem). Limitado a 200 pelo Prune.
     public List<int> DismissedNewsIds { get; set; } = new();
 
+    // Som nos alertas do Claude Code (Stop/Notification).
+    public bool ClaudeSoundEnabled { get; set; } = true;
+
     // Em tela cheia, alerta vira toast do Windows em vez de esperar na fila.
     public bool AlertsAsToastInFullscreen { get; set; }
 

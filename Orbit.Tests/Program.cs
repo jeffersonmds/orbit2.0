@@ -13,6 +13,7 @@ using Orbit.Tabs.Stats;
 using Orbit.Tabs.Mercado;
 using Orbit.Tabs.Ajustes;
 using Orbit.Tabs.Noticias;
+using Orbit.Tabs.Claude;
 
 namespace Orbit.Tests;
 
@@ -42,6 +43,7 @@ public static class Program
         StatsTests();
         MercadoTests();
         NoticiasTests();
+        ClaudeTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -59,6 +61,79 @@ public static class Program
         Check("notícias: domínio do HN", NoticiasViewModel.Domain("https://news.ycombinator.com/item?id=1") == "news.ycombinator.com");
         Check("notícias: url inválida = vazio", NoticiasViewModel.Domain("isso não é url") == "");
         Check("settings: ignorados default vazio", new Orbit.Models.OrbitSettings().DismissedNewsIds.Count == 0);
+    }
+
+    private static void ClaudeTests()
+    {
+        // Parse (portado)
+        var start = ClaudeHookEvent.Parse("{\"hook_event_name\":\"SessionStart\",\"session_id\":\"s1\",\"cwd\":\"C:\\\\repos\\\\orbit2.0\"}");
+        Check("claude: parse evento/sessão/cwd", start.HookEventName == "SessionStart" && start.SessionId == "s1" && start.Cwd == @"C:\repos\orbit2.0");
+        var notif = ClaudeHookEvent.Parse("{\"hook_event_name\":\"Notification\",\"session_id\":\"s1\",\"cwd\":\"C:\\\\x\",\"message\":\"precisa de permiss\\u00e3o\"}");
+        Check("claude: parse message", notif.Message == "precisa de permissão");
+
+        // Reducer (portado)
+        var sessions = new Dictionary<string, ClaudeSessionInfo>();
+        ClaudeSessionReducer.Apply(sessions, new ClaudeHookEvent("SessionStart", "s1", @"C:\repos\orbit2.0", null));
+        Check("claude: SessionStart cria Rodando com nome da pasta", sessions["s1"].State == ClaudeSessionState.Running && sessions["s1"].ProjectName == "orbit2.0");
+        ClaudeSessionReducer.Apply(sessions, new ClaudeHookEvent("Stop", "s1", @"C:\repos\orbit2.0", null));
+        Check("claude: Stop → aguardando", sessions["s1"].State == ClaudeSessionState.WaitingInput);
+        ClaudeSessionReducer.Apply(sessions, new ClaudeHookEvent("Stop", "s2", @"C:\x", null));
+        Check("claude: sessão desconhecida ignorada", !sessions.ContainsKey("s2"));
+        ClaudeSessionReducer.Apply(sessions, new ClaudeHookEvent("SessionEnd", "s1", @"C:\repos\orbit2.0", null));
+        Check("claude: SessionEnd remove", !sessions.ContainsKey("s1"));
+
+        // Installer: merge preserva hooks alheios e é idempotente (portado)
+        const string ours = "\"C:\\Orbit2\\Orbit.exe\" --claude-hook";
+        var root = new System.Text.Json.Nodes.JsonObject
+        {
+            ["hooks"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["SessionStart"] = new System.Text.Json.Nodes.JsonArray
+                {
+                    new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["hooks"] = new System.Text.Json.Nodes.JsonArray
+                        {
+                            new System.Text.Json.Nodes.JsonObject { ["type"] = "command", ["command"] = "rtk-statusline" },
+                        },
+                    },
+                },
+                ["Stop"] = new System.Text.Json.Nodes.JsonArray
+                {
+                    new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["hooks"] = new System.Text.Json.Nodes.JsonArray
+                        {
+                            new System.Text.Json.Nodes.JsonObject { ["type"] = "command", ["command"] = "\"C:\\repos\\orbit1.0\\Orbit.exe\" --claude-hook" },
+                        },
+                    },
+                },
+            },
+        };
+        ClaudeHookInstaller.MergeHooks(root, ours);
+        Check("claude: preserva hook alheio + adiciona o nosso", root["hooks"]!["SessionStart"]!.AsArray().Count == 2);
+        Check("claude: remove hook do Orbit 1.0", !root.ToJsonString().Contains("orbit1.0"));
+        Check("claude: Stop fica só com o nosso", root["hooks"]!["Stop"]!.AsArray().Count == 1);
+        ClaudeHookInstaller.MergeHooks(root, ours);
+        Check("claude: merge idempotente", root["hooks"]!["SessionStart"]!.AsArray().Count == 2 && ClaudeHookInstaller.HasAllHooks(root, ours));
+
+        // Pílula
+        var waiting = new ClaudeSessionInfo("s1", "orbit2.0", ClaudeSessionState.WaitingInput, null);
+        var running = new ClaudeSessionInfo("s2", "api", ClaudeSessionState.Running, null);
+        Check("claude: só rodando = sem atividade", ClaudeViewModel.BuildActivity(new[] { running }) is null);
+        Check("claude: uma aguardando", ClaudeViewModel.BuildActivity(new[] { running, waiting }) == "Claude · orbit2.0 — Aguardando você");
+        Check("claude: várias aguardando", ClaudeViewModel.BuildActivity(new[] { waiting, waiting with { SessionId = "s3" } }) == "Claude · 2 sessões aguardando você");
+
+        // VM: alerta só em Stop/Notification
+        int attention = 0;
+        var vm = new ClaudeViewModel();
+        vm.Attention += _ => attention++;
+        vm.HandleHookEvent(new ClaudeHookEvent("SessionStart", "a", @"C:\p", null));
+        Check("claude: SessionStart não alerta", attention == 0 && vm.Sessions.Count == 1);
+        vm.HandleHookEvent(new ClaudeHookEvent("Stop", "a", @"C:\p", null));
+        Check("claude: Stop alerta e vira atividade", attention == 1 && vm.ActivityText is not null);
+        vm.HandleHookEvent(new ClaudeHookEvent("SessionEnd", "a", @"C:\p", null));
+        Check("claude: SessionEnd limpa", vm.Sessions.Count == 0 && vm.ActivityText is null && attention == 1);
     }
 
     private static void SharedInfraTests()

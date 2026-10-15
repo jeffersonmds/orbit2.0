@@ -50,6 +50,7 @@ public sealed partial class AjustesViewModel : TabViewModel
     public ObservableCollection<TabToggle> Abas { get; } = new();
 
     [ObservableProperty] private bool _alertasComoToast;
+    [ObservableProperty] private bool _somClaude;
 
     public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged)
     {
@@ -67,6 +68,7 @@ public sealed partial class AjustesViewModel : TabViewModel
         PausaLongaTexto = settings.PomodoroLongBreakMinutes.ToString();
         CiclosTexto = settings.PomodoroCyclesUntilLongBreak.ToString();
         SomPomodoro = settings.PomodoroSoundEnabled;
+        SomClaude = settings.ClaudeSoundEnabled;
     }
 
     // Campos de texto (gravam ao perder o foco). Valor inválido volta ao anterior.
@@ -128,6 +130,13 @@ public sealed partial class AjustesViewModel : TabViewModel
         if (!toggle.Visible) _settings.HiddenTabs.Add(toggle.Id);
         SettingsStore.Save(_settings);
         _tabsChanged();
+    }
+
+    partial void OnSomClaudeChanged(bool value)
+    {
+        if (_settings.ClaudeSoundEnabled == value) return;
+        _settings.ClaudeSoundEnabled = value;
+        SettingsStore.Save(_settings);
     }
 
     partial void OnAlertasComoToastChanged(bool value)

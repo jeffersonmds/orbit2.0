@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Media;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Orbit.Models;
 using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Ajustes;
+using Orbit.Tabs.Claude;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
@@ -29,6 +31,7 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;
     private readonly ApiService _api = new();
+    private readonly ClaudeHookServer _claudeServer = new();
     private readonly List<TabViewModel> _allTabs = new();
 
     public ObservableCollection<TabViewModel> Tabs { get; } = new();
@@ -65,6 +68,19 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new StatsViewModel());
         Register(new MercadoViewModel(_api, settings));
         Register(new NoticiasViewModel(_api, settings));
+        var claude = new ClaudeViewModel();
+        Register(claude);
+        claude.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ClaudeViewModel.ActivityText))
+                SetActivity(ActivityKind.Claude, claude.ActivityText);
+        };
+        claude.Attention += info =>
+            Notify(new Peek($"Claude · {info.ProjectName}", info.StatusText, "claude"), _settings.ClaudeSoundEnabled);
+        // O servidor roda em background: volta pra UI thread antes de mexer na aba.
+        // ponytail: sem Dispose — o pipe morre com o processo.
+        _claudeServer.HookReceived += evt => Application.Current?.Dispatcher.BeginInvoke(() => claude.HandleHookEvent(evt));
+        _claudeServer.Start();
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
