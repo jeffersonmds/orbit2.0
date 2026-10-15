@@ -45,9 +45,17 @@ public partial class App : Application
         _mutex = mutex;
 
         Log.Information("Orbit 2 iniciado");
-        var settings = SettingsStore.Load();
-        Accent.Start(() => settings.AccentOverride);
-        new IslandWindow(new IslandViewModel(settings)).Show();
+        try
+        {
+            var settings = SettingsStore.Load();
+            Accent.Start(() => settings.AccentOverride);
+            new IslandWindow(new IslandViewModel(settings)).Show();
+        }
+        catch (Exception ex)
+        {
+            Log.Fatal(ex, "Falha no startup");
+            Shutdown(1);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -20,6 +20,9 @@ public partial class IslandWindow : Window
     private GlobalHotKey? _hotKey;
     private FullscreenWatcher? _fullscreen;
     private bool _userHidden;
+    private bool _exiting;
+    private int _layoutGen;
+    private IntPtr _prevFg;
 #if DEBUG
     private bool _debugActivity;
 #endif
@@ -49,7 +52,7 @@ public partial class IslandWindow : Window
         _tray = new TrayIcon();
         _tray.ToggleVisibility += () => { _userHidden = !_userHidden; UpdateVisibility(); };
         _tray.SettingsRequested += () => { _userHidden = false; UpdateVisibility(); _vm.OpenTab("ajustes"); Activate(); };
-        _tray.ExitRequested += () => Application.Current.Shutdown();
+        _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };
 #if DEBUG
         _tray.DebugPeek += () => _vm.RaisePeek(new Peek("Alerta de teste", "github.com/… · abrindo no navegador", "energia"));
         _tray.DebugActivity += () =>
@@ -70,9 +73,17 @@ public partial class IslandWindow : Window
         // WS_EX_TOOLWINDOW: fora do Alt+Tab.
         SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_TOOLWINDOW);
 
+        HwndSource.FromHwnd(hwnd)!.AddHook((IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+        {
+            const int WM_ACTIVATE = 0x0006;
+            if (msg == WM_ACTIVATE && (wParam.ToInt64() & 0xFFFF) != 0 && lParam != IntPtr.Zero) _prevFg = lParam;
+            return IntPtr.Zero;
+        });
+
         _hotKey = new GlobalHotKey(hwnd);
         _hotKey.Pressed += () =>
         {
+            if (_userHidden) return;
             if (_vm.Mode == IslandMode.Expandida) _vm.Collapse();
             else ExpandFocused();
         };
@@ -84,6 +95,8 @@ public partial class IslandWindow : Window
     // Em Closing (HWND ainda vivo): ABM_REMOVE e UnregisterHotKey precisam do handle válido.
     protected override void OnClosing(CancelEventArgs e)
     {
+        // Só sai pela bandeja; Alt+F4 na ilha ativa é ignorado.
+        if (!_exiting) { e.Cancel = true; return; }
         _hotKey?.Dispose();
         _fullscreen?.Dispose();
         _tray.Dispose();
@@ -96,6 +109,8 @@ public partial class IslandWindow : Window
         if (mode == IslandMode.Alerta) _peek.Start();
         else _peek.Stop();
         UpdateVisibility();
+        // Devolve o teclado pra quem estava digitando antes da hotkey/clique.
+        if (mode != IslandMode.Expandida && IsActive && _prevFg != IntPtr.Zero) SetForegroundWindow(_prevFg);
         ApplyLayout(mode, animate: true);
     }
 
@@ -113,6 +128,7 @@ public partial class IslandWindow : Window
     // Anima a pílula até o tamanho do estado e só então revela a camada de conteúdo.
     private void ApplyLayout(IslandMode mode, bool animate)
     {
+        int gen = ++_layoutGen;
         var size = IslandGeometry.SizeFor(mode);
         var r = IslandGeometry.RadiusFor(mode);
         Pill.CornerRadius = new CornerRadius(0, 0, r, r);
@@ -147,7 +163,7 @@ public partial class IslandWindow : Window
         var w = new DoubleAnimation(size.Width, duration) { EasingFunction = ease };
         var h = new DoubleAnimation(size.Height, duration) { EasingFunction = ease };
         if (layer is not null)
-            h.Completed += (_, _) => { if (_vm.Mode == mode) FadeIn(layer); };
+            h.Completed += (_, _) => { if (gen == _layoutGen) FadeIn(layer); };
 
         Pill.BeginAnimation(WidthProperty, w);
         Pill.BeginAnimation(HeightProperty, h);
@@ -162,7 +178,7 @@ public partial class IslandWindow : Window
     private void OnPillEnter(object sender, MouseEventArgs e)
     {
         _leave.Stop();
-        if (_vm.Mode != IslandMode.Expandida) _hover.Start();
+        if (_vm.Mode is IslandMode.Repouso or IslandMode.Atividade) _hover.Start();
     }
 
     private void OnPillLeave(object sender, MouseEventArgs e)
@@ -193,6 +209,7 @@ public partial class IslandWindow : Window
 
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 }
