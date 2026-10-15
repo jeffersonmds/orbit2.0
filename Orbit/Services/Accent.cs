@@ -24,8 +24,9 @@ public static class Accent
     private static readonly Color Fallback = Color.FromRgb(0x4C, 0x9B, 0xF0);
     private static readonly Regex HexRx = new("^#[0-9A-Fa-f]{6}$");
 
-    // Guardado em campo: se o UISettings for coletado, o evento ColorValuesChanged para.
     public static event Action? Changed; // depois de cada Refresh (cor nova aplicada)
+
+    // Guardado em campo: se o UISettings for coletado, o evento ColorValuesChanged para.
     private static UISettings? _ui;
     private static Func<string?> _override = () => null;
 

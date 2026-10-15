@@ -127,10 +127,10 @@ public partial class IslandWindow : Window
         _released = true;
         try
         {
+            _tray.Dispose(); // primeiro: se os outros lançarem, o ícone não fica fantasma
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: vaza se não soltar
             _hotKey?.Dispose();
             _fullscreen?.Dispose();
-            _tray.Dispose();
         }
         catch (Exception ex)
         {

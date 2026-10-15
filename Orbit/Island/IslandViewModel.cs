@@ -39,8 +39,10 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, () => _allTabs, ApplyTabVisibility));
         // novas abas/serviços entram acima desta linha
+        // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
+        var last = settings.LastTab;
         ApplyTabVisibility();
-        SelectedTab = Tabs.FirstOrDefault(t => t.Id == settings.LastTab) ?? Tabs.FirstOrDefault();
+        SelectedTab = Tabs.FirstOrDefault(t => t.Id == last) ?? Tabs.FirstOrDefault();
     }
 
     private void Register(TabViewModel tab) => _allTabs.Add(tab);
