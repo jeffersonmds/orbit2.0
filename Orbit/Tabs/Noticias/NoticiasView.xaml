@@ -5,27 +5,21 @@
         <ItemsControl ItemsSource="{Binding Items}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Border Style="{StaticResource Card}" Padding="14,8" Margin="0,0,0,6">
+                    <!-- O cartão inteiro abre a notícia; o ✕ (botão interno) só ignora. -->
+                    <Button Style="{StaticResource RowButton}" Margin="0,0,0,6"
+                            Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}">
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" VerticalAlignment="Center"
+                                    ToolTip="Ignorar"
                                     Command="{Binding DataContext.DismissCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                     CommandParameter="{Binding}"/>
-                            <Button Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}" Cursor="Hand">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="Transparent">
-                                            <ContentPresenter/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Button.Template>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Item.Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding Domain}" FontSize="11" Foreground="{StaticResource InkLo}"/>
-                                </StackPanel>
-                            </Button>
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
+                                <TextBlock Text="{Binding Item.Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Domain}" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,1,0,0"/>
+                            </StackPanel>
                         </DockPanel>
-                    </Border>
+                    </Button>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>

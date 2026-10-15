@@ -302,4 +302,42 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <!-- Botão "sem cara": só o conteúdo, clicável. Foreground explícito — o padrão do Button
+         é o preto do sistema, que some no fundo escuro da ilha. -->
+    <Style x:Key="PlainButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource InkHi}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Linha de lista clicável em forma de cartão (Notícias) -->
+    <Style x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource PlainButton}">
+        <Setter Property="Background" Value="{StaticResource CardBg}"/>
+        <Setter Property="Padding" Value="14,9,8,9"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bg" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="12">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{StaticResource CardHover}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>
