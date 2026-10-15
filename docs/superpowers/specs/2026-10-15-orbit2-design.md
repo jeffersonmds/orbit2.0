@@ -65,8 +65,10 @@ serviço (ex.: `Power.Lock()` serve à aba Energia e a `POST /power/lock`).
 ## 4. A ilha
 
 Uma única janela WPF (`WindowStyle=None`, `AllowsTransparency`, `Topmost`, sem item na barra
-de tarefas) que anima o próprio tamanho. Fora da área desenhada é transparente, então os
-cliques passam para o que está atrás. Fica no monitor principal.
+de tarefas) de tamanho fixo (760×400) no topo central; quem anima é a pílula (`Border`) dentro
+dela — redimensionar janela WPF transparente a cada frame engasga. Pixels com alpha 0 de uma
+janela layered deixam o clique passar, então a área vazia não atrapalha. Fica no monitor
+principal.
 
 | Estado | Visual | Tamanho aprox. |
 |---|---|---|
