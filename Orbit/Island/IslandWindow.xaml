@@ -4,6 +4,7 @@
         xmlns:energia="clr-namespace:Orbit.Tabs.Energia"
         xmlns:ajustes="clr-namespace:Orbit.Tabs.Ajustes"
         xmlns:controles="clr-namespace:Orbit.Tabs.Controles"
+        xmlns:stats="clr-namespace:Orbit.Tabs.Stats"
         xmlns:hoje="clr-namespace:Orbit.Tabs.Hoje"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
@@ -22,6 +23,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type controles:ControlesViewModel}">
             <controles:ControlesView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type stats:StatsViewModel}">
+            <stats:StatsView/>
         </DataTemplate>
     </Window.Resources>
 

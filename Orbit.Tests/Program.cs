@@ -8,6 +8,7 @@ using Orbit.Tabs;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
 using Orbit.Tabs.Controles;
+using Orbit.Tabs.Stats;
 using Orbit.Tabs.Ajustes;
 
 namespace Orbit.Tests;
@@ -35,6 +36,7 @@ public static class Program
         HojeTests();
         NowPlayingTests();
         ControlesTests();
+        StatsTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -364,6 +366,29 @@ public static class Program
         Check("modo escuro: valor do registro", DarkMode.RegistryValue(true) == 0 && DarkMode.RegistryValue(false) == 1);
         Check("controles: status ligado/desligado/indisponível", ControlesViewModel.Status(true) == "Ligado"
             && ControlesViewModel.Status(false) == "Desligado" && ControlesViewModel.Status(null) == "Indisponível");
+    }
+
+    private static void StatsTests()
+    {
+        Check("gpu: soma dos motores 3D", Math.Abs(GpuStats.Aggregate(new[] { 10f, 15.5f }) - 25.5) < 0.001);
+        Check("gpu: clampa em 100", GpuStats.Aggregate(new[] { 80f, 70f }) == 100);
+        Check("gpu: sem motores = 0", GpuStats.Aggregate(Array.Empty<float>()) == 0);
+
+        Check("rede: taxa", NetStats.Rate(1000, 3000, 2) == 1000);
+        Check("rede: contador zerou = 0", NetStats.Rate(5000, 100, 2) == 0);
+        Check("rede: intervalo 0 = 0", NetStats.Rate(0, 100, 0) == 0);
+        Check("rede: formato MB/s", NetStats.Format(1_258_291) == "1,2 MB/s");
+        Check("rede: formato KB/s", NetStats.Format(2048) == "2 KB/s");
+        Check("rede: formato B/s", NetStats.Format(512) == "512 B/s");
+
+        var procs = new List<(string, long)> { ("chrome", 300), ("Code", 500), ("chrome", 400), ("x", 10) };
+        var top = StatsViewModel.TopByMemory(procs, 2);
+        Check("top apps: agrupa por nome e ordena", top.Count == 2 && top[0].Name == "chrome" && top[0].Bytes == 700 && top[1].Name == "Code");
+        Check("top apps: formato GB", StatsViewModel.FormatBytes(1_610_612_736) == "1,5 GB");
+        Check("top apps: formato MB", StatsViewModel.FormatBytes(820L * 1024 * 1024) == "820 MB");
+
+        Check("uptime: horas", StatsViewModel.FormatUptime(new TimeSpan(5, 12, 0)) == "5h 12m");
+        Check("uptime: dias", StatsViewModel.FormatUptime(new TimeSpan(2, 3, 40, 0)) == "2d 3h");
     }
 
     private static void NowPlayingTests()

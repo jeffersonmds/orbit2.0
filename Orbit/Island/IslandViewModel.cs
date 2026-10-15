@@ -11,6 +11,7 @@ using Orbit.Tabs.Ajustes;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
+using Orbit.Tabs.Stats;
 using Serilog;
 
 namespace Orbit.Island;
@@ -59,6 +60,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility));
         Register(new HojeViewModel(_api, Pomodoro, TodoStore.FilePath));
         Register(new ControlesViewModel(NowPlaying));
+        Register(new StatsViewModel());
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;

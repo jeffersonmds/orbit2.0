@@ -90,6 +90,7 @@
 
     <island:BoolToVisibility x:Key="BoolToVis"/>
     <island:BoolToVisibility x:Key="NotBoolToVis" Invert="True"/>
+    <island:FractionToStar x:Key="FractionToStar"/>
 
     <!-- Rótulo de seção -->
     <Style x:Key="Label" TargetType="TextBlock">
