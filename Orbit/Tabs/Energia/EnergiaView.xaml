@@ -1,0 +1,29 @@
+<UserControl x:Class="Orbit.Tabs.Energia.EnergiaView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ItemsControl ItemsSource="{Binding Botoes}" VerticalAlignment="Top">
+        <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+                <UniformGrid Columns="4"/>
+            </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <Button Style="{StaticResource CardButton}" Height="96" Margin="5"
+                        Command="{Binding DataContext.ClickCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                        CommandParameter="{Binding}">
+                    <StackPanel x:Name="content">
+                        <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="20"
+                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <DataTemplate.Triggers>
+                    <DataTrigger Binding="{Binding IsPending}" Value="True">
+                        <Setter TargetName="content" Property="TextElement.Foreground" Value="{DynamicResource AccentBrush}"/>
+                    </DataTrigger>
+                </DataTemplate.Triggers>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>

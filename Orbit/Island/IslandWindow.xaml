@@ -1,0 +1,52 @@
+<Window x:Class="Orbit.Island.IslandWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:energia="clr-namespace:Orbit.Tabs.Energia"
+        xmlns:ajustes="clr-namespace:Orbit.Tabs.Ajustes"
+        Title="Orbit" Width="760" Height="400"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
+        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource InkHi}"
+        KeyDown="OnKeyDown" Deactivated="OnDeactivated">
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type energia:EnergiaViewModel}">
+            <energia:EnergiaView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type ajustes:AjustesViewModel}">
+            <ajustes:AjustesView/>
+        </DataTemplate>
+    </Window.Resources>
+
+    <!-- Fora da Pill a janela é alpha 0: o clique passa para o que está atrás. -->
+    <Border x:Name="Pill" HorizontalAlignment="Center" VerticalAlignment="Top"
+            Width="110" Height="10" CornerRadius="0,0,5,5" ClipToBounds="True"
+            Background="{StaticResource IslandBg}"
+            MouseEnter="OnPillEnter" MouseLeave="OnPillLeave"
+            MouseWheel="OnPillWheel" MouseLeftButtonUp="OnPillClick">
+        <Grid>
+            <!-- As camadas são mostradas pelo code-behind ao fim da animação. -->
+            <TextBlock x:Name="ActivityLayer" Visibility="Collapsed"
+                       Text="{Binding ActivityText}" FontSize="12" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" Margin="14,0"/>
+
+            <StackPanel x:Name="PeekLayer" Visibility="Collapsed" Margin="18,0" VerticalAlignment="Center">
+                <TextBlock FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
+                    <Run Text="● " Foreground="{DynamicResource AccentBrush}"/><Run Text="{Binding Peek.Title, Mode=OneWay}"/>
+                </TextBlock>
+                <TextBlock Text="{Binding Peek.Detail}" FontSize="11" Foreground="{StaticResource InkLo}"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+
+            <Grid x:Name="ExpandedLayer" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <ListBox Style="{StaticResource TabBar}" ItemsSource="{Binding Tabs}"
+                         SelectedItem="{Binding SelectedTab}" Margin="0,14,0,12"/>
+                <ContentControl Grid.Row="1" Content="{Binding SelectedTab}" Margin="20,0,20,20"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
