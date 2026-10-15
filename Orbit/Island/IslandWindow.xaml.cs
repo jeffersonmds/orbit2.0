@@ -146,6 +146,10 @@ public partial class IslandWindow : Window
     private void OnModeChanged()
     {
         var mode = _vm.Mode;
+        // Campo de texto (UpdateSourceTrigger=LostFocus) ainda com foco ao recolher: grava agora,
+        // senão desativar a janela por Esc/clique fora perderia o valor digitado.
+        if (mode != IslandMode.Expandida && FocusManager.GetFocusedElement(this) is TextBox tb)
+            tb.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
         if (mode == IslandMode.Alerta && !_userHidden) _peek.Start();
         else _peek.Stop();
         UpdateVisibility();

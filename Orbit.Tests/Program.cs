@@ -152,6 +152,10 @@ public static class Program
         Check("claude: Stop alerta e vira atividade", attention == 1 && vm.ActivityText is not null);
         vm.HandleHookEvent(new ClaudeHookEvent("SessionEnd", "a", @"C:\p", null));
         Check("claude: SessionEnd limpa", vm.Sessions.Count == 0 && vm.ActivityText is null && attention == 1);
+        vm.HandleHookEvent(new ClaudeHookEvent("SessionStart", "b", @"C:\p", null));
+        vm.HandleHookEvent(new ClaudeHookEvent("Stop", "b", @"C:\p", null));
+        vm.DismissCommand.Execute(vm.Sessions[0]);
+        Check("claude: ✕ tira sessão órfã e libera a pílula", vm.Sessions.Count == 0 && vm.ActivityText is null);
     }
 
     private static void SharedInfraTests()

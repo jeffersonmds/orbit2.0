@@ -29,11 +29,24 @@ public sealed partial class ClaudeViewModel : TabViewModel
     public void HandleHookEvent(ClaudeHookEvent evt)
     {
         ClaudeSessionReducer.Apply(_sessions, evt);
+        Publish();
+        if (ClaudeSessionReducer.ShouldNotify(evt.HookEventName) && _sessions.TryGetValue(evt.SessionId, out var info))
+            Attention?.Invoke(info);
+    }
+
+    // Terminal fechado / Claude caiu não manda SessionEnd: o ✕ tira a sessão (e a pílula).
+    [RelayCommand]
+    private void Dismiss(ClaudeSessionInfo session)
+    {
+        _sessions.Remove(session.SessionId);
+        Publish();
+    }
+
+    private void Publish()
+    {
         Sessions.Clear();
         foreach (var s in _sessions.Values) Sessions.Add(s);
         ActivityText = BuildActivity(_sessions.Values);
-        if (ClaudeSessionReducer.ShouldNotify(evt.HookEventName) && _sessions.TryGetValue(evt.SessionId, out var info))
-            Attention?.Invoke(info);
     }
 
     // Só checa o ~/.claude/settings.json com a aba aberta.

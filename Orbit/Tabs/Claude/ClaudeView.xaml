@@ -37,7 +37,11 @@
                                 <DockPanel>
                                     <Ellipse x:Name="dot" DockPanel.Dock="Left" Width="8" Height="8" Margin="0,0,12,0"
                                              Fill="{StaticResource InkLo}" VerticalAlignment="Center"/>
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding ShortSessionId}" FontSize="11"
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" VerticalAlignment="Center"
+                                            ToolTip="Tirar da lista (sessão já fechada)"
+                                            Command="{Binding DataContext.DismissCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding ShortSessionId}" FontSize="11" Margin="0,0,8,0"
                                                Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
                                     <StackPanel>
                                         <TextBlock Text="{Binding ProjectName}" FontSize="13" FontWeight="SemiBold"/>
