@@ -42,3 +42,5 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 
 - `ImplicitUsings` desligado; `Nullable` ligado; `[ObservableProperty]` no estilo campo.
 - `// ponytail:` marca simplificação deliberada com teto conhecido — respeite.
+- Para encerrar o app em testes, mate pelo PID — nunca `taskkill /IM Orbit.exe`: o Orbit 1.0
+  tem o mesmo nome de processo.
