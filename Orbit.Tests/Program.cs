@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Windows.Media;
 using Orbit.Island;
 
 namespace Orbit.Tests;
@@ -17,9 +18,26 @@ public static class Program
         SettingsTests();
         IslandMachineTests();
         IslandGeometryTests();
+        AccentTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static void AccentTests()
+    {
+        var sys = Color.FromRgb(0x4C, 0x9B, 0xF0);
+        Check("acento: parse #RRGGBB", Orbit.Services.Accent.ParseHex("#E2B04A") == Color.FromRgb(0xE2, 0xB0, 0x4A));
+        Check("acento: parse aceita minúsculas", Orbit.Services.Accent.ParseHex("#e2b04a") == Color.FromRgb(0xE2, 0xB0, 0x4A));
+        Check("acento: sem # é inválido", Orbit.Services.Accent.ParseHex("E2B04A") is null);
+        Check("acento: hex inválido", Orbit.Services.Accent.ParseHex("#GGB04A") is null);
+        Check("acento: null é inválido", Orbit.Services.Accent.ParseHex(null) is null);
+        Check("acento: sem override usa o do Windows", Orbit.Services.Accent.Resolve(null, sys) == sys);
+        Check("acento: override inválido usa o do Windows", Orbit.Services.Accent.Resolve("lixo", sys) == sys);
+        Check("acento: override válido vence", Orbit.Services.Accent.Resolve("#E2B04A", sys) == Color.FromRgb(0xE2, 0xB0, 0x4A));
+        var soft = Orbit.Services.Accent.Soft(sys);
+        Check("acento: versão suave tem alpha 0x33 e mesma cor", soft.A == 0x33 && soft.R == sys.R && soft.G == sys.G && soft.B == sys.B);
+        Check("acento: paleta toda é hex válido", Array.TrueForAll(Orbit.Services.Accent.Paleta, p => Orbit.Services.Accent.ParseHex(p.Hex) is not null));
     }
 
     private static void SmokeTest() => Check("harness roda", 1 + 1 == 2);
