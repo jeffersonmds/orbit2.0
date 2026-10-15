@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Windows.Media;
 using Orbit.Island;
+using Orbit.Services;
+using Orbit.Tabs.Energia;
 
 namespace Orbit.Tests;
 
@@ -19,6 +21,7 @@ public static class Program
         IslandMachineTests();
         IslandGeometryTests();
         AccentTests();
+        PowerTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -38,6 +41,28 @@ public static class Program
         var soft = Orbit.Services.Accent.Soft(sys);
         Check("acento: versão suave tem alpha 0x33 e mesma cor", soft.A == 0x33 && soft.R == sys.R && soft.G == sys.G && soft.B == sys.B);
         Check("acento: paleta toda é hex válido", Array.TrueForAll(Orbit.Services.Accent.Paleta, p => Orbit.Services.Accent.ParseHex(p.Hex) is not null));
+    }
+
+    private static void PowerTests()
+    {
+        Check("energia: bloquear não confirma", !Power.NeedsConfirmation(PowerAction.Bloquear));
+        Check("energia: suspender não confirma", !Power.NeedsConfirmation(PowerAction.Suspender));
+        Check("energia: reiniciar confirma", Power.NeedsConfirmation(PowerAction.Reiniciar));
+        Check("energia: desligar confirma", Power.NeedsConfirmation(PowerAction.Desligar));
+        Check("energia: args de reiniciar", Power.ShutdownArgs(PowerAction.Reiniciar) == "/r /t 0");
+        Check("energia: args de desligar", Power.ShutdownArgs(PowerAction.Desligar) == "/s /t 0");
+        Check("energia: bloquear não usa shutdown.exe", Power.ShutdownArgs(PowerAction.Bloquear) is null);
+
+        Check("energia: clique em bloquear executa direto",
+            EnergiaViewModel.Decide(PowerAction.Bloquear, null) == (true, (PowerAction?)null));
+        Check("energia: 1º clique em desligar só arma",
+            EnergiaViewModel.Decide(PowerAction.Desligar, null) == (false, (PowerAction?)PowerAction.Desligar));
+        Check("energia: 2º clique em desligar executa",
+            EnergiaViewModel.Decide(PowerAction.Desligar, PowerAction.Desligar) == (true, (PowerAction?)null));
+        Check("energia: armado em desligar, clique em reiniciar re-arma",
+            EnergiaViewModel.Decide(PowerAction.Reiniciar, PowerAction.Desligar) == (false, (PowerAction?)PowerAction.Reiniciar));
+        Check("energia: armado em desligar, clique em bloquear executa e desarma",
+            EnergiaViewModel.Decide(PowerAction.Bloquear, PowerAction.Desligar) == (true, (PowerAction?)null));
     }
 
     private static void SmokeTest() => Check("harness roda", 1 + 1 == 2);
