@@ -52,8 +52,6 @@ public static class ClaudeHookInstaller
         }
     }
 
-    // ponytail: dedup por string exata do comando; se o exe mudar de path, a
-    // entrada antiga fica órfã — adicionar match por id/marker se isso virar problema.
     // Remove hooks "--claude-hook" de OUTRO executável (Orbit 1.0, ou build antigo em outro
     // caminho): sem isso o mesmo evento chegaria duas vezes ao pipe. Matcher que fica vazio sai.
     private static void RemoveStale(JsonArray matchers, string command)
@@ -64,13 +62,14 @@ public static class ClaudeHookInstaller
             for (int j = inner.Count - 1; j >= 0; j--)
             {
                 if (inner[j] is JsonObject h && h["command"] is JsonValue v && v.TryGetValue<string>(out var c)
-                    && c.EndsWith(" --claude-hook", StringComparison.Ordinal) && c != command)
+                    && c.EndsWith("Orbit.exe\" --claude-hook", StringComparison.OrdinalIgnoreCase) && c != command)
                     inner.RemoveAt(j);
             }
             if (inner.Count == 0) matchers.RemoveAt(i);
         }
     }
 
+    // Dedup por string exata do comando (exe em outro caminho é limpo pelo RemoveStale).
     private static bool MatchersHaveCommand(JsonArray matchers, string command)
     {
         foreach (var m in matchers)

@@ -115,6 +115,24 @@ public static class Program
         Check("claude: remove hook do Orbit 1.0", !root.ToJsonString().Contains("orbit1.0"));
         Check("claude: Stop fica só com o nosso", root["hooks"]!["Stop"]!.AsArray().Count == 1);
         ClaudeHookInstaller.MergeHooks(root, ours);
+        var alheio = new System.Text.Json.Nodes.JsonObject
+        {
+            ["hooks"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["Stop"] = new System.Text.Json.Nodes.JsonArray
+                {
+                    new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["hooks"] = new System.Text.Json.Nodes.JsonArray
+                        {
+                            new System.Text.Json.Nodes.JsonObject { ["type"] = "command", ["command"] = "outra-ferramenta --claude-hook" },
+                        },
+                    },
+                },
+            },
+        };
+        ClaudeHookInstaller.MergeHooks(alheio, ours);
+        Check("claude: não remove --claude-hook de outra ferramenta", alheio.ToJsonString().Contains("outra-ferramenta"));
         Check("claude: merge idempotente", root["hooks"]!["SessionStart"]!.AsArray().Count == 2 && ClaudeHookInstaller.HasAllHooks(root, ours));
 
         // Pílula
