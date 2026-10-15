@@ -16,6 +16,7 @@ public static class Program
         SmokeTest();
         SettingsTests();
         IslandMachineTests();
+        IslandGeometryTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -102,6 +103,22 @@ public static class Program
         m.SetFullscreen(true);
         m.SetFullscreen(false);
         Check("ilha: tela cheia recolhe o painel", m.Mode == IslandMode.Repouso);
+    }
+
+    private static void IslandGeometryTests()
+    {
+        bool allFit = true;
+        foreach (IslandMode mode in Enum.GetValues<IslandMode>())
+        {
+            var s = IslandGeometry.SizeFor(mode);
+            if (s.Width > IslandGeometry.WindowWidth || s.Height > IslandGeometry.WindowHeight) allFit = false;
+        }
+        Check("geometria: todo estado cabe na janela", allFit);
+        Check("geometria: repouso é pílula fininha", IslandGeometry.SizeFor(IslandMode.Repouso) == new IslandSize(110, 10));
+        Check("geometria: expandida 720x380", IslandGeometry.SizeFor(IslandMode.Expandida) == new IslandSize(720, 380));
+        Check("geometria: janela centralizada em 1920", IslandGeometry.LeftFor(1920) == 580);
+        Check("geometria: raio cresce com o estado",
+            IslandGeometry.RadiusFor(IslandMode.Repouso) < IslandGeometry.RadiusFor(IslandMode.Expandida));
     }
 
     public static void Check(string name, bool ok)
