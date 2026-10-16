@@ -14,6 +14,9 @@ public sealed class OrbitSettings
     // Abas escondidas em Ajustes (ids). "ajustes" nunca é escondida.
     public List<string> HiddenTabs { get; set; } = new();
 
+    // Apps fixados (ids do shell:AppsFolder), na ordem em que aparecem.
+    public List<string> FavoriteApps { get; set; } = new();
+
     // Mercado: ids selecionados, na ordem escolhida.
     public List<string> MarketCryptos { get; set; } = new() { "bitcoin", "ethereum" };
     public List<string> MarketCurrencies { get; set; } = new() { "USD", "EUR" };

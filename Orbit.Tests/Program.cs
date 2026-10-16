@@ -15,6 +15,7 @@ using Orbit.Tabs.Ajustes;
 using Orbit.Tabs.Noticias;
 using Orbit.Tabs.Claude;
 using Orbit.Tabs.Clips;
+using Orbit.Tabs.Apps;
 
 namespace Orbit.Tests;
 
@@ -48,6 +49,7 @@ public static class Program
         TabOrderTests();
         ClipHistoryTests();
         ClipsTests();
+        AppSearchTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -660,6 +662,42 @@ public static class Program
             NowPlayingViewModel.BuildActivity(new NowPlayingInfo("Faixa", "Banda", null, IsPlaying: true)) == "▶  Faixa · Banda");
         Check("mídia: tocando sem artista",
             NowPlayingViewModel.BuildActivity(new NowPlayingInfo("Faixa", "", null, IsPlaying: true)) == "▶  Faixa");
+    }
+
+    private static void AppSearchTests()
+    {
+        Check("apps: normaliza acento e caixa", AppSearch.Normalize("Configurações") == "configuracoes");
+
+        var apps = new List<AppEntry>
+        {
+            new("Visual Studio Code", "code"),
+            new("Spotify", "spotify"),
+            new("Configurações", "settings"),
+            new("Microsoft Edge", "edge"),
+            new("Steam", "steam"),
+        };
+        var r = AppSearch.Search(apps, "s", 10);
+        // "s": spotify/steam (prefixo) > visual studio code (palavra) > configurações/edge (contém)
+        Check("apps: prefixo > palavra > contém", r[0].Id is "spotify" or "steam"
+            && r.FindIndex(a => a.Id == "code") == 2 && r.FindIndex(a => a.Id == "settings") > 2);
+        Check("apps: sem acento acha com acento", AppSearch.Search(apps, "config", 10)[0].Id == "settings");
+        Check("apps: palavra interna", AppSearch.Search(apps, "code", 10)[0].Id == "code");
+        Check("apps: contém no meio", AppSearch.Search(apps, "otif", 10).Count == 1);
+        Check("apps: busca vazia = nada", AppSearch.Search(apps, "  ", 10).Count == 0);
+        Check("apps: limite", AppSearch.Search(apps, "e", 2).Count == 2);
+
+        var favs = AppSearch.ToggleFavorite(new List<string>(), "code");
+        Check("apps: fixar", favs.Count == 1 && favs[0] == "code");
+        Check("apps: desafixar", AppSearch.ToggleFavorite(favs, "code").Count == 0);
+        var cheio = Enumerable.Range(0, AppSearch.MaxFavorites).Select(i => "a" + i).ToList();
+        Check("apps: não passa do máximo", AppSearch.ToggleFavorite(cheio, "novo").Count == AppSearch.MaxFavorites);
+
+        Check("apps: desinstalador é ruído", AppSearch.IsNoise("Uninstall Foo") && AppSearch.IsNoise("Desinstalar Bar"));
+        Check("apps: app normal não é ruído", !AppSearch.IsNoise("Spotify"));
+        Check("apps: nome do ícone estável", AppSearch.IconFileName("x") == AppSearch.IconFileName("x")
+            && AppSearch.IconFileName("x") != AppSearch.IconFileName("y") && AppSearch.IconFileName("x").EndsWith(".png"));
+
+        Check("settings: favoritos default vazio", new Orbit.Models.OrbitSettings().FavoriteApps.Count == 0);
     }
 
     public static void Check(string name, bool ok)
