@@ -9,6 +9,7 @@
         xmlns:hoje="clr-namespace:Orbit.Tabs.Hoje"
         xmlns:noticias="clr-namespace:Orbit.Tabs.Noticias"
         xmlns:claude="clr-namespace:Orbit.Tabs.Claude"
+        xmlns:clips="clr-namespace:Orbit.Tabs.Clips"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
@@ -35,6 +36,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type noticias:NoticiasViewModel}">
             <noticias:NoticiasView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type clips:ClipsViewModel}">
+            <clips:ClipsView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type claude:ClaudeViewModel}">
             <claude:ClaudeView/>

@@ -47,6 +47,7 @@ public static class Program
         ClaudeTests();
         TabOrderTests();
         ClipHistoryTests();
+        ClipsTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -122,6 +123,46 @@ public static class Program
             && back[3].Pinned && back[0].Text == "bom dia");
         File.WriteAllText(path, "{ quebrado");
         Check("clip store: corrompido = vazio", ClipboardStore.Load(path).Count == 0);
+        Directory.Delete(dir, recursive: true);
+    }
+
+    private static void ClipsTests()
+    {
+        var seq = Input.CtrlVSequence();
+        Check("colar: sequência Ctrl↓ V↓ V↑ Ctrl↑", seq.Length == 4
+            && seq[0] == (0x11, false) && seq[1] == (0x56, false) && seq[2] == (0x56, true) && seq[3] == (0x11, true));
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        bool enabled = true;
+        var vm = new ClipsViewModel(Path.Combine(dir, "clipboard.json"), Path.Combine(dir, "img"), () => enabled);
+        vm.IngestAsync(new ClipSnapshot("olá mundo", null, false)).GetAwaiter().GetResult();
+        vm.IngestAsync(new ClipSnapshot("https://example.com", null, false)).GetAwaiter().GetResult();
+        Check("clips: captura texto e link", vm.Visible.Count == 2 && vm.Visible[0].Kind == ClipKind.Link);
+        vm.IngestAsync(new ClipSnapshot("olá mundo", null, false)).GetAwaiter().GetResult();
+        Check("clips: repetido não duplica e sobe", vm.Visible.Count == 2 && vm.Visible[0].Text == "olá mundo");
+        vm.IngestAsync(new ClipSnapshot("senha123", null, true)).GetAwaiter().GetResult();
+        Check("clips: conteúdo privado é ignorado", vm.Visible.Count == 2);
+        vm.IngestAsync(new ClipSnapshot("   ", null, false)).GetAwaiter().GetResult();
+        Check("clips: só espaço é ignorado", vm.Visible.Count == 2);
+        enabled = false;
+        vm.IngestAsync(new ClipSnapshot("com aba escondida", null, false)).GetAwaiter().GetResult();
+        Check("clips: aba escondida não captura", vm.Visible.Count == 2);
+
+        vm.Filter = ClipFilter.Links;
+        Check("clips: filtro aplica", vm.Visible.Count == 1);
+        vm.Filter = ClipFilter.Tudo;
+        vm.Selected = vm.Visible[1];
+        vm.TogglePinCommand.Execute(null);
+        Check("clips: fixado vai pro topo", vm.Visible[0].Pinned && vm.Visible[0].Text == "https://example.com");
+        vm.Selected = vm.Visible[1];
+        vm.RemoveCommand.Execute(null);
+        Check("clips: remover", vm.Visible.Count == 1);
+        vm.ClearCommand.Execute(null);
+        Check("clips: limpar mantém fixados", vm.Visible.Count == 1 && vm.Visible[0].Pinned);
+
+        var reloaded = new ClipsViewModel(Path.Combine(dir, "clipboard.json"), Path.Combine(dir, "img"), () => true);
+        Check("clips: persiste entre execuções", reloaded.Visible.Count == 1 && reloaded.Visible[0].Pinned);
         Directory.Delete(dir, recursive: true);
     }
 

@@ -10,6 +10,7 @@ using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Ajustes;
 using Orbit.Tabs.Claude;
+using Orbit.Tabs.Clips;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
@@ -30,6 +31,8 @@ public sealed partial class IslandViewModel : ObservableObject
 
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;
+
+    public ClipsViewModel Clips { get; }
     private readonly ApiService _api = new();
     private readonly ClaudeHookServer _claudeServer = new();
     private readonly List<TabViewModel> _allTabs = new();
@@ -81,6 +84,10 @@ public sealed partial class IslandViewModel : ObservableObject
         // ponytail: sem Dispose — o pipe morre com o processo.
         _claudeServer.HookReceived += evt => Application.Current?.Dispatcher.BeginInvoke(() => claude.HandleHookEvent(evt));
         _claudeServer.Start();
+        // Clipboard: captura sempre por evento; aba escondida em Ajustes = não grava nada.
+        Clips = new ClipsViewModel(ClipboardStore.FilePath, ClipboardStore.ImagesDir,
+            () => !settings.HiddenTabs.Contains("clipboard"));
+        Register(Clips);
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;

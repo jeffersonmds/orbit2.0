@@ -91,6 +91,9 @@
     <island:BoolToVisibility x:Key="BoolToVis"/>
     <island:BoolToVisibility x:Key="NotBoolToVis" Invert="True"/>
     <island:FractionToStar x:Key="FractionToStar"/>
+    <island:FileToImage x:Key="Thumb" DecodeWidth="96"/>
+    <island:FileToImage x:Key="PreviewImage" DecodeWidth="640"/>
+    <island:FileToImage x:Key="AppIcon" DecodeWidth="48"/>
 
     <!-- Rótulo de seção -->
     <Style x:Key="Label" TargetType="TextBlock">

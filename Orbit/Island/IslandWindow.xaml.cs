@@ -23,6 +23,7 @@ public partial class IslandWindow : Window
     private readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(2) };
     private GlobalHotKey? _hotKey;
     private FullscreenWatcher? _fullscreen;
+    private ClipboardWatcher? _clipboard;
     private bool _userHidden;
     private bool _exiting;
     private bool _released;
@@ -81,6 +82,7 @@ public partial class IslandWindow : Window
             Activate();
         };
         _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };
+        _vm.Clips.PasteRequested += PasteIntoPrevious;
 #if DEBUG
         _tray.DebugPeek += () => _vm.RaisePeek(new Peek("Alerta de teste", "github.com/… · abrindo no navegador", "energia"));
         _tray.DebugActivity += () =>
@@ -119,6 +121,9 @@ public partial class IslandWindow : Window
 
         _fullscreen = new FullscreenWatcher(hwnd);
         _fullscreen.Changed += on => _vm.SetFullscreen(on);
+
+        _clipboard = new ClipboardWatcher(hwnd);
+        _clipboard.Changed += () => _ = _vm.Clips.CaptureAsync();
     }
 
     // Em Closing (HWND ainda vivo): ABM_REMOVE e UnregisterHotKey precisam do handle válido.
@@ -142,11 +147,28 @@ public partial class IslandWindow : Window
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: vaza se não soltar
             _hotKey?.Dispose();
             _fullscreen?.Dispose();
+            _clipboard?.Dispose();
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "Falha ao liberar recursos da ilha");
         }
+    }
+
+    // Cola no app que estava em foco antes da ilha: recolhe (OnModeChanged devolve o foco pro
+    // _prevFg) e, se ele de fato voltou ao primeiro plano, manda Ctrl+V.
+    private void PasteIntoPrevious()
+    {
+        var target = _prevFg;
+        _vm.Collapse();
+        if (target == IntPtr.Zero) return;
+        var wait = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        wait.Tick += (_, _) =>
+        {
+            wait.Stop();
+            if (GetForegroundWindow() == target) Input.SendCtrlV();
+        };
+        wait.Start();
     }
 
     // Resolução/DPI/monitor principal mudou: recentraliza no topo do principal.
@@ -269,6 +291,7 @@ public partial class IslandWindow : Window
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 }
