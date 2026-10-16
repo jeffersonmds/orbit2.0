@@ -42,4 +42,7 @@ public sealed class OrbitSettings
     public int BridgePort { get; set; } = 5191;
     public string BridgePublicUrl { get; set; } = "";       // ex.: https://notebook.tail1234.ts.net
     public string? BridgeUploadFolder { get; set; }         // null = Downloads\Orbit
+
+    // Câmera pelo iPhone: desligada mesmo com a ponte ligada, até o usuário ligar na aba.
+    public bool BridgeCameraEnabled { get; set; }
 }

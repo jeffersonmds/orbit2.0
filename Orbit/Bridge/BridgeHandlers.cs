@@ -27,4 +27,7 @@ public sealed class BridgeHandlers
     public Func<string> UploadFolder { get; init; } = () => Path.GetTempPath();
     // Pra pílula (link aberto, arquivo recebido…). Chamado de thread do Kestrel.
     public Action<BridgeEvent> Notify { get; init; } = _ => { };
+
+    // true = a câmera pode responder. Lida a cada requisição /api/camera/*.
+    public Func<bool> CameraEnabled { get; init; } = () => false;
 }
