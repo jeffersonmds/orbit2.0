@@ -42,6 +42,7 @@ public static class Program
         PowerTests();
         EnergiaExtrasTests();
         MixerTests();
+        CameraPresetTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -483,6 +484,15 @@ public static class Program
         var soft = Orbit.Services.Accent.Soft(sys);
         Check("acento: versão suave tem alpha 0x33 e mesma cor", soft.A == 0x33 && soft.R == sys.R && soft.G == sys.G && soft.B == sys.B);
         Check("acento: paleta toda é hex válido", Array.TrueForAll(Orbit.Services.Accent.Paleta, p => Orbit.Services.Accent.ParseHex(p.Hex) is not null));
+    }
+
+    private static void CameraPresetTests()
+    {
+        Check("preset: padrão 720p/24", CameraPreset.Default.Width == 1280 && CameraPreset.Default.Fps == 24);
+        Check("preset: 480p", CameraPreset.Parse("480", "20") == new CameraPreset(640, 20));
+        Check("preset: 720p", CameraPreset.Parse("720", "24") == new CameraPreset(1280, 24));
+        Check("preset: fps preso em 5..30", CameraPreset.Parse("720", "99").Fps == 30 && CameraPreset.Parse("720", "1").Fps == 5);
+        Check("preset: lixo vira padrão", CameraPreset.Parse(null, null) == CameraPreset.Default && CameraPreset.Parse("4k", "x") == CameraPreset.Default);
     }
 
     private static void MixerTests()
