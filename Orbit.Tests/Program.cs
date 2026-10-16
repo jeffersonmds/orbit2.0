@@ -1,4 +1,5 @@
 using System;
+using Orbit.Bridge;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -51,6 +52,8 @@ public static class Program
         ClipsTests();
         AppSearchTests();
         AppIconTests();
+        BridgeRulesTests();
+        TokenAuditTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -717,6 +720,75 @@ public static class Program
 
         var t = Sta.Run(() => System.Threading.Thread.CurrentThread.GetApartmentState()).GetAwaiter().GetResult();
         Check("sta: roda numa thread STA", t == System.Threading.ApartmentState.STA);
+    }
+
+    private static void BridgeRulesTests()
+    {
+        Check("ponte: url https ok", BridgeRules.IsOpenableUrl("https://example.com/x?y=1"));
+        Check("ponte: url http ok", BridgeRules.IsOpenableUrl(" http://a.b "));
+        Check("ponte: javascript bloqueado", !BridgeRules.IsOpenableUrl("javascript:alert(1)"));
+        Check("ponte: file bloqueado", !BridgeRules.IsOpenableUrl("file:///C:/Windows/notepad.exe"));
+        Check("ponte: vazio/nulo bloqueado", !BridgeRules.IsOpenableUrl("") && !BridgeRules.IsOpenableUrl(null));
+        Check("ponte: host", BridgeRules.Host("https://www.github.com/a") == "www.github.com");
+
+        Check("ponte: bearer", BridgeRules.BearerToken("Bearer abc123 ") == "abc123");
+        Check("ponte: bearer sem caixa", BridgeRules.BearerToken("bearer x") == "x");
+        Check("ponte: sem bearer = nulo", BridgeRules.BearerToken("Basic x") is null && BridgeRules.BearerToken(null) is null);
+
+        Check("ponte: nome descarta pastas (traversal)", BridgeRules.SafeFileName("../../etc/passwd") == "passwd");
+        Check("ponte: nome descarta caminho absoluto", BridgeRules.SafeFileName(@"C:\Windows\x.exe") == "x.exe");
+        Check("ponte: nome troca inválidos", BridgeRules.SafeFileName("a:b?.txt") == "a_b_.txt");
+        Check("ponte: nome reservado do Windows", BridgeRules.SafeFileName("CON.txt") == "_CON.txt" && BridgeRules.SafeFileName("nul") == "_nul");
+        Check("ponte: nome vazio/pontos", BridgeRules.SafeFileName("") == "arquivo" && BridgeRules.SafeFileName("..") == "arquivo");
+        Check("ponte: ponto final removido", BridgeRules.SafeFileName("foto.jpg. ") == "foto.jpg");
+        Check("ponte: nome longo mantém extensão", BridgeRules.SafeFileName(new string('a', 300) + ".png") is { Length: 120 } n && n.EndsWith(".png"));
+
+        var existing = new HashSet<string> { @"C:\up\foto.jpg", @"C:\up\foto (1).jpg" };
+        Check("ponte: nome único", BridgeRules.UniqueName(@"C:\up", "foto.jpg", existing.Contains) == "foto (2).jpg");
+        Check("ponte: nome livre fica igual", BridgeRules.UniqueName(@"C:\up", "novo.jpg", existing.Contains) == "novo.jpg");
+
+        Check("ponte: ação de energia", BridgeRules.ParsePower("Shutdown") == Orbit.Services.PowerAction.Desligar
+            && BridgeRules.ParsePower("lock") == Orbit.Services.PowerAction.Bloquear && BridgeRules.ParsePower("x") is null);
+        Check("ponte: comando de mídia", BridgeRules.ParseMedia("playpause") == MediaCommand.PlayPause
+            && BridgeRules.ParseMedia("PREV") == MediaCommand.Prev && BridgeRules.ParseMedia("x") is null);
+        Check("ponte: GET de stats/mídia não audita", !BridgeRules.ShouldAudit("GET", "/api/stats") && !BridgeRules.ShouldAudit("GET", "/api/media"));
+        Check("ponte: o resto audita", BridgeRules.ShouldAudit("POST", "/api/links/open") && BridgeRules.ShouldAudit("GET", "/api/clipboard"));
+        Check("ponte: prévia curta numa linha", BridgeRules.Preview("a\nb") == "a b" && BridgeRules.Preview(new string('x', 100)).Length == 61);
+        Check("ponte: link de pareamento", BridgeRules.PairingLink("https://pc.tail1.ts.net/", "tok-_1") == "https://pc.tail1.ts.net/#token=tok-_1");
+        Check("ponte: endereço normalizado", BridgeRules.NormalizeBaseUrl(" https://pc.ts.net/ ") == "https://pc.ts.net"
+            && BridgeRules.NormalizeBaseUrl("pc.ts.net") == "https://pc.ts.net" && BridgeRules.NormalizeBaseUrl("  ") == "");
+    }
+
+    private static void TokenAuditTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "tokens.json");
+        var store = new TokenStore(path);
+        var t1 = store.Create("iPhone");
+        var t2 = store.Create("Atalhos");
+        Check("token: longo e diferente", t1.Length >= 40 && t1 != t2);
+        Check("token: verifica e devolve o nome", store.Verify(t1) == "iPhone" && store.Verify(t2) == "Atalhos");
+        Check("token: errado/vazio não passa", store.Verify("x") is null && store.Verify("") is null && store.Verify(null) is null);
+        Check("token: arquivo não guarda o token", !File.ReadAllText(path).Contains(t1));
+        var reloaded = new TokenStore(path);
+        Check("token: persiste", reloaded.Verify(t1) == "iPhone" && reloaded.List().Count == 2);
+        reloaded.Revoke(reloaded.List().First(t => t.Name == "iPhone").Hash);
+        Check("token: revogado não passa", reloaded.Verify(t1) is null && reloaded.Verify(t2) == "Atalhos");
+        File.WriteAllText(path, "{ quebrado");
+        Check("token: arquivo corrompido = nenhum token", new TokenStore(path).List().Count == 0);
+
+        var auditPath = Path.Combine(dir, "audit.jsonl");
+        var audit = new AuditLog(auditPath);
+        AuditEntry? seen = null;
+        audit.Written += e => seen = e;
+        audit.Write("iPhone", "POST /api/links/open", "204");
+        audit.Write("iPhone", "PUT /api/clipboard", "erro");
+        var lines = File.ReadAllLines(auditPath);
+        Check("auditoria: uma linha JSON por ação", lines.Length == 2 && lines[0].Contains("\"acao\":\"POST /api/links/open\"") && lines[1].Contains("\"resultado\":\"erro\""));
+        Check("auditoria: recentes, mais nova primeiro", audit.RecentEntries()[0].Action == "PUT /api/clipboard");
+        Check("auditoria: evento", seen?.Result == "erro");
+        Directory.Delete(dir, recursive: true);
     }
 
     public static void Check(string name, bool ok)
