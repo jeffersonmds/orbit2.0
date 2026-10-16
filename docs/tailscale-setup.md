@@ -44,6 +44,8 @@ notebook.tail1234.ts.net
 ```
 
 (`notebook` é o nome do PC e `tail1234.ts.net` é o nome da sua rede; o seu será diferente.)
+O sufixo `tailXXXX.ts.net` aparece na página **DNS** do painel ou no detalhe da máquina.
+Ainda na aba Machines, anote o **IP 100.x.y.z** do PC: ele é usado na ACL do passo 7.
 Anote esse nome: ele é usado nos próximos passos. Nos exemplos abaixo, troque pelo seu.
 
 ### 4. Ligar a ponte no Orbit
@@ -72,8 +74,9 @@ Deve aparecer o seu endereço `https://notebook.tail1234.ts.net` apontando para
 `http://127.0.0.1:5191`. O `--bg` deixa isso funcionando em segundo plano, inclusive depois de
 reiniciar o PC.
 
-Para desfazer depois, rode `tailscale serve --help` e veja a opção de desligar (a sintaxe exata
-muda entre versões do Tailscale). Documentação oficial: tailscale.com/kb/1312/serve.
+Para desfazer depois, use `tailscale serve --https=443 off` (desliga só essa porta) ou
+`tailscale serve reset` (limpa tudo). A sintaxe exata pode mudar entre versões do Tailscale:
+confira com `tailscale serve --help`. Documentação oficial: tailscale.com/kb/1312/serve.
 
 > Se o comando acima der erro de sintaxe na sua versão, não é o Orbit: o Tailscale mudou os
 > parâmetros. Veja `tailscale serve --help` e a página oficial acima, e mantenha a mesma ideia:
@@ -86,16 +89,29 @@ muda entre versões do Tailscale). Documentação oficial: tailscale.com/kb/1312
 3. Toque no aviso para abrir. O Safari abre o painel do Orbit já com o token guardado.
 4. Toque em **Compartilhar** (o quadrado com a seta) > **Adicionar à Tela de Início**.
 
-Pronto: o Orbit aparece como um app. O token fica salvo só nesse aparelho.
+**Atenção:** no iPhone, o app adicionado à Tela de Início tem armazenamento próprio e **não
+herda** o token que o Safari guardou. Na primeira vez, o app instalado abre pedindo o token. É
+só uma vez:
+
+1. Abra o Orbit pelo **ícone da Tela de Início**.
+2. Aponte a câmera para o QR (na aba **iPhone** do PC > **Parear iPhone**).
+3. **Toque e segure** o aviso amarelo que aparece e toque em **Copiar** (não em abrir).
+4. Volte ao app, cole no campo (ele aceita o link inteiro ou só o token) e toque em **Salvar**.
+
+Sem o QR à mão, use o botão **Copiar** da aba iPhone no PC e mande o link para o iPhone por
+qualquer meio seguro (por exemplo, uma mensagem para você mesmo). O token fica salvo só nesse
+aparelho.
 
 ### 7. Segurança extra (recomendado)
 
 **a) Restringir quem alcança o PC (ACL).** Por padrão, todos os seus aparelhos enxergam uns aos
-outros. Você pode limitar para que só o iPhone fale com a porta 443 do PC. No painel, abra
+outros. Você pode limitar para que só os seus aparelhos (todos os logados na sua conta) falem
+com a porta 443 do PC. No painel, abra
 **Access controls** (aba da política) e use algo assim, trocando e-mail e nomes pelos seus:
 
 ```json
 {
+  "hosts": { "notebook": "100.x.y.z" },
   "acls": [
     {
       "action": "accept",
@@ -106,7 +122,8 @@ outros. Você pode limitar para que só o iPhone fale com a porta 443 do PC. No 
 }
 ```
 
-Isso diz: o usuário `voce@exemplo.com` (ou seja, os aparelhos da sua conta) pode acessar o
+O nome `notebook` em `dst` só vale porque foi definido em `"hosts"`: troque `100.x.y.z` pelo IP
+do seu PC (aba Machines). Isso diz: o usuário `voce@exemplo.com` (ou seja, os aparelhos da sua conta) pode acessar o
 aparelho `notebook` somente na porta `443`. Se quiser limitar a um único aparelho, pode usar
 tags ou o nome do iPhone no lugar do e-mail; a lista completa de formatos aceitos está em
 tailscale.com/kb/1018/acls. Cuidado: ao salvar uma política nova, tudo que não estiver

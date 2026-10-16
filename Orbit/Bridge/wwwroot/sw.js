@@ -16,6 +16,6 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || url.pathname.startsWith('/api') || url.pathname === '/health') return;
   e.respondWith(
     fetch(e.request)
-      .then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
+      .then(r => { if (!r.ok) return r; const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
       .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html'))));
 });

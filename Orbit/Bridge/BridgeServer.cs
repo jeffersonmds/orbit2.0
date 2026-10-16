@@ -90,7 +90,8 @@ public sealed class BridgeServer : IAsyncDisposable
         if (hasWeb)
         {
             app.UseDefaultFiles();
-            app.UseStaticFiles();
+            // revalida sempre (304 barato): PWA atualizado chega no próximo abrir
+            app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache" });
         }
         app.MapGet("/health", () => Results.Ok(new { ok = true }));
 

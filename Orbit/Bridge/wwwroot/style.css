@@ -25,7 +25,7 @@ button.primary { background: var(--accent); color: #0b0b0c; width: 100%; margin-
 button.ghost { background: transparent; color: var(--accent); }
 button.danger { color: var(--danger); }
 .row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
-.row:first-of-type { margin-top: 0; }
+.row.top { margin-top: 0; }
 .row > input { flex: 1; }
 .row > button { flex: 1; }
 .row.center { justify-content: center; }

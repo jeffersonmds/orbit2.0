@@ -77,7 +77,8 @@ Recebe fotos, vídeos e arquivos e salva na pasta `Downloads\Orbit` do PC.
    - **Cabeçalhos:** `Authorization` = `Bearer SEU_TOKEN`
    - **Corpo da Requisição:** `Formulário`. Adicione um campo do tipo **Arquivo** com o nome
      `file` e, como valor, a variável **Entrada do Atalho**.
-4. Na galeria de fotos, selecione e escolha Compartilhar > **Enviar para o PC**.
+4. Teste primeiro com 2 fotos, para conferir que o formulário está certo antes de mandar muitas.
+5. Na galeria de fotos, selecione e escolha Compartilhar > **Enviar para o PC**.
 
 Limites: até 500 MB por envio e até 50 arquivos por vez. Um arquivo com nome repetido ganha um
 sufixo, nunca sobrescreve outro.
@@ -105,7 +106,8 @@ Tailscale (por exemplo, `https://notebook.tail1234.ts.net`).
 | `PUT /api/media/volume` | Ajusta o volume | JSON `{ "percent": 0-100 }` |
 | `POST /api/files` | Envia arquivos para o PC | Formulário (`multipart/form-data`), campo `file` |
 
-Corpos JSON são limitados a 1 MB; só os envios de `/api/files` aceitam até 500 MB.
+Corpos JSON são limitados a 1 MB; só os envios de `/api/files` aceitam até 500 MB. O texto do
+clipboard tem limite de 100.000 caracteres.
 
 ## Códigos de resposta
 
@@ -113,10 +115,11 @@ Corpos JSON são limitados a 1 MB; só os envios de `/api/files` aceitam até 50
 | --- | --- |
 | `200` | Deu certo e a resposta tem conteúdo (ler texto, mídia, stats, enviar arquivos) |
 | `204` | Deu certo, sem conteúdo (abrir link, gravar texto, mídia, energia) |
+| `413` | Corpo acima do limite (1 MB no JSON; 500 MB em `/api/files`) |
 | `400` | Entrada inválida: link que não é http/https, corpo errado, nenhum arquivo enviado |
 | `401` | Token ausente, errado ou revogado |
 | `404` | Ação inexistente (por exemplo, `/api/power/abc`) |
-| `429` | Rápido demais (limite de 120 ações por minuto); espere um pouco |
+| `429` | Rápido demais (limite de 120 ações por minuto, **compartilhado** entre todos os aparelhos e o app aberto); espere um pouco |
 | `500` | Falha no PC ao executar a ação; veja o log do Orbit |
 
 No app Atalhos, uma resposta de erro (por exemplo, 401) não interrompe o atalho por si só: se

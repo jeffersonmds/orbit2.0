@@ -5,7 +5,7 @@ const $ = s => document.querySelector(s);
 let token = localStorage.getItem('orbit.token');
 const fromHash = location.hash.match(/token=([^&]+)/);
 if (fromHash) {
-  token = decodeURIComponent(fromHash[1]);
+  try { token = decodeURIComponent(fromHash[1]); } catch { token = fromHash[1]; }
   localStorage.setItem('orbit.token', token);
   history.replaceState(null, '', location.pathname);
 }
@@ -24,7 +24,9 @@ async function api(path, { method = 'GET', json, body } = {}) {
   if (!token) { showPair(true); throw new Error('Pareie com o PC primeiro'); }
   const headers = { Authorization: `Bearer ${token}` };
   if (json !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(json); }
-  const r = await fetch('/api' + path, { method, headers, body });
+  let r;
+  try { r = await fetch('/api' + path, { method, headers, body }); }
+  catch { setOnline(false); throw new Error('PC fora do ar'); }
   if (r.status === 401) { showPair(true); throw new Error('Token inválido — pareie de novo'); }
   if (r.status === 429) throw new Error('Calma: muitas ações seguidas');
   if (!r.ok) throw new Error(`O PC respondeu ${r.status}`);
@@ -49,7 +51,10 @@ async function ping() {
 
 // --- Parear ---
 $('#saveToken').onclick = () => {
-  const v = $('#tokenInput').value.trim();
+  // aceita o link inteiro do QR ou só o token
+  const raw = $('#tokenInput').value.trim();
+  let v = raw.replace(/^.*[#&]token=/, '');
+  try { v = decodeURIComponent(v); } catch {}
   if (!v) return;
   token = v;
   localStorage.setItem('orbit.token', v);
@@ -67,17 +72,22 @@ $('#openUrl').onclick = () => run(
 // --- Clipboard ---
 $('#sendClip').onclick = () => run(
   () => api('/clipboard', { method: 'PUT', json: { text: $('#clip').value } }), 'Enviado pro PC');
-$('#getClip').onclick = () => run(async () => {
-  const { text } = await api('/clipboard');
-  $('#clip').value = text;
-  try { await navigator.clipboard.writeText(text); toast('Copiado no iPhone'); }
-  catch { toast('Texto do PC abaixo'); }
-});
+// ClipboardItem com Promise criada dentro do clique: no WebKit, writeText depois de await perde o gesto.
+$('#getClip').onclick = () => {
+  const blob = api('/clipboard').then(({ text }) => { $('#clip').value = text; return new Blob([text], { type: 'text/plain' }); });
+  if (navigator.clipboard && window.ClipboardItem) {
+    navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })])
+      .then(() => toast('Copiado no iPhone'), () => blob.then(() => toast('Texto do PC abaixo'), e => toast(e.message)));
+  } else {
+    blob.then(() => toast('Texto do PC abaixo'), e => toast(e.message));
+  }
+};
 
 // --- Arquivos (XHR pra ter progresso) ---
 $('#files').onchange = e => {
   const files = [...e.target.files];
   if (!files.length) return;
+  if (!token) { showPair(true); toast('Pareie com o PC primeiro'); e.target.value = ''; return; }
   const form = new FormData();
   files.forEach(f => form.append('file', f, f.name));
   const xhr = new XMLHttpRequest();
@@ -90,6 +100,8 @@ $('#files').onchange = e => {
     $('#bar').style.width = '0';
     e.target.value = '';
     if (xhr.status === 200) toast(files.length === 1 ? 'Arquivo enviado' : `${files.length} arquivos enviados`);
+    else if (xhr.status === 413) toast('Arquivo grande demais (máx. 500 MB por envio)');
+    else if (xhr.status === 429) toast('Calma: muitas ações seguidas');
     else if (xhr.status === 401) { showPair(true); toast('Token inválido — pareie de novo'); }
     else toast('Falhou o envio');
   };
@@ -101,7 +113,9 @@ document.querySelectorAll('[data-media]').forEach(b => b.onclick = () => run(asy
   await api('/media/' + b.dataset.media, { method: 'POST' });
   setTimeout(refreshMedia, 400);
 }));
-let volTimer;
+let volTimer, dragging = false;
+['pointerdown'].forEach(t => $('#volume').addEventListener(t, () => { dragging = true; }));
+['pointerup', 'pointercancel'].forEach(t => $('#volume').addEventListener(t, () => { dragging = false; }));
 $('#volume').oninput = e => {
   clearTimeout(volTimer);
   volTimer = setTimeout(() => run(() => api('/media/volume', { method: 'PUT', json: { percent: +e.target.value } })), 150);
@@ -110,7 +124,7 @@ async function refreshMedia() {
   try {
     const m = await api('/media');
     $('#now').textContent = m.title ? `${m.playing ? '▶' : '⏸'} ${m.title}${m.artist ? ' · ' + m.artist : ''}` : 'Nada tocando';
-    if (document.activeElement !== $('#volume')) $('#volume').value = m.volume;
+    if (!dragging) $('#volume').value = m.volume;
   } catch { /* offline: mantém o que está na tela */ }
 }
 

@@ -4,7 +4,7 @@ Atualizado em 2026-10-16, ao encerrar a sessão autônoma a pedido do usuário.
 
 ## Estado
 
-- Branch **`fase4-ponte`** (ainda **não** mergeada no `master`). Último commit: `8dfad72`.
+- Branch **`fase4-ponte`** (ainda **não** mergeada no `master`). Último commit de código: ver `git log`.
 - Build Debug/Release: 0 erros / 0 avisos. `dotnet run --project Orbit.Tests`: **303 checks, TODOS OK**.
 - Spec: `docs/superpowers/specs/2026-10-16-fase4-ponte-design.md`. Plano: `docs/superpowers/plans/2026-10-16-fase4-ponte.md`.
 
@@ -13,10 +13,10 @@ Atualizado em 2026-10-16, ao encerrar a sessão autônoma a pedido do usuário.
 | 1. Regras, tokens (hash), auditoria | ✅ feita + revisão de segurança aplicada |
 | 2. Servidor Kestrel (127.0.0.1, auth, rate limit, rotas) | ✅ feita + revisão de segurança aplicada (auth antes do rate limit e do body, 1 MB por padrão, revogação que não falha calada, nomes de arquivo robustos) |
 | 3. Aba iPhone, handlers reais, QR | ✅ feita + revisão aplicada (start fora da UI thread, suspender responde antes de dormir) |
-| 4. PWA (HTML/JS puro) | ✅ feita — **faltam as correções da revisão (abaixo)** |
-| 5. Docs Tailscale/Atalhos + CLAUDE.md | ✅ feita — **faltam as correções da revisão (abaixo)** |
+| 4. PWA (HTML/JS puro) | ✅ feita — correções da revisão aplicadas |
+| 5. Docs Tailscale/Atalhos + CLAUDE.md | ✅ feita — correções da revisão aplicadas |
 
-## Pendências (revisão do lote 4C — ainda não aplicadas)
+## Pendências (revisão do lote 4C — RESOLVIDAS)
 
 1. **Crítico — pareamento no app da Tela de Início.** No iOS o app instalado não herda o
    `localStorage` do Safari: o token salvo ao abrir o QR não vai junto e o app pede token.
@@ -39,7 +39,7 @@ Atualizado em 2026-10-16, ao encerrar a sessão autônoma a pedido do usuário.
    mensagens próprias; flag `dragging` no slider de volume; `.row:first-of-type` cola botões no
    textarea (trocar por classe explícita).
 
-Depois das pendências: revisão rápida, teste real no iPhone (precisa do Tailscale — **não
+Pendências 1–5 acima aplicadas no commit "fix: PWA aceita link colado…". Falta: revisão rápida, teste real no iPhone (precisa do Tailscale — **não
 instalado nesta máquina**; instalar é decisão do usuário), aceitação e merge no `master`.
 
 ## Como testar sem iPhone

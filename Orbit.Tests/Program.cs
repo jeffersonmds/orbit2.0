@@ -82,6 +82,7 @@ public static class Program
         var manifest = http.GetAsync("/manifest.webmanifest").Result;
         Check("pwa: manifest com content-type", manifest.IsSuccessStatusCode
             && manifest.Content.Headers.ContentType?.MediaType == "application/manifest+json");
+        Check("pwa: estático revalida (no-cache)", http.GetAsync("/app.js").Result.Headers.CacheControl?.NoCache == true);
         Check("pwa: ícone", http.GetAsync("/apple-touch-icon.png").Result.IsSuccessStatusCode);
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
