@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Orbit">
+  <meta name="theme-color" content="#0e0e10">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <title>Orbit</title>
+</head>
+<body>
+  <header>
+    <div class="pill" id="pill"><span class="dot" id="dot"></span><span id="state">Conectando…</span></div>
+  </header>
+
+  <main id="app">
+    <section id="pair" class="card hidden">
+      <h2>Parear com o PC</h2>
+      <p class="muted">No PC, abra a ilha → aba <b>iPhone</b> → <b>Parear iPhone</b> e aponte a câmera para o QR.
+        Ou cole o token aqui:</p>
+      <input id="tokenInput" type="password" placeholder="token" autocomplete="off">
+      <button class="primary" id="saveToken">Salvar</button>
+    </section>
+
+    <section class="card">
+      <h2>Abrir no PC</h2>
+      <div class="row">
+        <input id="url" type="url" inputmode="url" placeholder="https://…" autocomplete="off">
+        <button id="pasteUrl" class="ghost" title="Colar">Colar</button>
+      </div>
+      <button class="primary" id="openUrl">Abrir no navegador do PC</button>
+    </section>
+
+    <section class="card">
+      <h2>Área de transferência</h2>
+      <textarea id="clip" rows="3" placeholder="Texto para o PC…"></textarea>
+      <div class="row">
+        <button class="primary" id="sendClip">Enviar pro PC</button>
+        <button id="getClip">Trazer do PC</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Enviar arquivos</h2>
+      <label class="file">
+        <input id="files" type="file" multiple>
+        <span>Escolher fotos ou arquivos</span>
+      </label>
+      <div class="progress hidden" id="progress"><div id="bar"></div></div>
+    </section>
+
+    <section class="card">
+      <h2>Mídia</h2>
+      <p class="now" id="now">—</p>
+      <div class="row center">
+        <button class="round" data-media="prev" aria-label="Anterior">⏮</button>
+        <button class="round big" data-media="playpause" aria-label="Tocar/pausar">⏯</button>
+        <button class="round" data-media="next" aria-label="Próxima">⏭</button>
+      </div>
+      <input id="volume" type="range" min="0" max="100" step="1" aria-label="Volume">
+    </section>
+
+    <section class="card">
+      <h2>PC</h2>
+      <div class="stats">
+        <div><b id="cpu">--</b><span>CPU</span></div>
+        <div><b id="ram">--</b><span>RAM</span></div>
+        <div><b id="disk">--</b><span>Disco</span></div>
+        <div><b id="bat">--</b><span>Bateria</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Energia</h2>
+      <div class="grid">
+        <button data-power="lock">Bloquear</button>
+        <button data-power="sleep">Suspender</button>
+        <button data-power="restart" class="danger">Reiniciar</button>
+        <button data-power="shutdown" class="danger">Desligar</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

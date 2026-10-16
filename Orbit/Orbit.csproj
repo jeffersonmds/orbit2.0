@@ -26,4 +26,12 @@
     <!-- Kestrel/minimal API da ponte (framework compartilhado, assinado pela Microsoft). -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- PWA da ponte: servido de <saída>\wwwroot pelo Kestrel. -->
+    <!-- Update não serve: lá %(RecursiveDir) é relativo à raiz do projeto (vira wwwroot\Bridge\wwwroot\...). -->
+    <None Remove="Bridge\wwwroot\**\*" />
+    <None Include="Bridge\wwwroot\**\*" CopyToOutputDirectory="PreserveNewest"
+          Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

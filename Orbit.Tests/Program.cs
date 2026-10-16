@@ -61,9 +61,30 @@ public static class Program
         TokenAuditTests();
         BridgeServerTests();
         IPhoneTests();
+        PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static void PwaTests()
+    {
+        var web = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        Check("pwa: copiado pra saída", File.Exists(Path.Combine(web, "index.html")) && File.Exists(Path.Combine(web, "sw.js")));
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var server = new BridgeServer();
+        server.StartAsync(0, web, new TokenStore(Path.Combine(dir, "t.json")), new AuditLog(Path.Combine(dir, "a.jsonl")), new BridgeHandlers())
+            .GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        var html = http.GetStringAsync("/").Result;
+        Check("pwa: / serve o index sem token", html.Contains("<title>Orbit</title>"));
+        var manifest = http.GetAsync("/manifest.webmanifest").Result;
+        Check("pwa: manifest com content-type", manifest.IsSuccessStatusCode
+            && manifest.Content.Headers.ContentType?.MediaType == "application/manifest+json");
+        Check("pwa: ícone", http.GetAsync("/apple-touch-icon.png").Result.IsSuccessStatusCode);
+        server.StopAsync().GetAwaiter().GetResult();
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void IPhoneTests()
