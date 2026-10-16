@@ -1,4 +1,9 @@
 using System;
+using System.Threading.Tasks;
+using System.Net.Http.Json;
+using System.Net.Http.Headers;
+using System.Net.Http;
+using System.Net;
 using Orbit.Bridge;
 using System.Collections.Generic;
 using System.IO;
@@ -54,6 +59,7 @@ public static class Program
         AppIconTests();
         BridgeRulesTests();
         TokenAuditTests();
+        BridgeServerTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -788,6 +794,91 @@ public static class Program
         Check("auditoria: uma linha JSON por ação", lines.Length == 2 && lines[0].Contains("\"acao\":\"POST /api/links/open\"") && lines[1].Contains("\"resultado\":\"erro\""));
         Check("auditoria: recentes, mais nova primeiro", audit.RecentEntries()[0].Action == "PUT /api/clipboard");
         Check("auditoria: evento", seen?.Result == "erro");
+        Directory.Delete(dir, recursive: true);
+    }
+
+    private static void BridgeServerTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tokens = new TokenStore(Path.Combine(dir, "tokens.json"));
+        var token = tokens.Create("teste");
+        var audit = new AuditLog(Path.Combine(dir, "audit.jsonl"));
+        string? opened = null, clip = null;
+        Orbit.Services.PowerAction? power = null;
+        MediaCommand? media = null;
+        double? volume = null;
+        var events = new List<BridgeEvent>();
+        var handlers = new BridgeHandlers
+        {
+            OpenUrl = u => { opened = u; return Task.CompletedTask; },
+            GetClipboard = () => Task.FromResult("do pc"),
+            SetClipboard = t => { clip = t; return Task.CompletedTask; },
+            Power = a => { power = a; return Task.CompletedTask; },
+            Media = m => { media = m; return Task.CompletedTask; },
+            GetMedia = () => Task.FromResult(new MediaState("Faixa", "Banda", true, 40)),
+            SetVolume = v => { volume = v; return Task.CompletedTask; },
+            GetStats = () => new StatsSnapshot(12, 4.5, 16, 100, 500, 80, true),
+            UploadFolder = () => Path.Combine(dir, "up"),
+            Notify = e => { lock (events) events.Add(e); },
+        };
+
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "www-inexistente"), tokens, audit, handlers).GetAwaiter().GetResult();
+        Check("ponte: servidor sobe numa porta", server.Running && server.Port > 0);
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+
+        Check("ponte: /health sem token", http.GetAsync("/health").Result.StatusCode == HttpStatusCode.OK);
+        Check("ponte: /api sem token = 401", http.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.Unauthorized);
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "errado");
+        Check("ponte: token errado = 401", http.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.Unauthorized);
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var stats = http.GetStringAsync("/api/stats").Result;
+        Check("ponte: stats em JSON camelCase", stats.Contains("\"cpu\":12") && stats.Contains("\"batteryPercent\":80"));
+
+        var bad = http.PostAsJsonAsync("/api/links/open", new { url = "javascript:alert(1)" }).Result;
+        Check("ponte: link inválido = 400 e não abre", bad.StatusCode == HttpStatusCode.BadRequest && opened is null);
+        var ok = http.PostAsJsonAsync("/api/links/open", new { url = "https://example.com/a" }).Result;
+        Check("ponte: link válido abre e avisa", ok.StatusCode == HttpStatusCode.NoContent && opened == "https://example.com/a"
+            && events.Exists(e => e.Detail == "example.com"));
+
+        var put = http.PutAsJsonAsync("/api/clipboard", new { text = "do iPhone" }).Result;
+        Check("ponte: PUT clipboard", put.StatusCode == HttpStatusCode.NoContent && clip == "do iPhone");
+        Check("ponte: GET clipboard", http.GetStringAsync("/api/clipboard").Result.Contains("do pc"));
+
+        Check("ponte: energia", http.PostAsync("/api/power/shutdown", null).Result.StatusCode == HttpStatusCode.NoContent
+            && power == Orbit.Services.PowerAction.Desligar);
+        Check("ponte: energia desconhecida = 404", http.PostAsync("/api/power/explodir", null).Result.StatusCode == HttpStatusCode.NotFound);
+        Check("ponte: mídia", http.PostAsync("/api/media/next", null).Result.StatusCode == HttpStatusCode.NoContent && media == MediaCommand.Next);
+        Check("ponte: estado da mídia", http.GetStringAsync("/api/media").Result.Contains("\"title\":\"Faixa\""));
+        Check("ponte: volume clampado", http.PutAsJsonAsync("/api/media/volume", new { percent = 150 }).Result.StatusCode == HttpStatusCode.NoContent
+            && volume == 100);
+
+        using (var form = new MultipartFormDataContent())
+        {
+            form.Add(new ByteArrayContent(new byte[] { 1, 2, 3 }), "file", "../evil.txt");
+            var up = http.PostAsync("/api/files", form).Result;
+            Check("ponte: upload salva com nome seguro", up.StatusCode == HttpStatusCode.OK && File.Exists(Path.Combine(dir, "up", "evil.txt")));
+        }
+        using (var form = new MultipartFormDataContent())
+        {
+            form.Add(new ByteArrayContent(new byte[] { 4 }), "file", "evil.txt");
+            http.PostAsync("/api/files", form).Result.Dispose();
+            Check("ponte: upload não sobrescreve", File.Exists(Path.Combine(dir, "up", "evil (1).txt")));
+        }
+        using (var semArquivo = new MultipartFormDataContent { { new StringContent("x"), "nada" } })
+            Check("ponte: upload sem arquivo = 400", http.PostAsync("/api/files", semArquivo).Result.StatusCode == HttpStatusCode.BadRequest);
+
+        var log = File.ReadAllText(Path.Combine(dir, "audit.jsonl"));
+        Check("ponte: auditoria registra ações", log.Contains("POST /api/links/open") && log.Contains("\"token\":\"teste\""));
+        Check("ponte: auditoria ignora polling de stats", !log.Contains("GET /api/stats\",\"resultado\":\"200"));
+
+        tokens.Revoke(tokens.List()[0].Hash);
+        Check("ponte: token revogado = 401", http.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.Unauthorized);
+
+        server.StopAsync().GetAwaiter().GetResult();
+        Check("ponte: para", !server.Running);
         Directory.Delete(dir, recursive: true);
     }
 

@@ -1,0 +1,28 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Orbit.Services;
+
+namespace Orbit.Bridge;
+
+public sealed record MediaState(string? Title, string? Artist, bool Playing, double Volume);
+public sealed record StatsSnapshot(double Cpu, double RamUsedGb, double RamTotalGb, double DiskUsedGb, double DiskTotalGb,
+    int? BatteryPercent, bool Charging);
+public sealed record BridgeEvent(string Title, string Detail);
+
+// O que o servidor pede pra ilha fazer. O BridgeServer não conhece WPF; a ilha implementa
+// estes delegates (com Dispatcher quando precisa da UI thread) e os testes usam fakes.
+public sealed class BridgeHandlers
+{
+    public Func<string, Task> OpenUrl { get; init; } = _ => Task.CompletedTask;
+    public Func<Task<string>> GetClipboard { get; init; } = () => Task.FromResult("");
+    public Func<string, Task> SetClipboard { get; init; } = _ => Task.CompletedTask;
+    public Func<PowerAction, Task> Power { get; init; } = _ => Task.CompletedTask;
+    public Func<MediaCommand, Task> Media { get; init; } = _ => Task.CompletedTask;
+    public Func<Task<MediaState>> GetMedia { get; init; } = () => Task.FromResult(new MediaState(null, null, false, 0));
+    public Func<double, Task> SetVolume { get; init; } = _ => Task.CompletedTask;
+    public Func<StatsSnapshot> GetStats { get; init; } = () => new StatsSnapshot(0, 0, 0, 0, 0, null, false);
+    public Func<string> UploadFolder { get; init; } = () => Path.GetTempPath();
+    // Pra pílula (link aberto, arquivo recebido…). Chamado de thread do Kestrel.
+    public Action<BridgeEvent> Notify { get; init; } = _ => { };
+}
