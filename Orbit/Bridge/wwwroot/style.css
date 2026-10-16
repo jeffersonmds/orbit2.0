@@ -28,6 +28,8 @@ button.danger { color: var(--danger); }
 .row.top { margin-top: 0; }
 .row > input { flex: 1; }
 .row > button { flex: 1; }
+/* Redondos (mídia) e "Colar" têm tamanho próprio: sem isto o flex: 1 acima os esticava. */
+.row > button.round, .row > button.ghost { flex: 0 0 auto; }
 .row.center { justify-content: center; }
 .row .primary { margin-top: 0; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

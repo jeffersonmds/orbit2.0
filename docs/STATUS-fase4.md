@@ -39,7 +39,9 @@ Atualizado em 2026-10-16, ao encerrar a sessão autônoma a pedido do usuário.
    mensagens próprias; flag `dragging` no slider de volume; `.row:first-of-type` cola botões no
    textarea (trocar por classe explícita).
 
-Pendências 1–5 acima aplicadas no commit "fix: PWA aceita link colado…". Falta: revisão rápida, teste real no iPhone (precisa do Tailscale — **não
+Pendências 1–5 acima aplicadas no commit "fix: PWA aceita link colado…".
+Verificado depois sem iPhone: PWA renderizado no Edge headless (layout ok; corrigido botões de mídia
+esticados) e rotas exercitadas por HTTP num servidor isolado (link, clipboard UTF-8, upload, energia, 401, no-cache). Falta: revisão rápida, teste real no iPhone (precisa do Tailscale — **não
 instalado nesta máquina**; instalar é decisão do usuário), aceitação e merge no `master`.
 
 ## Como testar sem iPhone
