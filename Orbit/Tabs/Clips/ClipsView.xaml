@@ -59,12 +59,15 @@
             <Grid>
                 <TextBlock Text="Nada copiado ainda" Foreground="{StaticResource InkLo}" FontSize="13"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}"/>
+                           Visibility="{Binding ShowNothingCopied, Converter={StaticResource BoolToVis}}"/>
+                <TextBlock Text="Nada encontrado" Foreground="{StaticResource InkLo}" FontSize="13"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding ShowNothingFound, Converter={StaticResource BoolToVis}}"/>
                 <ListBox ItemsSource="{Binding Visible}" SelectedItem="{Binding Selected}" ItemContainerStyle="{StaticResource ClipRow}"
                          Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.Template>
                         <ControlTemplate TargetType="ListBox">
-                            <ScrollViewer VerticalScrollBarVisibility="Hidden" Focusable="False">
+                            <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Hidden" Focusable="False">
                                 <ItemsPresenter/>
                             </ScrollViewer>
                         </ControlTemplate>

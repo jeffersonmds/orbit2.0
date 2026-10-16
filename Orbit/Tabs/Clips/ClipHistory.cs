@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Orbit.Tabs.Clips;
@@ -11,9 +13,12 @@ public enum ClipFilter { Tudo, Texto, Imagens, Links }
 public static class ClipHistory
 {
     public const int MaxUnpinned = 200;
-    public const int MaxTextChars = 100_000; // texto maior (log/dump colado sem querer) não entra
+    public const int MaxTextChars = 20_000; // texto maior (log/dump colado sem querer) não entra; o JSON guarda o texto inteiro
 
     private static readonly Regex Spaces = new(@"\s+");
+
+    // Chave curta de dedupe (não repete o texto inteiro no JSON).
+    public static string TextKey(string text) => "t:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
 
     public static ClipKind ClassifyText(string text)
     {
@@ -27,7 +32,9 @@ public static class ClipHistory
 
     // Gerenciadores de senha (e o próprio Windows) marcam conteúdo que não deve ir pra histórico.
     public static bool IsPrivate(IEnumerable<string> formats, int? canIncludeInHistory) =>
-        formats.Contains("ExcludeClipboardContentFromMonitorProcessing") || canIncludeInHistory == 0;
+        formats.Contains("ExcludeClipboardContentFromMonitorProcessing") || canIncludeInHistory == 0
+        // convenção Ditto/ClipX usada por KeePass e Password Safe
+        || formats.Contains("Clipboard Viewer Ignore");
 
     // Insere no topo. Conteúdo repetido (mesma Key) sobe pro topo mantendo o "fixado".
     // Devolve os itens descartados pelo limite (pra apagar os PNGs).

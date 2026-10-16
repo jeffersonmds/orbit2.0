@@ -40,7 +40,9 @@ public static class ClipboardStore
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var dtos = items.Select(i => new ClipDto(i.Kind, i.Text, i.ImageFile, i.Key, i.CopiedAt, i.Pinned, i.Width, i.Height));
-            File.WriteAllText(path, JsonSerializer.Serialize(dtos, WriteOptions));
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(dtos, WriteOptions));
+            File.Move(tmp, path, overwrite: true); // atômico: crash no meio não corrompe o histórico
         }
         catch
         {

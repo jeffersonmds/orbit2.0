@@ -74,6 +74,10 @@ public static class Program
         Check("clip: privado por CanIncludeInClipboardHistory=0", ClipHistory.IsPrivate(new[] { "Text" }, 0));
         Check("clip: normal não é privado", !ClipHistory.IsPrivate(new[] { "Text" }, 1) && !ClipHistory.IsPrivate(new[] { "Text" }, null));
 
+        Check("clip: privado por 'Clipboard Viewer Ignore'", ClipHistory.IsPrivate(new[] { "Text", "Clipboard Viewer Ignore" }, null));
+        Check("clip: chave de texto é hash estável e curta", ClipHistory.TextKey("abc") == ClipHistory.TextKey("abc")
+            && ClipHistory.TextKey("abc") != ClipHistory.TextKey("abd") && ClipHistory.TextKey(new string('x', 5000)).Length == 18);
+
         var t0 = new DateTime(2026, 10, 15, 9, 0, 0);
         var list = new List<ClipItem>();
         ClipHistory.Add(list, Txt("a", t0));

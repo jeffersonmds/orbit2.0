@@ -37,7 +37,8 @@ public sealed partial class ClipsViewModel : TabViewModel
     [ObservableProperty] private string _detailCopied = "";
 
     public bool HasQuery => Query.Length > 0;
-    public bool IsEmpty => Visible.Count == 0;
+    public bool ShowNothingCopied => _items.Count == 0;
+    public bool ShowNothingFound => _items.Count > 0 && Visible.Count == 0;
     public string PinLabel => Selected?.Pinned == true ? "Desafixar" : "Fixar";
 
     // Item já está no clipboard: a ilha recolhe e manda Ctrl+V pro app anterior.
@@ -79,6 +80,7 @@ public sealed partial class ClipsViewModel : TabViewModel
     public async Task CaptureAsync()
     {
         if (!_enabled()) return;
+        if (ClipboardReader.OwnedByUs()) return; // eco do nosso próprio Colar
         var snap = ClipboardReader.Read();
         if (snap is not null) await IngestAsync(snap);
     }
@@ -87,11 +89,12 @@ public sealed partial class ClipsViewModel : TabViewModel
     public async Task IngestAsync(ClipSnapshot snap)
     {
         if (!_enabled() || snap.IsPrivate) return;
+        var at = DateTime.Now; // antes de qualquer await
         ClipItem item;
         if (snap.Text is { } text)
         {
             if (string.IsNullOrWhiteSpace(text) || text.Length > ClipHistory.MaxTextChars) return;
-            item = new ClipItem(ClipHistory.ClassifyText(text), text, null, "t:" + text, DateTime.Now, false, 0, 0);
+            item = new ClipItem(ClipHistory.ClassifyText(text), text, null, ClipHistory.TextKey(text), at, false, 0, 0);
         }
         else if (snap.Image is { } img)
         {
@@ -106,7 +109,7 @@ public sealed partial class ClipsViewModel : TabViewModel
                     Directory.CreateDirectory(_imagesDir);
                     await File.WriteAllBytesAsync(path, png);
                 }
-                item = new ClipItem(ClipKind.Image, null, file, "i:" + hash, DateTime.Now, false, img.PixelWidth, img.PixelHeight);
+                item = new ClipItem(ClipKind.Image, null, file, "i:" + hash, at, false, img.PixelWidth, img.PixelHeight);
             }
             catch (Exception ex)
             {
@@ -132,7 +135,11 @@ public sealed partial class ClipsViewModel : TabViewModel
         bool ok = item.Kind == ClipKind.Image
             ? item.ImagePath is { } p && File.Exists(p) && ClipboardReader.SetImage(LoadFull(p))
             : ClipboardReader.SetText(item.Text ?? "");
-        if (ok) PasteRequested?.Invoke();
+        if (!ok) return;
+        item.CopiedAt = DateTime.Now; // sobe pro topo
+        Persist();
+        Refresh();
+        PasteRequested?.Invoke();
     }
 
     [RelayCommand]
@@ -180,7 +187,8 @@ public sealed partial class ClipsViewModel : TabViewModel
         }
         Selected = keep is not null && Visible.Contains(keep) ? keep : Visible.FirstOrDefault();
         SearchHint = $"Buscar em {_items.Count} {(_items.Count == 1 ? "item" : "itens")}…";
-        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ShowNothingCopied));
+        OnPropertyChanged(nameof(ShowNothingFound));
     }
 
     private void Persist() => ClipboardStore.Save(_items, _storePath);
