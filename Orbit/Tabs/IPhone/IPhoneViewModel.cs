@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -40,6 +41,24 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [ObservableProperty] private BitmapSource? _qrImage;
     [ObservableProperty] private string? _pairLink;
     [ObservableProperty] private bool _hasPairing;
+
+    // Integração com o Tailscale instalado (via CLI): status, endereço automático, publicar.
+    [ObservableProperty] private string _tailscaleStatus = "Verificando o Tailscale…";
+    [ObservableProperty] private bool _isServing;
+    [ObservableProperty] private bool _canPublish;
+    [ObservableProperty] private string? _enableUrl;   // link do painel quando falta liberar HTTPS/Serve
+    [ObservableProperty] private bool _tailscaleBusy;
+
+    public bool ShowPublish => CanPublish && !IsServing && !TailscaleBusy;
+    public bool ShowUnpublish => IsServing && !TailscaleBusy;
+    partial void OnIsServingChanged(bool value) => NotifyPublishButtons();
+    partial void OnCanPublishChanged(bool value) => NotifyPublishButtons();
+    partial void OnTailscaleBusyChanged(bool value) => NotifyPublishButtons();
+    private void NotifyPublishButtons()
+    {
+        OnPropertyChanged(nameof(ShowPublish));
+        OnPropertyChanged(nameof(ShowUnpublish));
+    }
 
     public bool HasQr => QrImage is not null;
     partial void OnQrImageChanged(BitmapSource? value) => OnPropertyChanged(nameof(HasQr));
@@ -121,12 +140,122 @@ public sealed partial class IPhoneViewModel : TabViewModel
         {
             RefreshTokens();
             RefreshActivity();
+            _ = RefreshTailscaleAsync();
             return;
         }
         // O token do pareamento aparece uma vez só: some ao sair da aba.
         QrImage = null;
         PairLink = null;
         HasPairing = false;
+    }
+
+    private async Task RefreshTailscaleAsync()
+    {
+        var exe = TailscaleCli.FindExe();
+        if (exe is null)
+        {
+            ApplyTailscale(new TailscaleInfo(false, false, null, false), serving: false);
+            return;
+        }
+        try
+        {
+            var status = await TailscaleCli.RunAsync(exe, new[] { "status", "--json" }, TimeSpan.FromSeconds(5));
+            var info = TailscaleCli.ParseStatus(status.Stdout);
+            bool serving = false;
+            if (info.Running)
+            {
+                var serve = await TailscaleCli.RunAsync(exe, new[] { "serve", "status", "--json" }, TimeSpan.FromSeconds(5));
+                serving = TailscaleCli.IsServing(serve.Stdout, _settings.BridgePort);
+            }
+            ApplyTailscale(info, serving);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Tailscale: falha ao consultar o status");
+            TailscaleStatus = "Não consegui falar com o Tailscale.";
+        }
+    }
+
+    private void ApplyTailscale(TailscaleInfo info, bool serving)
+    {
+        TailscaleStatus = TailscaleCli.Describe(info, serving);
+        IsServing = serving;
+        CanPublish = info.Running && info.HttpsReady;
+        EnableUrl = info.Running && !info.HttpsReady ? TailscaleCli.AdminDnsUrl : null;
+        // Endereço automático: só preenche se o usuário ainda não escreveu nada.
+        if (info.DnsName is { } dns && string.IsNullOrWhiteSpace(PublicUrl)) PublicUrl = "https://" + dns;
+    }
+
+    // tailscale serve --bg --https=443 http://127.0.0.1:<porta> (tailnet só; nunca funnel).
+    [RelayCommand]
+    private async Task Publish()
+    {
+        if (TailscaleCli.FindExe() is not { } exe) return;
+        if (!Enabled) Enabled = true; // publicar sem a ponte ligada não serve pra nada
+        TailscaleBusy = true;
+        TailscaleStatus = "Publicando…";
+        try
+        {
+            var r = await TailscaleCli.RunAsync(exe, TailscaleCli.ServeArgs(_settings.BridgePort), TimeSpan.FromSeconds(20));
+            if (r.TimedOut || r.ExitCode != 0)
+            {
+                Log.Warning("Tailscale serve falhou ({Codigo}): {Saida}", r.ExitCode, r.All);
+                if (TailscaleCli.ExtractEnableUrl(r.All) is { } url)
+                {
+                    EnableUrl = url;
+                    TailscaleStatus = "Libere o Serve no painel do Tailscale (botão ao lado) e publique de novo.";
+                    return;
+                }
+                TailscaleStatus = "Falhou: " + FirstLine(r.All);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Tailscale: falha ao publicar");
+            TailscaleStatus = "Falhou ao chamar o Tailscale.";
+            return;
+        }
+        finally
+        {
+            TailscaleBusy = false;
+        }
+        await RefreshTailscaleAsync();
+    }
+
+    [RelayCommand]
+    private async Task Unpublish()
+    {
+        if (TailscaleCli.FindExe() is not { } exe) return;
+        TailscaleBusy = true;
+        try
+        {
+            var r = await TailscaleCli.RunAsync(exe, TailscaleCli.ServeOffArgs(), TimeSpan.FromSeconds(10));
+            if (r.ExitCode != 0) Log.Warning("Tailscale serve off falhou ({Codigo}): {Saida}", r.ExitCode, r.All);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Tailscale: falha ao despublicar");
+        }
+        finally
+        {
+            TailscaleBusy = false;
+        }
+        await RefreshTailscaleAsync();
+    }
+
+    [RelayCommand]
+    private void OpenEnableUrl()
+    {
+        if (EnableUrl is null) return;
+        try { Process.Start(new ProcessStartInfo(EnableUrl) { UseShellExecute = true }); }
+        catch (Exception ex) { Log.Warning(ex, "Não abri {Url}", EnableUrl); }
+    }
+
+    private static string FirstLine(string text)
+    {
+        var line = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "sem detalhes";
+        return line.Length > 90 ? line[..90] + "…" : line;
     }
 
     [RelayCommand]

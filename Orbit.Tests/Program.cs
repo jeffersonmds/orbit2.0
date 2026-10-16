@@ -61,6 +61,7 @@ public static class Program
         TokenAuditTests();
         BridgeServerTests();
         IPhoneTests();
+        TailscaleTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -86,6 +87,32 @@ public static class Program
         Check("pwa: ícone", http.GetAsync("/apple-touch-icon.png").Result.IsSuccessStatusCode);
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
+    }
+
+    private static void TailscaleTests()
+    {
+        var ok = TailscaleCli.ParseStatus("{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"pc.tail1.ts.net.\"},\"CertDomains\":[\"pc.tail1.ts.net\"]}");
+        Check("tailscale: status ok", ok.Running && ok.DnsName == "pc.tail1.ts.net" && ok.HttpsReady);
+        var semHttps = TailscaleCli.ParseStatus("{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"pc.tail1.ts.net.\"},\"CertDomains\":null}");
+        Check("tailscale: sem HTTPS", semHttps.Running && !semHttps.HttpsReady);
+        var parado = TailscaleCli.ParseStatus("{\"BackendState\":\"Stopped\"}");
+        Check("tailscale: desconectado", !parado.Running && parado.DnsName is null);
+        Check("tailscale: JSON quebrado = desconectado", !TailscaleCli.ParseStatus("{ruim").Running);
+
+        var serving = "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"pc.tail1.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:5191\"}}}}}";
+        Check("tailscale: serve aponta pra ponte", TailscaleCli.IsServing(serving, 5191));
+        Check("tailscale: serve em outra porta não conta", !TailscaleCli.IsServing(serving, 8080));
+        Check("tailscale: serve vazio", !TailscaleCli.IsServing("{}", 5191) && !TailscaleCli.IsServing("", 5191));
+
+        Check("tailscale: args do serve", string.Join(" ", TailscaleCli.ServeArgs(5191)) == "serve --bg --yes --https=443 http://127.0.0.1:5191");
+        Check("tailscale: nunca funnel", !TailscaleCli.ServeArgs(5191).Contains("funnel") && !TailscaleCli.ServeOffArgs().Contains("funnel"));
+        Check("tailscale: link de ativação", TailscaleCli.ExtractEnableUrl("Serve is not enabled.\nTo enable, visit:\n\n  https://login.tailscale.com/f/serve?node=abc123\n")
+            == "https://login.tailscale.com/f/serve?node=abc123");
+        Check("tailscale: sem link", TailscaleCli.ExtractEnableUrl("tudo certo") is null);
+
+        Check("tailscale: textos", TailscaleCli.Describe(new TailscaleInfo(false, false, null, false), false).Contains("não instalado")
+            && TailscaleCli.Describe(semHttps, false).Contains("HTTPS")
+            && TailscaleCli.Describe(ok, true).Contains("Publicado"));
     }
 
     private static void IPhoneTests()
