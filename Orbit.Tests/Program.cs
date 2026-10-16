@@ -45,6 +45,7 @@ public static class Program
         CameraPresetTests();
         StreamTicketTests();
         MjpegTests();
+        CameraTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -511,6 +512,15 @@ public static class Program
         var tk3 = t.Issue("dev-C", CameraPreset.Default, now);
         t.Issue("dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
         Check("tíquete: emitir substitui", t.Claim(tk3, now) is null);
+    }
+
+    private static void CameraTests()
+    {
+        var ordered = Camera.OrderDevices([
+            new CameraDevice("b", "Logitech BRIO"),
+            new CameraDevice("a", "Câmera Integrada"),
+        ]);
+        Check("câmera: ordena por nome", string.Join(",", ordered.Select(d => d.Id)) == "a,b");
     }
 
     private static void MjpegTests()
