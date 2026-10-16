@@ -44,6 +44,18 @@ Verificado depois sem iPhone: PWA renderizado no Edge headless (layout ok; corri
 esticados) e rotas exercitadas por HTTP num servidor isolado (link, clipboard UTF-8, upload, energia, 401, no-cache). Falta: revisão rápida, teste real no iPhone (precisa do Tailscale — **não
 instalado nesta máquina**; instalar é decisão do usuário), aceitação e merge no `master`.
 
+## Verificado no Orbit real (2026-10-16, sem iPhone)
+
+- Barra com as 11 abas cabe; aba iPhone renderiza.
+- Ligar a ponte → "Ligada · 127.0.0.1:5191"; `netstat` mostra só `127.0.0.1:5191`.
+- `/health` e `/` (PWA) 200 sem token; `/api/stats` 401 sem token.
+- Parear (sem endereço do Tailscale) → mostra só o token + "Copiar"; com o token, `/api/stats` e
+  `/api/media` devolvem dados reais (CPU/RAM/disco/bateria; música do Spotify + volume).
+- Revogar → 401; desligar → porta fechada; `BridgeEnabled` volta a `false`, `tokens.json` vazio.
+
+Falta só: Tailscale instalado + `tailscale serve`, abrir no iPhone, adicionar à Tela de Início e
+os Atalhos (docs/tailscale-setup.md, docs/atalhos-ios.md).
+
 ## Como testar sem iPhone
 
 Um servidor isolado (handlers falsos, dados em `%TEMP%`) foi usado em
