@@ -53,6 +53,13 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **Apps** (`Tabs/Apps/`): `shell:AppsFolder` via COM numa thread STA (`Sta.Run`); ícones por
   `IShellItemImageFactory` (alfa direto → `Bgra32`) com cache em `app-icons\`; abre por shell
   execute de `shell:AppsFolder\<id>`.
+- **Ponte** (`Bridge/`): Kestrel in-process (`BridgeServer`, `CreateSlimBuilder`) só em
+  `127.0.0.1:BridgePort` (padrão 5191), **desligada por padrão** (aba iPhone liga). Não conhece
+  WPF: chama `BridgeHandlers` (delegates que o `IslandViewModel` implementa com Dispatcher).
+  `/api/*` exige `Authorization: Bearer` (tokens só como SHA-256 em `tokens.json`), rate limit e
+  auditoria em `audit.jsonl`; `/health` e o PWA (`Bridge/wwwroot`, HTML/JS puro, copiado pra
+  `<saída>\wwwroot`) são abertos. Testada de ponta a ponta no harness com `HttpClient` em porta
+  efêmera. Exposição ao iPhone é pelo `tailscale serve` (docs/tailscale-setup.md), nunca funnel.
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça
