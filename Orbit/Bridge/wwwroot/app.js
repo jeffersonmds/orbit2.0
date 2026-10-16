@@ -242,6 +242,7 @@ document.querySelectorAll('[data-power]').forEach(b => b.onclick = async () => {
 const camImg = $('#camImg'), camToggle = $('#camToggle'), camShot = $('#camShot');
 const camDevice = $('#camDevice'), camQuality = $('#camQuality'), camView = $('#camView'), camMsg = $('#camMsg');
 let camStreaming = false, camLoaded = false;
+const camName = () => camDevice.selectedOptions[0]?.textContent || '';
 
 function camSay(msg) {
   camMsg.textContent = msg || '';
@@ -273,7 +274,7 @@ async function camStart() {
     const r = await fetch('/api/camera/open', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: camDevice.value, quality: camQuality.value, fps: '24' }),
+      body: JSON.stringify({ deviceId: camDevice.value, name: camName(), quality: camQuality.value, fps: '24' }),
     });
     if (r.status === 403) { camSay('Ligue "Câmera" na aba iPhone do PC.'); return; }
     if (!r.ok) { camSay('Não consegui abrir a câmera.'); return; }
@@ -288,22 +289,33 @@ async function camStart() {
   } catch { camSay('PC fora do ar'); }
 }
 
+// GIF 1x1 transparente: atribuir um src NOVO aborta a conexão MJPEG (o Safari não a fecha só
+// removendo o atributo), e aí o PC solta a câmera e apaga a luz.
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 function camStop() {
-  camImg.removeAttribute('src');
   camImg.onerror = null;
+  camImg.src = BLANK; // solta a <img>
   camStreaming = false;
   camToggle.textContent = 'Ver câmera';
   camView.classList.add('hidden');
+  // o Safari não aborta a conexão MJPEG sozinho: manda o PC fechar a câmera (apaga a luz)
+  if (token) fetch('/api/camera/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
 }
 
 camToggle.onclick = () => camStreaming ? camStop() : camStart();
+
+// Trocar câmera/qualidade com o stream ligado reabre direto na nova (novo tíquete; o <img> novo
+// aborta o anterior e o PC solta a câmera antiga).
+const camSwitch = () => { if (camStreaming) camStart(); };
+camDevice.onchange = camSwitch;
+camQuality.onchange = camSwitch;
 
 camShot.onclick = async () => {
   try {
     const r = await fetch('/api/camera/photo', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: camDevice.value }),
+      body: JSON.stringify({ deviceId: camDevice.value, name: camName() }),
     });
     if (!r.ok) { toast('Não consegui tirar a foto'); return; }
     const blob = await r.blob();

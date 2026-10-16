@@ -26,7 +26,7 @@ public sealed class Camera : IDisposable
     private MediaCapture? _capture;
     private MediaFrameReader? _reader;
     private string? _openDevice;
-    private int _viewers;
+    private CancellationTokenSource? _session; // sessão de stream atual; cancelar encerra o stream
 
     private readonly object _frameLock = new();
     private byte[]? _latest;
@@ -51,17 +51,53 @@ public sealed class Camera : IDisposable
     public static IReadOnlyList<CameraDevice> OrderDevices(IEnumerable<CameraDevice> devices) =>
         devices.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
-    // Garante a câmera aberta no dispositivo/preset dados e conta +1 viewer. O IDisposable solta.
-    public async Task<IDisposable> OpenStreamAsync(string deviceId, Orbit.Bridge.CameraPreset preset)
+    // Abre a câmera e começa uma sessão. O iPhone (Safari) NÃO aborta a conexão MJPEG ao parar nem
+    // ao trocar, então não dá pra contar viewers pela conexão: cada abertura cancela a sessão anterior
+    // (derruba o stream antigo) e o fim real é explícito (EndStream/CloseAsync). O token devolvido é
+    // observado pelo loop do stream; cancelá-lo encerra o stream na hora.
+    public async Task<(CancellationTokenSource Session, CancellationToken Token)> OpenStreamAsync(string deviceId, Orbit.Bridge.CameraPreset preset)
     {
         await _gate.WaitAsync();
         try
         {
-            if (_capture is not null && _openDevice != deviceId) await CloseLocked();
-            if (_capture is null) await OpenLocked(deviceId, preset);
-            _viewers++;
-            KeepAwake.On();
-            return new Release(this);
+            _session?.Cancel();
+            _session?.Dispose();
+            _session = null;
+            await CloseLocked();
+            await OpenLocked(deviceId, preset);
+            _session = new CancellationTokenSource();
+            return (_session, _session.Token);
+        }
+        finally { _gate.Release(); }
+    }
+
+    // Fim do stream visto pelo servidor (conexão caiu de verdade). Só fecha se ainda é a sessão
+    // atual — num switch a sessão já virou outra e o device novo deve continuar aberto.
+    public async Task EndStream(CancellationTokenSource session)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_session == session)
+            {
+                _session.Dispose();
+                _session = null;
+                await CloseLocked();
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    // Parar explícito (o PWA chama ao tocar em "Parar"): derruba a sessão e fecha a câmera já.
+    public async Task CloseAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            _session?.Cancel();
+            _session?.Dispose();
+            _session = null;
+            await CloseLocked();
         }
         finally { _gate.Release(); }
     }
@@ -92,6 +128,7 @@ public sealed class Camera : IDisposable
         _capture = capture;
         _reader = reader;
         _openDevice = deviceId;
+        KeepAwake.On();
         Log.Information("Câmera: aberta {Dev}", deviceId);
     }
 
@@ -167,6 +204,7 @@ public sealed class Camera : IDisposable
 
     private async Task CloseLocked()
     {
+        if (_capture is null && _reader is null) return;
         if (_reader is not null)
         {
             _reader.FrameArrived -= OnFrame;
@@ -178,22 +216,13 @@ public sealed class Camera : IDisposable
         _capture = null;
         _openDevice = null;
         lock (_frameLock) _latest = null;
+        KeepAwake.Off();
+        // O LED da webcam só apaga quando o objeto COM nativo da MediaCapture é liberado; o Dispose
+        // gerenciado não faz isso na hora. Forçar a finalização solta o sensor (e apaga a luz) já.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
         Log.Information("Câmera: fechada");
-    }
-
-    private async Task ReleaseAsync()
-    {
-        await _gate.WaitAsync();
-        try
-        {
-            if (--_viewers <= 0)
-            {
-                _viewers = 0;
-                await CloseLocked();
-                KeepAwake.Off();
-            }
-        }
-        finally { _gate.Release(); }
     }
 
     private static TaskCompletionSource<byte[]> NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -201,15 +230,6 @@ public sealed class Camera : IDisposable
     public void Dispose()
     {
         // ponytail: não dispõe _gate — o serviço é reusado após desligar/ligar a ponte.
-        try { ReleaseAsync().GetAwaiter().GetResult(); } catch { }
-    }
-
-    private sealed class Release(Camera cam) : IDisposable
-    {
-        private int _done;
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _done, 1) == 0) _ = cam.ReleaseAsync();
-        }
+        try { CloseAsync().GetAwaiter().GetResult(); } catch { }
     }
 }

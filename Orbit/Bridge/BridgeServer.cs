@@ -24,8 +24,8 @@ public sealed record LinkRequest(string? Url);
 public sealed record TextRequest(string? Text);
 public sealed record VolumeRequest(double Percent);
 public sealed record PairRequest(string? Code);
-public sealed record CameraOpenRequest(string? DeviceId, string? Quality, string? Fps);
-public sealed record CameraPhotoRequest(string? DeviceId);
+public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps);
+public sealed record CameraPhotoRequest(string? DeviceId, string? Name);
 
 // Kestrel dentro do processo do Orbit, só em 127.0.0.1 (o `tailscale serve` é quem expõe).
 // Toda rota /api exige token e passa por rate limit; /health e o PWA (arquivos estáticos) não.
@@ -243,7 +243,7 @@ public sealed class BridgeServer : IAsyncDisposable
                 if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
                 var preset = CameraPreset.Parse(req.Quality, req.Fps);
                 var ticket = tickets.Issue(req.DeviceId, preset, DateTime.Now);
-                h.Notify(new BridgeEvent("Câmera aberta pelo iPhone", req.DeviceId));
+                h.Notify(new BridgeEvent("Câmera aberta pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name));
                 return Results.Ok(new { ticket });
             });
 
@@ -254,38 +254,41 @@ public sealed class BridgeServer : IAsyncDisposable
                     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return;
                 }
-                IDisposable handle;
-                try { handle = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset); }
+                System.Threading.CancellationTokenSource session;
+                System.Threading.CancellationToken sessionToken;
+                try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset); }
                 catch (Exception ex)
                 {
                     Log.Warning(ex, "Câmera: não abriu");
                     ctx.Response.StatusCode = StatusCodes.Status409Conflict; // ocupada por outro app, etc.
                     return;
                 }
-                using (handle)
+                // Encerra por: conexão caiu (RequestAborted), parar explícito ou troca (sessionToken).
+                using var link = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, sessionToken);
+                try
                 {
                     ctx.Response.ContentType = Mjpeg.ContentType;
                     ctx.Response.Headers.CacheControl = "no-cache, no-store";
                     var body = ctx.Response.BodyWriter;
-                    try
+                    while (!link.Token.IsCancellationRequested)
                     {
-                        while (!ctx.RequestAborted.IsCancellationRequested)
-                        {
-                            var jpeg = await camera.NextFrameAsync(ctx.RequestAborted);
-                            await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), ctx.RequestAborted);
-                            await body.WriteAsync(jpeg, ctx.RequestAborted);
-                            await body.FlushAsync(ctx.RequestAborted);
-                        }
+                        var jpeg = await camera.NextFrameAsync(link.Token);
+                        await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), link.Token);
+                        await body.WriteAsync(jpeg, link.Token);
+                        await body.FlushAsync(link.Token);
                     }
-                    catch (OperationCanceledException) { /* iPhone fechou */ }
                 }
+                catch (OperationCanceledException) { /* parar, troca ou iPhone fechou */ }
+                finally { await camera.EndStream(session); }
             });
+
+            api.MapPost("/camera/close", async () => { await camera.CloseAsync(); return Results.NoContent(); });
 
             api.MapPost("/camera/photo", async (CameraPhotoRequest req) =>
             {
                 if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
                 var jpeg = await camera.PhotoAsync(req.DeviceId);
-                h.Notify(new BridgeEvent("Foto capturada pelo iPhone", req.DeviceId));
+                h.Notify(new BridgeEvent("Foto capturada pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name));
                 return Results.File(jpeg, "image/jpeg");
             });
         }
