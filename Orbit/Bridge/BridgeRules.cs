@@ -108,7 +108,9 @@ public static class BridgeRules
     public static bool ShouldAudit(string method, string path) =>
         !(string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
           && (path.EndsWith("/stats", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/media", StringComparison.OrdinalIgnoreCase)
-              || path.EndsWith("/media/cover", StringComparison.OrdinalIgnoreCase)));
+              || path.EndsWith("/media/cover", StringComparison.OrdinalIgnoreCase)
+              || path.EndsWith("/camera/stream", StringComparison.OrdinalIgnoreCase)
+              || path.EndsWith("/camera/devices", StringComparison.OrdinalIgnoreCase)));
 
     public static string Preview(string text)
     {

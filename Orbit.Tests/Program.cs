@@ -46,6 +46,7 @@ public static class Program
         StreamTicketTests();
         MjpegTests();
         CameraTests();
+        CameraAuditTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -521,6 +522,13 @@ public static class Program
             new CameraDevice("a", "Câmera Integrada"),
         ]);
         Check("câmera: ordena por nome", string.Join(",", ordered.Select(d => d.Id)) == "a,b");
+    }
+
+    private static void CameraAuditTests()
+    {
+        Check("audit: ignora o stream", !BridgeRules.ShouldAudit("GET", "/api/camera/stream"));
+        Check("audit: lista de câmeras não audita", !BridgeRules.ShouldAudit("GET", "/api/camera/devices"));
+        Check("audit: abrir câmera audita", BridgeRules.ShouldAudit("POST", "/api/camera/open"));
     }
 
     private static void MjpegTests()
