@@ -41,6 +41,9 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [ObservableProperty] private string? _pairLink;
     [ObservableProperty] private bool _hasPairing;
 
+    public bool HasQr => QrImage is not null;
+    partial void OnQrImageChanged(BitmapSource? value) => OnPropertyChanged(nameof(HasQr));
+
     public IPhoneViewModel(OrbitSettings settings, TokenStore tokens, AuditLog audit, Func<BridgeHandlers> handlers, string webRoot)
     {
         _settings = settings;
@@ -55,15 +58,24 @@ public sealed partial class IPhoneViewModel : TabViewModel
         _audit.Written += _ => Application.Current?.Dispatcher.BeginInvoke(RefreshActivity);
     }
 
+    private Task _toggle = Task.CompletedTask; // liga/desliga em fila: cliques rápidos não sobrepõem Start/Stop
+
     // Chamado uma vez pela ilha no startup.
-    public Task StartIfEnabledAsync() => Enabled ? StartAsync() : Task.CompletedTask;
+    public Task StartIfEnabledAsync() => _toggle = ApplyAsync(_toggle);
+
+    private async Task ApplyAsync(Task previous)
+    {
+        try { await previous; } catch { /* a anterior já logou */ }
+        if (Enabled == Server.Running) return;
+        await (Enabled ? StartAsync() : StopAsync());
+    }
 
     partial void OnEnabledChanged(bool value)
     {
         if (_syncing) return;
         _settings.BridgeEnabled = value;
         SettingsStore.Save(_settings);
-        _ = value ? StartAsync() : StopAsync();
+        _toggle = ApplyAsync(_toggle);
     }
 
     partial void OnPublicUrlChanged(string value)
@@ -80,7 +92,8 @@ public sealed partial class IPhoneViewModel : TabViewModel
         try
         {
             Status = "Ligando…";
-            await Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, _handlers());
+            var handlers = _handlers(); // na UI thread: captura o Dispatcher
+            await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers));
             Status = $"Ligada · 127.0.0.1:{Server.Port}";
         }
         catch (Exception ex)
@@ -90,12 +103,14 @@ public sealed partial class IPhoneViewModel : TabViewModel
             _syncing = true;
             Enabled = false;
             _syncing = false;
+            _settings.BridgeEnabled = false;
+            SettingsStore.Save(_settings);
         }
     }
 
     private async Task StopAsync()
     {
-        try { await Server.StopAsync(); }
+        try { await Task.Run(() => Server.StopAsync()); }
         catch (Exception ex) { Log.Warning(ex, "Ponte: falha ao desligar"); }
         Status = "Desligada";
     }

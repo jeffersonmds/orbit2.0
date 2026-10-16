@@ -54,7 +54,11 @@
                         <Image Source="{Binding QrImage}" Width="150" Height="150" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                     </Border>
                     <TextBlock Text="Aponte a câmera do iPhone. O token aparece só agora." FontSize="11" Foreground="{StaticResource InkLo}"
-                               TextWrapping="Wrap" Margin="0,8,0,4"/>
+                               TextWrapping="Wrap" Margin="0,8,0,4"
+                               Visibility="{Binding QrImage, Converter={StaticResource NullToCollapsed}}"/>
+                    <TextBlock Text="Sem endereço do Tailscale: este é só o token (use nos Atalhos). O token aparece só agora."
+                               FontSize="11" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,8,0,4"
+                               Visibility="{Binding HasQr, Converter={StaticResource NotBoolToVis}}"/>
                     <TextBox Style="{StaticResource Field}" Text="{Binding PairLink, Mode=OneWay}" IsReadOnly="True" FontSize="11"/>
                     <Button Style="{StaticResource SmallButton}" Content="Copiar" Command="{Binding CopyPairLinkCommand}"
                             HorizontalAlignment="Left" Margin="0,6,0,0"/>

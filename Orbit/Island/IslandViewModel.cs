@@ -117,6 +117,7 @@ public sealed partial class IslandViewModel : ObservableObject
     {
         var ui = Application.Current.Dispatcher;
         var stats = new SystemStats();
+        stats.Read(ram: false, disk: false); // 1ª leitura de CPU é sempre 0 (sem delta)
         var statsGate = new object();
         return new BridgeHandlers
         {
@@ -127,10 +128,19 @@ public sealed partial class IslandViewModel : ObservableObject
             },
             GetClipboard = () => ui.InvokeAsync(() =>
                 System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "").Task,
-            SetClipboard = text => ui.InvokeAsync(() => { ClipboardReader.SetText(text); }).Task,
+            SetClipboard = text => ui.InvokeAsync(() =>
+            {
+                if (!ClipboardReader.SetText(text)) throw new InvalidOperationException("Clipboard ocupado");
+            }).Task,
             Power = action =>
             {
-                Orbit.Services.Power.Execute(action);
+                // Responde antes: suspender só retorna quando o PC acorda; desligar mataria a resposta.
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(500);
+                    try { Orbit.Services.Power.Execute(action); }
+                    catch (Exception ex) { Log.Warning(ex, "Ponte: falha em {Acao}", action); }
+                });
                 return Task.CompletedTask;
             },
             Media = command => ui.InvokeAsync(() => command switch

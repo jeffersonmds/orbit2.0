@@ -10,6 +10,6 @@ public static class Qr
     {
         using var generator = new QRCodeGenerator();
         using var data = generator.CreateQrCode(text, QRCodeGenerator.ECCLevel.M);
-        return new PngByteQRCode(data).GetGraphic(8);
+        return new PngByteQRCode(data).GetGraphic(4);
     }
 }

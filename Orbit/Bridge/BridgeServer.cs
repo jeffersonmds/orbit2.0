@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.RateLimiting;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -30,6 +31,8 @@ public sealed class BridgeServer : IAsyncDisposable
     private WebApplication? _app;
 
     public int Port { get; private set; }
+    private long _lastUnauthorizedAuditTicks = long.MinValue / 2;
+
     public bool Running => _app is not null;
 
     // port 0 = porta efêmera (testes).
@@ -70,7 +73,11 @@ public sealed class BridgeServer : IAsyncDisposable
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
                 if (name is null)
                 {
-                    audit.Write("?", $"{ctx.Request.Method} {ctx.Request.Path}", "401");
+                    // flood sem token não vira escrita em disco por requisição
+                    var now = Environment.TickCount64;
+                    var last = Interlocked.Read(ref _lastUnauthorizedAuditTicks);
+                    if (now - last >= 1000 && Interlocked.CompareExchange(ref _lastUnauthorizedAuditTicks, now, last) == last)
+                        audit.Write("?", $"{ctx.Request.Method} {ctx.Request.Path}", "401");
                     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return;
                 }

@@ -920,6 +920,7 @@ public static class Program
 
         var log = File.ReadAllText(Path.Combine(dir, "audit.jsonl"));
         Check("ponte: auditoria registra ações", log.Contains("POST /api/links/open") && log.Contains("\"token\":\"teste\""));
+        Check("ponte: 401 em flood audita no máximo 1 por segundo", log.Split("\"token\":\"?\"").Length - 1 < 20);
         Check("ponte: auditoria ignora polling de stats", !log.Contains("GET /api/stats\",\"resultado\":\"200"));
 
         tokens.Revoke(tokens.List()[0].Hash);
