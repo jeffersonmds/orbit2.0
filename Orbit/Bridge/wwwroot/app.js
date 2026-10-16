@@ -144,9 +144,35 @@ async function refreshStats() {
 }
 
 // --- Energia ---
-document.querySelectorAll('[data-power]').forEach(b => b.onclick = () => {
+// Toda ação de energia pede confirmação numa folha própria (não no confirm() do navegador).
+const POWER_TEXT = {
+  lock: ['Bloquear o PC?', 'A tela do PC vai para a tela de bloqueio.', false],
+  sleep: ['Suspender o PC?', 'A ponte fica fora do ar até o PC acordar.', false],
+  restart: ['Reiniciar o PC?', 'Programas abertos serão fechados. Trabalho não salvo pode ser perdido.', true],
+  shutdown: ['Desligar o PC?', 'Programas abertos serão fechados e a ponte sai do ar.', true],
+};
+function ask(title, text, okLabel, dangerous) {
+  return new Promise(resolve => {
+    $('#sheetTitle').textContent = title;
+    $('#sheetText').textContent = text;
+    const ok = $('#sheetOk');
+    ok.textContent = okLabel;
+    ok.classList.toggle('calm', !dangerous);
+    $('#sheet').classList.remove('hidden');
+    const done = answer => {
+      $('#sheet').classList.add('hidden');
+      ok.onclick = $('#sheetCancel').onclick = $('#sheet').onclick = null;
+      resolve(answer);
+    };
+    ok.onclick = e => { e.stopPropagation(); done(true); };
+    $('#sheetCancel').onclick = e => { e.stopPropagation(); done(false); };
+    $('#sheet').onclick = e => { if (e.target === $('#sheet')) done(false); }; // toque fora = cancelar
+  });
+}
+document.querySelectorAll('[data-power]').forEach(b => b.onclick = async () => {
   const label = b.textContent.trim();
-  if (b.classList.contains('danger') && !confirm(`${label} o PC agora?`)) return;
+  const [title, text, dangerous] = POWER_TEXT[b.dataset.power];
+  if (!(await ask(title, text, label, dangerous))) return;
   run(() => api('/power/' + b.dataset.power, { method: 'POST' }), `${label}: enviado`);
 });
 
