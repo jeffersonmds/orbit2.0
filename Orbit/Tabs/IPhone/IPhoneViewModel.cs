@@ -32,6 +32,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
     public override string Title => "iPhone";
 
     public BridgeServer Server { get; } = new();
+    private readonly PairingCodes _codes = new();
     public ObservableCollection<TokenInfo> Tokens { get; } = new();
     public ObservableCollection<AuditRow> Activity { get; } = new();
 
@@ -41,6 +42,8 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [ObservableProperty] private BitmapSource? _qrImage;
     [ObservableProperty] private string? _pairLink;
     [ObservableProperty] private bool _hasPairing;
+    [ObservableProperty] private string? _pairCode;      // "482 913"
+    [ObservableProperty] private string? _pairCodeHint;  // "vale até 10:32"
 
     // Integração com o Tailscale instalado (via CLI): status, endereço automático, publicar.
     [ObservableProperty] private string _tailscaleStatus = "Verificando o Tailscale…";
@@ -112,7 +115,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         {
             Status = "Ligando…";
             var handlers = _handlers(); // na UI thread: captura o Dispatcher
-            await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers));
+            await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers, _codes));
             Status = $"Ligada · 127.0.0.1:{Server.Port}";
         }
         catch (Exception ex)
@@ -146,7 +149,9 @@ public sealed partial class IPhoneViewModel : TabViewModel
         // O token do pareamento aparece uma vez só: some ao sair da aba.
         QrImage = null;
         PairLink = null;
+        PairCode = null;
         HasPairing = false;
+        // O código continua valendo até expirar: dá pra fechar a ilha e digitar no iPhone com calma.
     }
 
     private async Task RefreshTailscaleAsync()
@@ -280,6 +285,9 @@ public sealed partial class IPhoneViewModel : TabViewModel
             ? BridgeRules.PairingLink(baseUrl, token)
             : token; // sem endereço: mostra só o token (pros Atalhos)
         QrImage = baseUrl.Length > 0 ? TryRenderQr(PairLink) : null;
+        var now = DateTime.Now;
+        PairCode = PairingCodes.Format(_codes.Issue(token, now));
+        PairCodeHint = $"Digite no app Orbit do iPhone · vale até {now + PairingCodes.Lifetime:HH:mm}";
         HasPairing = true;
         RefreshTokens();
     }

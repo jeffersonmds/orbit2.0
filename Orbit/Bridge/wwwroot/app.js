@@ -50,9 +50,25 @@ async function ping() {
 }
 
 // --- Parear ---
-$('#saveToken').onclick = () => {
-  // aceita o link inteiro do QR ou só o token
+$('#saveToken').onclick = async () => {
+  // aceita: código de 6 dígitos (troca pelo token no PC), o link inteiro do QR, ou só o token
   const raw = $('#tokenInput').value.trim();
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 6 && raw.replace(/[\s-]/g, '').length === 6) {
+    try {
+      const r = await fetch('/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: digits }) });
+      if (r.status === 429) { toast('Muitas tentativas: espere 1 minuto'); return; }
+      if (!r.ok) { toast('Código inválido ou expirado — gere outro no PC'); return; }
+      const { token: t } = await r.json();
+      token = t;
+      localStorage.setItem('orbit.token', t);
+      $('#tokenInput').value = '';
+      showPair(false);
+      toast('Pareado com o PC');
+      refresh();
+    } catch { toast('PC fora do ar'); }
+    return;
+  }
   let v = raw.replace(/^.*[#&]token=/, '');
   try { v = decodeURIComponent(v); } catch {}
   if (!v) return;

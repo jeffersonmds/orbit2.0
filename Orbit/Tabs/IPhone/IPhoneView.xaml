@@ -68,12 +68,16 @@
         <Border Grid.Column="2" Style="{StaticResource Card}">
             <Grid>
                 <StackPanel Visibility="{Binding HasPairing, Converter={StaticResource BoolToVis}}">
-                    <Border Background="White" CornerRadius="10" Padding="8" HorizontalAlignment="Center"
+                    <TextBlock Text="{Binding PairCode}" FontSize="30" FontWeight="SemiBold" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AccentBrush}" Typography.NumeralAlignment="Tabular"/>
+                    <TextBlock Text="{Binding PairCodeHint}" FontSize="11" Foreground="{StaticResource InkLo}"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,8"/>
+                    <Border Background="White" CornerRadius="8" Padding="6" HorizontalAlignment="Center"
                             Visibility="{Binding QrImage, Converter={StaticResource NullToCollapsed}}">
-                        <Image Source="{Binding QrImage}" Width="150" Height="150" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                        <Image Source="{Binding QrImage}" Width="104" Height="104" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                     </Border>
-                    <TextBlock Text="Aponte a câmera do iPhone. O token aparece só agora." FontSize="11" Foreground="{StaticResource InkLo}"
-                               TextWrapping="Wrap" Margin="0,8,0,4"
+                    <TextBlock Text="Ou aponte a câmera (abre no Safari). O link aparece só agora." FontSize="11" Foreground="{StaticResource InkLo}"
+                               TextWrapping="Wrap" Margin="0,6,0,4"
                                Visibility="{Binding QrImage, Converter={StaticResource NullToCollapsed}}"/>
                     <TextBlock Text="Sem endereço do Tailscale: este é só o token (use nos Atalhos). O token aparece só agora."
                                FontSize="11" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,8,0,4"

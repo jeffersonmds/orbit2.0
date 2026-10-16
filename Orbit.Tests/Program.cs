@@ -62,6 +62,7 @@ public static class Program
         BridgeServerTests();
         IPhoneTests();
         TailscaleTests();
+        PairingCodeTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -85,6 +86,51 @@ public static class Program
             && manifest.Content.Headers.ContentType?.MediaType == "application/manifest+json");
         Check("pwa: estático revalida (no-cache)", http.GetAsync("/app.js").Result.Headers.CacheControl?.NoCache == true);
         Check("pwa: ícone", http.GetAsync("/apple-touch-icon.png").Result.IsSuccessStatusCode);
+        server.StopAsync().GetAwaiter().GetResult();
+        Directory.Delete(dir, recursive: true);
+    }
+
+    private static void PairingCodeTests()
+    {
+        var now = new DateTime(2026, 10, 16, 10, 0, 0);
+        var codes = new PairingCodes();
+        var code = codes.Issue("TOKEN-A", now);
+        Check("pareamento: código de 6 dígitos", code.Length == 6 && code.All(char.IsAsciiDigit));
+        Check("pareamento: formato 3+3", PairingCodes.Format("482913") == "482 913");
+        Check("pareamento: aceita com espaço/hífen", PairingCodes.Normalize(" 482-913 ") == "482913");
+        Check("pareamento: código certo entrega o token", codes.Claim(PairingCodes.Format(code), now.AddMinutes(1)) == "TOKEN-A");
+        Check("pareamento: uso único", codes.Claim(code, now.AddMinutes(1)) is null);
+
+        var c2 = codes.Issue("TOKEN-B", now);
+        Check("pareamento: expira em 5 min", codes.Claim(c2, now.AddMinutes(5).AddSeconds(1)) is null);
+
+        var c3 = codes.Issue("TOKEN-C", now);
+        var wrong = c3 == "000000" ? "111111" : "000000";
+        for (int i = 0; i < PairingCodes.MaxAttempts; i++) codes.Claim(wrong, now);
+        Check("pareamento: trava após 5 erros", codes.Claim(c3, now) is null);
+
+        var c4 = codes.Issue("TOKEN-D", now);
+        var c5 = codes.Issue("TOKEN-E", now);
+        // (1 chance em 1 milhão de os dois códigos sorteados serem iguais: aí o check não se aplica)
+        Check("pareamento: código novo substitui o anterior", c4 == c5 || (codes.Claim(c4, now) is null && codes.Claim(c5, now) == "TOKEN-E"));
+
+        // ponta a ponta: POST /pair (sem token) → token que abre a /api
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var live = new PairingCodes();
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "www"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), new BridgeHandlers(), live)
+            .GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        var token = tokens.Create("iPhone");
+        var pin = live.Issue(token, DateTime.Now);
+        Check("pareamento: código errado = 400", http.PostAsJsonAsync("/pair", new { code = pin == "123456" ? "654321" : "123456" }).Result.StatusCode == HttpStatusCode.BadRequest);
+        var ok = http.PostAsJsonAsync("/pair", new { code = pin }).Result;
+        var body = ok.Content.ReadAsStringAsync().Result;
+        Check("pareamento: código certo = 200 com token", ok.StatusCode == HttpStatusCode.OK && body.Contains(token));
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Check("pareamento: token recebido abre a API", http.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.OK);
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
     }

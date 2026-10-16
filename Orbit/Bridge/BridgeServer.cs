@@ -23,6 +23,7 @@ namespace Orbit.Bridge;
 public sealed record LinkRequest(string? Url);
 public sealed record TextRequest(string? Text);
 public sealed record VolumeRequest(double Percent);
+public sealed record PairRequest(string? Code);
 
 // Kestrel dentro do processo do Orbit, só em 127.0.0.1 (o `tailscale serve` é quem expõe).
 // Toda rota /api exige token e passa por rate limit; /health e o PWA (arquivos estáticos) não.
@@ -36,7 +37,9 @@ public sealed class BridgeServer : IAsyncDisposable
     public bool Running => _app is not null;
 
     // port 0 = porta efêmera (testes).
-    public async Task StartAsync(int port, string webRoot, TokenStore tokens, AuditLog audit, BridgeHandlers h)
+    // codes: pareamento por código de 6 dígitos (POST /pair, sem token). null = rota desligada.
+    public async Task StartAsync(int port, string webRoot, TokenStore tokens, AuditLog audit, BridgeHandlers h,
+        PairingCodes? codes = null)
     {
         if (_app is not null) return;
         bool hasWeb = Directory.Exists(webRoot);
@@ -59,6 +62,13 @@ public sealed class BridgeServer : IAsyncDisposable
             o.AddFixedWindowLimiter("api", w =>
             {
                 w.PermitLimit = 120;
+                w.Window = TimeSpan.FromMinutes(1);
+                w.QueueLimit = 0;
+            });
+            // Pareamento é a única rota aberta que aceita palpite: cota própria e baixa.
+            o.AddFixedWindowLimiter("pair", w =>
+            {
+                w.PermitLimit = 10;
                 w.Window = TimeSpan.FromMinutes(1);
                 w.QueueLimit = 0;
             });
@@ -94,6 +104,17 @@ public sealed class BridgeServer : IAsyncDisposable
             app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache" });
         }
         app.MapGet("/health", () => Results.Ok(new { ok = true }));
+        if (codes is not null)
+        {
+            app.MapPost("/pair", (PairRequest req) =>
+            {
+                var token = codes.Claim(req.Code, DateTime.Now);
+                audit.Write("?", "POST /pair", token is null ? "400" : "200");
+                if (token is null) return Results.BadRequest(new { erro = "Código inválido ou expirado." });
+                h.Notify(new BridgeEvent("Pareado", "O iPhone recebeu o acesso."));
+                return Results.Ok(new { token });
+            }).RequireRateLimiting("pair");
+        }
 
         var api = app.MapGroup("/api").RequireRateLimiting("api");
         api.AddEndpointFilter(async (ctx, next) =>
