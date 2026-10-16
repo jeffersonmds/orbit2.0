@@ -32,7 +32,7 @@ public sealed partial class AppTile : ObservableObject
 public sealed partial class AppsViewModel : TabViewModel
 {
     private static readonly TimeSpan CatalogMaxAge = TimeSpan.FromMinutes(10);
-    private const int MaxResults = 8;
+    private const int MaxResults = 6; // é o que cabe na altura do painel sem rolagem
 
     private readonly OrbitSettings _settings;
     private readonly string _iconDir;
@@ -72,7 +72,7 @@ public sealed partial class AppsViewModel : TabViewModel
 
     private async Task LoadCatalogAsync()
     {
-        Loading = true;
+        Loading = _all.Count == 0; // recarga periódica não cobre a grade de favoritos
         OnPropertyChanged(nameof(NoFavorites));
         try
         {
@@ -139,7 +139,8 @@ public sealed partial class AppsViewModel : TabViewModel
         if (tile is null) return;
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", "shell:AppsFolder\\" + tile.Entry.Id) { UseShellExecute = false });
+            // Shell execute do próprio caminho: ids com espaço ("Epson Scan 2") não quebram o argumento.
+            Process.Start(new ProcessStartInfo("shell:AppsFolder\\" + tile.Entry.Id) { UseShellExecute = true });
             _collapse();
         }
         catch (Exception ex)

@@ -10,8 +10,9 @@ namespace Orbit.Tabs.Apps;
 
 // Ícone de um app do shell:AppsFolder → PNG em cache (%AppData%\Orbit2\app-icons). Rodar em Sta.Run.
 // Extração via IShellItemImageFactory (serve pra app desktop e da Store). O HBITMAP vem 32bpp
-// pré-multiplicado; Imaging.CreateBitmapSourceFromHBitmap perderia o alfa (fundo preto),
-// então os bytes são copiados à mão.
+// com alfa DIRETO (não pré-multiplicado — medido: há pixels com cor > alfa);
+// Imaging.CreateBitmapSourceFromHBitmap perderia o alfa (fundo preto), então os bytes são
+// copiados à mão como Bgra32.
 public static class AppIcons
 {
     public static readonly string CacheDir = Path.Combine(SettingsStore.Dir, "app-icons");
@@ -33,7 +34,10 @@ public static class AppIcons
             var png = ToPng(hbmp);
             if (png is null) return null;
             Directory.CreateDirectory(cacheDir);
-            File.WriteAllBytes(path, png);
+            // Atômico: buscas rápidas extraem o mesmo ícone em paralelo; ninguém lê PNG pela metade.
+            var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllBytes(tmp, png);
+            File.Move(tmp, path, overwrite: true);
             return path;
         }
         catch (Exception ex)
@@ -58,7 +62,7 @@ public static class AppIcons
         Marshal.Copy(ds.dsBm.bmBits, px, 0, px.Length);
         if (ds.dsBmih.biHeight > 0) FlipRows(px, stride, h); // DIB de baixo pra cima
         FixAlpha(px);
-        var src = BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, px, stride);
+        var src = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, stride);
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(src));
         using var ms = new MemoryStream();
