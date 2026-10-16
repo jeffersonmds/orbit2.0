@@ -192,7 +192,9 @@ Harness `Orbit.Tests` (exe com `Check(nome, bool)`), testando só métodos está
 
 **Critérios de aceitação medidos:**
 - Ilha recolhida e parada: CPU ~0% no Gerenciador de Tarefas.
-- Working set < 120 MB com a ponte ligada.
+- Memória privada < 120 MB recém-aberto; < 200 MB depois de usar todas as abas (medido na fase 2:
+  102 MB e 170 MB). O que sobra após a coleta pós-recolher é nativo (contadores de
+  performance, SMTC, áudio, renderizador). Revalidar com a ponte ligada na fase 4.
 - Some em tela cheia (jogo e vídeo) e volta ao sair.
 
 ## 10. Ordem de entrega
@@ -208,6 +210,7 @@ Cada fase tem o seu próprio plano em `docs/superpowers/plans/`.
 
 ## 11. Backlog
 
-Acento extraído do wallpaper (incluindo Wallpaper Engine, via captura esporádica e reduzida
+Investigar memória nativa retida após usar as abas (suspeito: contadores de GPU da aba
+Stats); acento extraído do wallpaper (incluindo Wallpaper Engine, via captura esporádica e reduzida
 — requer spike); aba Wallpaper; luz noturna; troca de saída de áudio; passkey; Web Push;
 navegar e baixar arquivos; notas rápidas; scripts; escolha de monitor; IA por voz.

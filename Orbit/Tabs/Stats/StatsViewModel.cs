@@ -4,9 +4,11 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Serilog;
 using Orbit.Services;
 
 namespace Orbit.Tabs.Stats;
@@ -25,6 +27,7 @@ public sealed partial class StatsViewModel : TabViewModel
     private readonly GpuStats _gpu = new();
     private readonly NetStats _net = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private bool _busy;
 
     public override string Id => "stats";
     public override string Title => "Stats";
@@ -42,7 +45,7 @@ public sealed partial class StatsViewModel : TabViewModel
 
     public ObservableCollection<TopApp> TopApps { get; } = new();
 
-    public StatsViewModel() => _timer.Tick += (_, _) => Sample();
+    public StatsViewModel() => _timer.Tick += async (_, _) => await SampleAsync();
 
     public override void SetActive(bool active)
     {
@@ -53,32 +56,48 @@ public sealed partial class StatsViewModel : TabViewModel
             _gpu.Reset();
             return;
         }
-        Sample();
+        _ = SampleAsync();
         _timer.Start();
     }
 
-    private void Sample()
+    // As leituras (contadores de GPU, lista de processos, rede) rodam fora da UI thread:
+    // a 1ª leitura de GPU a frio leva ~1 s e travava a ilha. _busy evita leituras sobrepostas.
+    private async Task SampleAsync()
     {
-        var s = _sys.Read();
-        CpuText = $"{s.CpuPercent:0}%";
-        CpuRing = Ring.DashArray(s.CpuPercent / 100, RingDiameter, RingStroke);
-        RamText = $"{s.Ram.Percent:0}%";
-        RamRing = Ring.DashArray(s.Ram.Percent / 100, RingDiameter, RingStroke);
-        RamDetail = string.Format(Pt, "{0:0.0} / {1:0.0} GB", s.Ram.UsedGb, s.Ram.TotalGb);
-        DiskText = string.Format(Pt, "{0:0} / {1:0} GB", s.Disk.UsedGb, s.Disk.TotalGb);
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var r = await Task.Run(() => (
+                Sys: _sys.Read(),
+                Gpu: _gpu.Read(),
+                Net: _net.Read(),
+                Top: TopByMemory(ReadProcesses(), 5)));
 
-        double gpu = _gpu.Read();
-        GpuText = $"{gpu:0}%";
-        GpuRing = Ring.DashArray(gpu / 100, RingDiameter, RingStroke);
+            var s = r.Sys;
+            CpuText = $"{s.CpuPercent:0}%";
+            CpuRing = Ring.DashArray(s.CpuPercent / 100, RingDiameter, RingStroke);
+            RamText = $"{s.Ram.Percent:0}%";
+            RamRing = Ring.DashArray(s.Ram.Percent / 100, RingDiameter, RingStroke);
+            RamDetail = string.Format(Pt, "{0:0.0} / {1:0.0} GB", s.Ram.UsedGb, s.Ram.TotalGb);
+            DiskText = string.Format(Pt, "{0:0} / {1:0} GB", s.Disk.UsedGb, s.Disk.TotalGb);
+            GpuText = $"{r.Gpu:0}%";
+            GpuRing = Ring.DashArray(r.Gpu / 100, RingDiameter, RingStroke);
+            NetText = $"↓ {NetStats.Format(r.Net.DownBps)}   ↑ {NetStats.Format(r.Net.UpBps)}";
+            UptimeText = FormatUptime(TimeSpan.FromMilliseconds(Environment.TickCount64));
 
-        var (down, up) = _net.Read();
-        NetText = $"↓ {NetStats.Format(down)}   ↑ {NetStats.Format(up)}";
-        UptimeText = FormatUptime(TimeSpan.FromMilliseconds(Environment.TickCount64));
-
-        var top = TopByMemory(ReadProcesses(), 5);
-        double max = top.Count > 0 ? top[0].Bytes : 1;
-        TopApps.Clear();
-        foreach (var (name, bytes) in top) TopApps.Add(new TopApp(name, FormatBytes(bytes), bytes / max));
+            double max = r.Top.Count > 0 ? r.Top[0].Bytes : 1;
+            TopApps.Clear();
+            foreach (var (name, bytes) in r.Top) TopApps.Add(new TopApp(name, FormatBytes(bytes), bytes / max));
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Stats: falha ao amostrar");
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private static List<(string Name, long Bytes)> ReadProcesses()

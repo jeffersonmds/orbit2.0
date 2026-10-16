@@ -29,9 +29,22 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **`IslandMachine`** (puro) decide o estado: Repouso, Atividade, Alerta, Expandida, Oculta.
   `IslandViewModel` orquestra a máquina e as abas; a janela reage a `Mode` (layout/animação)
   e a `Peek` (reinicia o timer do alerta).
-- **Abas** herdam `Tabs/TabViewModel` e ficam em `Tabs/<Nome>/`. São criadas na mão no
-  construtor de `IslandViewModel` (sem DI). **Contrato de leveza:** só a aba visível do painel
-  expandido recebe `SetActive(true)`; timers e fetches só rodam ativos. `SafeSetActive` isola exceções.
+- **Abas** herdam `Tabs/TabViewModel` e ficam em `Tabs/<Nome>/` (`XViewModel` + `XView.xaml`, com
+  `DataTemplate` por tipo em `IslandWindow.xaml`). São registradas no construtor de
+  `IslandViewModel` (`Register(...)`, acima da linha-âncora) e ordenadas por
+  `IslandViewModel.TabOrder`; o usuário esconde abas em Ajustes (`HiddenTabs`). **Contrato de
+  leveza:** só a aba visível do painel expandido recebe `SetActive(true)`; timers e fetches só
+  rodam ativos. Abas com rede usam `Freshness.IsStale` pra não buscar de novo a cada abertura.
+  Leitura pesada (contadores, processos) vai em `Task.Run`, nunca na UI thread.
+  `SafeSetActive` isola exceções. Ao recolher, `IslandWindow` faz um GC agressivo único.
+- **Serviços de fundo** (rodam com a ilha recolhida, por evento) alimentam a pílula via
+  `IslandViewModel.SetActivity`: `NowPlayingViewModel` (SMTC), `PomodoroViewModel` (timer só
+  rodando) e `ClaudeHookServer` (pipe `Orbit2ClaudeHooks`, distinto do 1.0; o Claude Code chama
+  `Orbit.exe --claude-hook`). Prioridade na pílula: Claude aguardando > Pomodoro > mídia.
+- **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
+  em tela cheia se `AlertsAsToastInFullscreen`.
+- **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça
+  `SettingsStore.Load()` dentro de aba — o próximo `Save` de outra aba sobrescreveria.
 - **Tela cheia:** `FullscreenWatcher` (appbar + `ABN_FULLSCREENAPP`) esconde a ilha.
 - **Acento:** `Services/Accent` usa a cor de destaque do Windows (`UISettings`) ou o override
   de Ajustes; recursos `AccentBrush`/`AccentSoftBrush` — sempre `DynamicResource`.
@@ -44,6 +57,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - Instância única: mutex `Orbit2_SingleInstance`.
 
 ## Convenções
+
+- Botões com conteúdo próprio usam `PlainButton`/`RowButton` (o `Button` padrão herda texto preto).
+- Instalar os hooks do Claude remove hooks `Orbit.exe --claude-hook` de outro caminho (ex.: o do 1.0).
+- Glifos da Segoe Fluent: `\uXXXX` em C#, `&#xXXXX;` em XAML — nunca o caractere literal.
 
 - `ImplicitUsings` desligado; `Nullable` ligado; `[ObservableProperty]` no estilo campo.
 - `// ponytail:` marca simplificação deliberada com teto conhecido — respeite.

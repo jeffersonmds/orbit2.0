@@ -20,12 +20,14 @@ public partial class IslandWindow : Window
     private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _leave = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _peek = new() { Interval = TimeSpan.FromSeconds(4) };
+    private readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(2) };
     private GlobalHotKey? _hotKey;
     private FullscreenWatcher? _fullscreen;
     private bool _userHidden;
     private bool _exiting;
     private bool _released;
     private int _layoutGen;
+    private IslandMode _lastMode = IslandMode.Repouso;
     private IntPtr _prevFg;
 #if DEBUG
     private bool _debugActivity;
@@ -43,6 +45,15 @@ public partial class IslandWindow : Window
         _hover.Tick += (_, _) => { _hover.Stop(); _vm.Expand(); };
         _leave.Tick += (_, _) => { _leave.Stop(); _vm.Collapse(); };
         _peek.Tick += (_, _) => { _peek.Stop(); _vm.PeekExpired(); };
+        // Parada, a ilha quase não aloca, então o GC nunca roda sozinho e o que as abas carregaram
+        // (views, capas, contadores, JSON) fica retido. Uma coleta agressiva após recolher devolve
+        // isso ao Windows (~100 MB → de volta perto do repouso). Custo: alguns ms, uma vez.
+        // ponytail: GC manual; trocar por limite de heap (GCHeapHardLimit) se um dia incomodar.
+        _trim.Tick += (_, _) =>
+        {
+            _trim.Stop();
+            if (_vm.Mode != IslandMode.Expandida) GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        };
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(IslandViewModel.Mode)) OnModeChanged();
@@ -156,6 +167,9 @@ public partial class IslandWindow : Window
         // Devolve o teclado pra quem estava digitando antes da hotkey/clique.
         if (mode != IslandMode.Expandida && IsActive && _prevFg != IntPtr.Zero) SetForegroundWindow(_prevFg);
         ApplyLayout(mode, animate: true);
+        if (mode == IslandMode.Expandida) _trim.Stop();
+        else if (_lastMode == IslandMode.Expandida) _trim.Start(); // depois da animação de recolher
+        _lastMode = mode;
     }
 
     // Abertura intencional (hotkey/clique) pega o foco pra Esc e "clique fora" funcionarem.
