@@ -11,12 +11,16 @@
         xmlns:claude="clr-namespace:Orbit.Tabs.Claude"
         xmlns:clips="clr-namespace:Orbit.Tabs.Clips"
         xmlns:apps="clr-namespace:Orbit.Tabs.Apps"
+        xmlns:iphone="clr-namespace:Orbit.Tabs.IPhone"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
         FontFamily="{StaticResource UiFont}" Foreground="{StaticResource InkHi}"
         KeyDown="OnKeyDown" Deactivated="OnDeactivated">
     <Window.Resources>
+        <DataTemplate DataType="{x:Type iphone:IPhoneViewModel}">
+            <iphone:IPhoneView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type energia:EnergiaViewModel}">
             <energia:EnergiaView/>
         </DataTemplate>

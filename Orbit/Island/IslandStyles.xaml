@@ -47,7 +47,7 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">
-                                <Border x:Name="bg" CornerRadius="12" Padding="9,5" Margin="1,0" Background="Transparent">
+                                <Border x:Name="bg" CornerRadius="12" Padding="8,5" Margin="1,0" Background="Transparent">
                                     <ContentPresenter/>
                                 </Border>
                                 <ControlTemplate.Triggers>
@@ -88,6 +88,7 @@
         </Setter>
     </Style>
 
+    <island:NullToCollapsed x:Key="NullToCollapsed"/>
     <island:BoolToVisibility x:Key="BoolToVis"/>
     <island:BoolToVisibility x:Key="NotBoolToVis" Invert="True"/>
     <island:FractionToStar x:Key="FractionToStar"/>

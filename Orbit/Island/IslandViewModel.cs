@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Media;
+using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Orbit.Bridge;
 using Orbit.Models;
 using Orbit.Services;
 using Orbit.Tabs;
@@ -15,6 +19,7 @@ using Orbit.Tabs.Clips;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
+using Orbit.Tabs.IPhone;
 using Orbit.Tabs.Mercado;
 using Orbit.Tabs.Noticias;
 using Orbit.Tabs.Stats;
@@ -28,12 +33,13 @@ public sealed partial class IslandViewModel : ObservableObject
 {
     // Ordem fixa das abas no painel. Ids ainda não registrados são pulados.
     public static readonly string[] TabOrder =
-        { "controles", "hoje", "stats", "clipboard", "apps", "mercado", "noticias", "claude", "energia", "ajustes" };
+        { "controles", "hoje", "stats", "clipboard", "apps", "mercado", "noticias", "claude", "iphone", "energia", "ajustes" };
 
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;
 
     public ClipsViewModel Clips { get; }
+    public IPhoneViewModel IPhone { get; }
     private readonly ApiService _api = new();
     private readonly ClaudeHookServer _claudeServer = new();
     private readonly List<TabViewModel> _allTabs = new();
@@ -90,11 +96,77 @@ public sealed partial class IslandViewModel : ObservableObject
             () => !settings.HiddenTabs.Contains("clipboard"));
         Register(Clips);
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
+        // Ponte com o iPhone: desligada até o usuário ligar na aba (BridgeEnabled).
+        IPhone = new IPhoneViewModel(settings, new TokenStore(TokenStore.FilePath), new AuditLog(AuditLog.FilePath),
+            BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"));
+        Register(IPhone);
+        _ = IPhone.StartIfEnabledAsync();
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
         ApplyTabVisibility();
         SelectedTab = Tabs.FirstOrDefault(t => t.Id == last) ?? Tabs.FirstOrDefault();
+    }
+
+    private static readonly string DefaultUploadFolder =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Orbit");
+
+    // O que a ponte faz de verdade. Roda em threads do Kestrel: o que toca UI/clipboard/SMTC
+    // volta pra UI thread via Dispatcher.
+    private BridgeHandlers BuildBridgeHandlers()
+    {
+        var ui = Application.Current.Dispatcher;
+        var stats = new SystemStats();
+        var statsGate = new object();
+        return new BridgeHandlers
+        {
+            OpenUrl = url =>
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                return Task.CompletedTask;
+            },
+            GetClipboard = () => ui.InvokeAsync(() =>
+                System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "").Task,
+            SetClipboard = text => ui.InvokeAsync(() => { ClipboardReader.SetText(text); }).Task,
+            Power = action =>
+            {
+                Orbit.Services.Power.Execute(action);
+                return Task.CompletedTask;
+            },
+            Media = command => ui.InvokeAsync(() => command switch
+            {
+                MediaCommand.PlayPause => NowPlaying.PlayPauseCommand.ExecuteAsync(null),
+                MediaCommand.Next => NowPlaying.NextCommand.ExecuteAsync(null),
+                _ => NowPlaying.PreviousCommand.ExecuteAsync(null),
+            }).Task.Unwrap(),
+            GetMedia = () => ui.InvokeAsync(() =>
+            {
+                using var volume = new Volume();
+                return new MediaState(
+                    NowPlaying.HasSession ? NowPlaying.Title : null,
+                    NowPlaying.HasSession ? NowPlaying.Subtitle : null,
+                    NowPlaying.ActivityText is not null,
+                    volume.Available ? volume.Percent : 0);
+            }).Task,
+            SetVolume = percent =>
+            {
+                using var volume = new Volume();
+                volume.SetPercent(percent);
+                return Task.CompletedTask;
+            },
+            GetStats = () =>
+            {
+                lock (statsGate)
+                {
+                    var s = stats.Read();
+                    var (battery, charging) = Battery.Read();
+                    return new StatsSnapshot(Math.Round(s.CpuPercent), Math.Round(s.Ram.UsedGb, 1), Math.Round(s.Ram.TotalGb, 1),
+                        Math.Round(s.Disk.UsedGb), Math.Round(s.Disk.TotalGb), battery, charging);
+                }
+            },
+            UploadFolder = () => string.IsNullOrWhiteSpace(_settings.BridgeUploadFolder) ? DefaultUploadFolder : _settings.BridgeUploadFolder!,
+            Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone"), false)),
+        };
     }
 
     private void OnPomodoroPhase(PomodoroPhase phase, int minutes) =>

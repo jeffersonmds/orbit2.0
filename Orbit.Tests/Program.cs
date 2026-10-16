@@ -60,16 +60,28 @@ public static class Program
         BridgeRulesTests();
         TokenAuditTests();
         BridgeServerTests();
+        IPhoneTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static void IPhoneTests()
+    {
+        var png = Qr.RenderPng("https://pc.tail1.ts.net/#token=abc");
+        Check("qr: gera PNG", png is { Length: > 100 } && png[1] == (byte)'P' && png[2] == (byte)'N' && png[3] == (byte)'G');
+        var d = new Orbit.Models.OrbitSettings();
+        Check("settings: ponte desligada por padrão", !d.BridgeEnabled && d.BridgePort == 5191 && d.BridgePublicUrl == "");
+        Check("bateria: percentual", Orbit.Services.Battery.Percent(0.8f, hasBattery: true) == 80
+            && Orbit.Services.Battery.Percent(1.5f, hasBattery: true) is null && Orbit.Services.Battery.Percent(0.5f, hasBattery: false) is null);
     }
 
     private static void TabOrderTests()
     {
         var order = string.Join(",", IslandViewModel.TabOrder);
         Check("abas: clipboard e apps entre stats e mercado", order.Contains("stats,clipboard,apps,mercado"));
-        Check("abas: 10 ids na ordem", IslandViewModel.TabOrder.Length == 10);
+        Check("abas: iphone antes de energia", order.Contains("claude,iphone,energia"));
+        Check("abas: 11 ids na ordem", IslandViewModel.TabOrder.Length == 11);
     }
 
     private static ClipItem Txt(string t, DateTime at, bool pinned = false) =>

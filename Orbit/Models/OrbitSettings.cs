@@ -36,4 +36,10 @@ public sealed class OrbitSettings
     public int PomodoroLongBreakMinutes { get; set; } = 15;
     public int PomodoroCyclesUntilLongBreak { get; set; } = 4;
     public bool PomodoroSoundEnabled { get; set; } = true;
+
+    // Ponte com o iPhone (desligada até o usuário ligar na aba iPhone).
+    public bool BridgeEnabled { get; set; }
+    public int BridgePort { get; set; } = 5191;
+    public string BridgePublicUrl { get; set; } = "";       // ex.: https://notebook.tail1234.ts.net
+    public string? BridgeUploadFolder { get; set; }         // null = Downloads\Orbit
 }
