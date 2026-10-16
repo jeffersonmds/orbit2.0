@@ -44,6 +44,7 @@ public static class Program
         MixerTests();
         CameraPresetTests();
         StreamTicketTests();
+        MjpegTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -510,6 +511,14 @@ public static class Program
         var tk3 = t.Issue("dev-C", CameraPreset.Default, now);
         t.Issue("dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
         Check("tíquete: emitir substitui", t.Claim(tk3, now) is null);
+    }
+
+    private static void MjpegTests()
+    {
+        Check("mjpeg: boundary", Mjpeg.Boundary == "orbitcam");
+        Check("mjpeg: content-type", Mjpeg.ContentType == "multipart/x-mixed-replace; boundary=orbitcam");
+        var header = System.Text.Encoding.ASCII.GetString(Mjpeg.PartHeader(1234));
+        Check("mjpeg: cabeçalho da parte", header == "\r\n--orbitcam\r\nContent-Type: image/jpeg\r\nContent-Length: 1234\r\n\r\n");
     }
 
     private static void MixerTests()
