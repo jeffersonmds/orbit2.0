@@ -70,10 +70,38 @@ public static class Program
         IPhoneTests();
         TailscaleTests();
         PairingCodeTests();
+        CameraStreamAuthTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    // O stream é autenticado por tíquete (a <img> não manda cabeçalho): tem de passar pelo
+    // middleware de token. Com tíquete válido e device inexistente, o handler falha em 409 — nunca 401.
+    private static void CameraStreamAuthTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-cam-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var web = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        var camera = new Camera();
+        var tickets = new StreamTickets();
+        var handlers = new BridgeHandlers { CameraEnabled = () => true };
+        var server = new BridgeServer();
+        server.StartAsync(0, web, new TokenStore(Path.Combine(dir, "t.json")), new AuditLog(Path.Combine(dir, "a.jsonl")),
+            handlers, null, camera, tickets).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+
+        var semTicket = http.GetAsync("/api/camera/stream").Result;
+        Check("câmera: stream sem tíquete = 401", semTicket.StatusCode == HttpStatusCode.Unauthorized);
+
+        var tk = tickets.Issue("device-inexistente", CameraPreset.Default, DateTime.Now);
+        var comTicket = http.GetAsync($"/api/camera/stream?ticket={tk}").Result; // sem Authorization
+        Check("câmera: stream com tíquete passa o token e falha no device (409)", comTicket.StatusCode == HttpStatusCode.Conflict);
+
+        server.StopAsync().GetAwaiter().GetResult();
+        camera.Dispose();
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void PwaTests()

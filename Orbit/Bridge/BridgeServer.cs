@@ -80,7 +80,11 @@ public sealed class BridgeServer : IAsyncDisposable
         // Auth ANTES do rate limit e do bind do body: sem token não lê corpo nem gasta a cota do dono.
         app.Use(async (ctx, next) =>
         {
-            if (ctx.Request.Path.StartsWithSegments("/api"))
+            // O stream da câmera é a única rota /api autenticada por tíquete (a <img> não manda
+            // cabeçalho): o próprio handler valida o tíquete de uso único. As demais exigem token.
+            bool ticketRoute = HttpMethods.IsGet(ctx.Request.Method)
+                && ctx.Request.Path.Equals("/api/camera/stream", StringComparison.OrdinalIgnoreCase);
+            if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
                 if (name is null)
