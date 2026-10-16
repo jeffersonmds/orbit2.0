@@ -64,6 +64,7 @@
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding ShowNothingFound, Converter={StaticResource BoolToVis}}"/>
                 <ListBox ItemsSource="{Binding Visible}" SelectedItem="{Binding Selected}" ItemContainerStyle="{StaticResource ClipRow}"
+                         MouseDoubleClick="OnRowDoubleClick"
                          Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.Template>
                         <ControlTemplate TargetType="ListBox">
@@ -73,7 +74,6 @@
                         </ControlTemplate>
                     </ListBox.Template>
                     <ListBox.InputBindings>
-                        <MouseBinding Gesture="LeftDoubleClick" Command="{Binding PasteCommand}"/>
                         <KeyBinding Key="Delete" Command="{Binding RemoveCommand}"/>
                     </ListBox.InputBindings>
                     <ListBox.ItemTemplate>

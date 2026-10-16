@@ -13,14 +13,14 @@ public static class Input
     public static (ushort Vk, bool Up)[] CtrlVSequence() =>
         new (ushort, bool)[] { (0x11, false), (0x56, false), (0x56, true), (0x11, true) };
 
-    public static void SendCtrlV()
+    public static uint SendCtrlV()
     {
         var inputs = CtrlVSequence().Select(k => new INPUT
         {
             type = INPUT_KEYBOARD,
             u = new InputUnion { ki = new KEYBDINPUT { wVk = k.Vk, dwFlags = k.Up ? KEYEVENTF_KEYUP : 0 } },
         }).ToArray();
-        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
     }
 
     [StructLayout(LayoutKind.Sequential)]

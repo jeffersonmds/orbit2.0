@@ -30,6 +30,8 @@ public partial class IslandWindow : Window
     private int _layoutGen;
     private IslandMode _lastMode = IslandMode.Repouso;
     private IntPtr _prevFg;
+    private WinEventProc? _foregroundHook; // campo: o delegate não pode ser coletado enquanto o hook vive
+    private IntPtr _foregroundHookHandle;
 #if DEBUG
     private bool _debugActivity;
 #endif
@@ -103,12 +105,17 @@ public partial class IslandWindow : Window
         // WS_EX_TOOLWINDOW: fora do Alt+Tab.
         SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_TOOLWINDOW);
 
-        HwndSource.FromHwnd(hwnd)!.AddHook((IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+        // Último app em primeiro plano que não é a ilha (alvo do "colar" e de quem recebe o foco de
+        // volta ao recolher). WM_ACTIVATE não serve: o lParam vem nulo quando o app anterior é de
+        // outro processo. EVENT_SYSTEM_FOREGROUND é por evento (zero polling).
+        var fg = GetForegroundWindow();
+        if (fg != hwnd) _prevFg = fg;
+        _foregroundHook = (_, _, window, _, _, _, _) =>
         {
-            const int WM_ACTIVATE = 0x0006;
-            if (msg == WM_ACTIVATE && (wParam.ToInt64() & 0xFFFF) != 0 && lParam != IntPtr.Zero) _prevFg = lParam;
-            return IntPtr.Zero;
-        });
+            if (window != IntPtr.Zero && window != hwnd) _prevFg = window;
+        };
+        _foregroundHookHandle = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
+            _foregroundHook, 0, 0, WINEVENT_OUTOFCONTEXT);
 
         _hotKey = new GlobalHotKey(hwnd);
         _hotKey.Pressed += () =>
@@ -148,6 +155,7 @@ public partial class IslandWindow : Window
             _hotKey?.Dispose();
             _fullscreen?.Dispose();
             _clipboard?.Dispose();
+            if (_foregroundHookHandle != IntPtr.Zero) UnhookWinEvent(_foregroundHookHandle);
         }
         catch (Exception ex)
         {
@@ -160,13 +168,21 @@ public partial class IslandWindow : Window
     private void PasteIntoPrevious()
     {
         var target = _prevFg;
+        Log.Information("Colar: alvo {Alvo:X}, ilha ativa {Ativa}", target.ToInt64(), IsActive);
         _vm.Collapse();
         if (target == IntPtr.Zero) return;
         var wait = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         wait.Tick += (_, _) =>
         {
             wait.Stop();
-            if (GetForegroundWindow() == target) Input.SendCtrlV();
+            var fg = GetForegroundWindow();
+            if (fg != target)
+            {
+                Log.Warning("Colar: o foco não voltou pro alvo (primeiro plano {Fg:X})", fg.ToInt64());
+                return;
+            }
+            uint sent = Input.SendCtrlV();
+            Log.Information("Colar: Ctrl+V enviado ({Enviados}/4 eventos)", sent);
         };
         wait.Start();
     }
@@ -292,6 +308,13 @@ public partial class IslandWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+
+    private const uint EVENT_SYSTEM_FOREGROUND = 0x0003, WINEVENT_OUTOFCONTEXT = 0x0000;
+    private delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmod, WinEventProc proc,
+        uint idProcess, uint idThread, uint flags);
+    [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hook);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 }
