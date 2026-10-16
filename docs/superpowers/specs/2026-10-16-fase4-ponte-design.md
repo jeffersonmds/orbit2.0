@@ -32,7 +32,7 @@ Orbit/Tabs/IPhone/    # aba: liga/desliga, status, endereço, parear (QR), token
   `BridgeHandlers` (delegates), implementados no `IslandViewModel` com `Dispatcher.InvokeAsync`.
   Isso também deixa o servidor testável com handlers falsos (testes de integração com `HttpClient`
   numa porta efêmera).
-- Rotas (todas sob `/api`, com token e rate limit de 60/min por processo, exceto `/health`):
+- Rotas (todas sob `/api`, com token e rate limit de 120/min, contado só depois da auth, por processo, exceto `/health`):
   `GET /api/stats`, `POST /api/links/open`, `GET|PUT /api/clipboard`,
   `POST /api/power/{lock|sleep|restart|shutdown}`, `GET /api/media`,
   `POST /api/media/{playpause|next|prev}`, `PUT /api/media/volume`, `POST /api/files`.

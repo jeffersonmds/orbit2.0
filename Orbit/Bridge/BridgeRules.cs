@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Orbit.Services;
@@ -12,6 +13,7 @@ public enum MediaCommand { PlayPause, Next, Prev }
 public static class BridgeRules
 {
     public const long MaxUploadBytes = 500L * 1024 * 1024;
+    public const long MaxBodyBytes = 1 * 1024 * 1024;
     public const int MaxClipboardChars = 100_000;
     private const int MaxFileName = 120;
 
@@ -40,13 +42,18 @@ public static class BridgeRules
         var raw = name ?? "";
         var n = raw[(raw.LastIndexOfAny(new[] { '/', '\\' }) + 1)..];
         foreach (var c in Path.GetInvalidFileNameChars()) n = n.Replace(c, '_');
+        // Caracteres de formatação (bidi U+202E etc.) disfarçam extensões.
+        n = string.Concat(n.Select(c => char.GetUnicodeCategory(c) == UnicodeCategory.Format ? '_' : c));
         n = n.Trim().TrimEnd('.', ' ');
         if (n.Length == 0 || n.All(ch => ch == '.')) n = "arquivo";
         if (Reserved.Contains(Path.GetFileNameWithoutExtension(n).ToUpperInvariant())) n = "_" + n;
         if (n.Length > MaxFileName)
         {
             var ext = Path.GetExtension(n);
-            n = n[..(MaxFileName - ext.Length)] + ext;
+            if (ext.Length > 20) ext = "";
+            n = (ext.Length == 0 ? n[..MaxFileName] : n[..(MaxFileName - ext.Length)]).TrimEnd('.', ' ') + ext;
+            n = n.TrimEnd('.', ' ');
+            if (n.Length == 0) n = "arquivo";
         }
         return n;
     }

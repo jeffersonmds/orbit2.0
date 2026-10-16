@@ -41,12 +41,13 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             ContentRootPath = AppContext.BaseDirectory,
             WebRootPath = hasWeb ? webRoot : null,
+            EnvironmentName = "Production", // em Development um 400 vazava stack trace
         });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(k =>
         {
             k.Listen(IPAddress.Loopback, port); // nunca 0.0.0.0 (RNF01)
-            k.Limits.MaxRequestBodySize = BridgeRules.MaxUploadBytes;
+            k.Limits.MaxRequestBodySize = BridgeRules.MaxBodyBytes; // /files eleva só a própria requisição
         });
         builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = BridgeRules.MaxUploadBytes);
         builder.Services.AddRateLimiter(o =>
@@ -61,6 +62,23 @@ public sealed class BridgeServer : IAsyncDisposable
         });
 
         var app = builder.Build();
+        // Auth ANTES do rate limit e do bind do body: sem token não lê corpo nem gasta a cota do dono.
+        app.Use(async (ctx, next) =>
+        {
+            if (ctx.Request.Path.StartsWithSegments("/api"))
+            {
+                var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
+                if (name is null)
+                {
+                    audit.Write("?", $"{ctx.Request.Method} {ctx.Request.Path}", "401");
+                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return;
+                }
+                ctx.Items["token"] = name;
+            }
+            try { await next(); }
+            catch (Exception ex) { Log.Warning(ex, "Ponte: erro fora das rotas"); throw; }
+        });
         app.UseRateLimiter();
         if (hasWeb)
         {
@@ -74,12 +92,7 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             var req = ctx.HttpContext.Request;
             var action = $"{req.Method} {req.Path}";
-            var name = tokens.Verify(BridgeRules.BearerToken(req.Headers.Authorization.ToString()));
-            if (name is null)
-            {
-                audit.Write("?", action, "401");
-                return Results.Unauthorized();
-            }
+            var name = (string)ctx.HttpContext.Items["token"]!;
             try
             {
                 var result = await next(ctx);
@@ -96,7 +109,8 @@ public sealed class BridgeServer : IAsyncDisposable
         });
         MapApi(api, h);
 
-        await app.StartAsync();
+        try { await app.StartAsync(); }
+        catch { await app.DisposeAsync(); throw; }
         _app = app;
         Port = ActualPort(app) ?? port;
         Log.Information("Ponte ouvindo em 127.0.0.1:{Porta}", Port);
@@ -110,7 +124,7 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             if (!BridgeRules.IsOpenableUrl(req.Url)) return Results.BadRequest(new { erro = "Só links http/https." });
             var url = req.Url!.Trim();
-            await h.OpenUrl(url);
+            await h.OpenUrl(new Uri(url).AbsoluteUri);
             h.Notify(new BridgeEvent("Link aberto no PC", BridgeRules.Host(url)));
             return Results.NoContent();
         });
@@ -148,17 +162,29 @@ public sealed class BridgeServer : IAsyncDisposable
         api.MapPost("/files", async (HttpRequest request) =>
         {
             if (!request.HasFormContentType) return Results.BadRequest(new { erro = "Envie multipart/form-data." });
+            request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = BridgeRules.MaxUploadBytes;
             var form = await request.ReadFormAsync();
             if (form.Files.Count == 0) return Results.BadRequest(new { erro = "Nenhum arquivo." });
+            if (form.Files.Count > 50) return Results.BadRequest(new { erro = "Máximo de 50 arquivos por envio." });
             var dir = h.UploadFolder();
             Directory.CreateDirectory(dir);
             var saved = new List<string>();
             foreach (var file in form.Files)
             {
-                var name = BridgeRules.UniqueName(dir, BridgeRules.SafeFileName(file.FileName), File.Exists);
-                await using (var target = File.Create(Path.Combine(dir, name)))
-                    await file.CopyToAsync(target);
-                saved.Add(name);
+                var wanted = BridgeRules.SafeFileName(file.FileName);
+                for (int attempt = 0; ; attempt++)
+                {
+                    var name = BridgeRules.UniqueName(dir, wanted, File.Exists);
+                    try
+                    {
+                        // CreateNew: nunca sobrescreve, mesmo com corrida entre dois envios.
+                        await using var target = new FileStream(Path.Combine(dir, name), FileMode.CreateNew);
+                        await file.CopyToAsync(target);
+                        saved.Add(name);
+                        break;
+                    }
+                    catch (IOException) when (attempt < 5 && File.Exists(Path.Combine(dir, name))) { }
+                }
             }
             h.Notify(new BridgeEvent(saved.Count == 1 ? "Arquivo do iPhone" : $"{saved.Count} arquivos do iPhone",
                 string.Join(", ", saved)));

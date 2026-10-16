@@ -64,8 +64,14 @@ public sealed class TokenStore
     {
         lock (_gate)
         {
+            var removed = _tokens.Where(t => t.Hash == hash).ToList();
             _tokens.RemoveAll(t => t.Hash == hash);
-            Save();
+            try { Save(rethrow: true); }
+            catch
+            {
+                _tokens.AddRange(removed); // memória e disco continuam iguais; a aba mostra o erro
+                throw;
+            }
         }
     }
 
@@ -77,7 +83,7 @@ public sealed class TokenStore
         {
             if (!File.Exists(path)) return new();
             return JsonSerializer.Deserialize<List<TokenInfo>>(File.ReadAllText(path))?
-                .Where(t => t.Hash is { Length: 64 })
+                .Where(t => t.Hash is { Length: 64 } && t.Hash.All(char.IsAsciiHexDigit))
                 .ToList() ?? new();
         }
         catch
@@ -86,7 +92,7 @@ public sealed class TokenStore
         }
     }
 
-    private void Save()
+    private void Save(bool rethrow = false)
     {
         try
         {
@@ -97,6 +103,7 @@ public sealed class TokenStore
         }
         catch
         {
+            if (rethrow) throw;
             // sem disco: o token vale até fechar o app
         }
     }

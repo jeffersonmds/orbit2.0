@@ -749,6 +749,10 @@ public static class Program
         Check("ponte: ponto final removido", BridgeRules.SafeFileName("foto.jpg. ") == "foto.jpg");
         Check("ponte: nome longo mantém extensão", BridgeRules.SafeFileName(new string('a', 300) + ".png") is { Length: 120 } n && n.EndsWith(".png"));
 
+        Check("ponte: extensão longa não lança e sem ponto final", Safe("a." + new string('b', 200)) is { } e1 && e1.Length <= 120 && !e1.EndsWith('.'));
+        Check("ponte: corte não deixa espaço final", !BridgeRules.SafeFileName(new string('a', 119) + " b").EndsWith(' '));
+        Check("ponte: bidi/format trocado", !BridgeRules.SafeFileName("foto\u202Egpj.exe").Contains('\u202E'));
+
         var existing = new HashSet<string> { @"C:\up\foto.jpg", @"C:\up\foto (1).jpg" };
         Check("ponte: nome único", BridgeRules.UniqueName(@"C:\up", "foto.jpg", existing.Contains) == "foto (2).jpg");
         Check("ponte: nome livre fica igual", BridgeRules.UniqueName(@"C:\up", "novo.jpg", existing.Contains) == "novo.jpg");
@@ -763,6 +767,11 @@ public static class Program
         Check("ponte: link de pareamento", BridgeRules.PairingLink("https://pc.tail1.ts.net/", "tok-_1") == "https://pc.tail1.ts.net/#token=tok-_1");
         Check("ponte: endereço normalizado", BridgeRules.NormalizeBaseUrl(" https://pc.ts.net/ ") == "https://pc.ts.net"
             && BridgeRules.NormalizeBaseUrl("pc.ts.net") == "https://pc.ts.net" && BridgeRules.NormalizeBaseUrl("  ") == "");
+    }
+
+    private static string? Safe(string n)
+    {
+        try { return BridgeRules.SafeFileName(n); } catch { return null; }
     }
 
     private static void TokenAuditTests()
@@ -783,6 +792,18 @@ public static class Program
         Check("token: revogado não passa", reloaded.Verify(t1) is null && reloaded.Verify(t2) == "Atalhos");
         File.WriteAllText(path, "{ quebrado");
         Check("token: arquivo corrompido = nenhum token", new TokenStore(path).List().Count == 0);
+        File.WriteAllText(path, "[{\"Name\":\"x\",\"Hash\":\"" + new string('Z', 64) + "\",\"CreatedAt\":\"2026-01-01T00:00:00\"}]");
+        Check("token: hash não-hex descartado", new TokenStore(path).List().Count == 0);
+
+        var lockedPath = Path.Combine(dir, "travado.json");
+        var locked = new TokenStore(lockedPath);
+        var tl = locked.Create("a");
+        File.Delete(lockedPath);
+        Directory.CreateDirectory(lockedPath);
+        File.WriteAllText(Path.Combine(lockedPath, "x"), "x"); // File.Move por cima de pasta não vazia falha
+        bool threw = false;
+        try { locked.Revoke(locked.List()[0].Hash); } catch { threw = true; }
+        Check("token: revogar com disco travado lança e mantém consistência", threw && locked.Verify(tl) == "a" && locked.List().Count == 1);
 
         var auditPath = Path.Combine(dir, "audit.jsonl");
         var audit = new AuditLog(auditPath);
@@ -830,6 +851,16 @@ public static class Program
 
         Check("ponte: /health sem token", http.GetAsync("/health").Result.StatusCode == HttpStatusCode.OK);
         Check("ponte: /api sem token = 401", http.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.Unauthorized);
+        using (var ruim = new StringContent("{ruim", System.Text.Encoding.UTF8, "application/json"))
+            Check("ponte: corpo ruim sem token = 401 (auth antes do body)", http.PutAsync("/api/clipboard", ruim).Result.StatusCode == HttpStatusCode.Unauthorized);
+        for (int i = 0; i < 130; i++) http.GetAsync("/api/stats").Result.Dispose();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Check("ponte: requisições sem token não gastam a cota", http.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.OK);
+        using (var grande = new StringContent("{\"text\":\"" + new string('x', 2 * 1024 * 1024) + "\"}", System.Text.Encoding.UTF8, "application/json"))
+        {
+            var code = http.PutAsync("/api/clipboard", grande).Result.StatusCode;
+            Check("ponte: JSON de 2 MB = 413", code == HttpStatusCode.RequestEntityTooLarge);
+        }
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "errado");
         Check("ponte: token errado = 401", http.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.Unauthorized);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -866,6 +897,11 @@ public static class Program
             form.Add(new ByteArrayContent(new byte[] { 4 }), "file", "evil.txt");
             http.PostAsync("/api/files", form).Result.Dispose();
             Check("ponte: upload não sobrescreve", File.Exists(Path.Combine(dir, "up", "evil (1).txt")));
+        }
+        using (var muitos = new MultipartFormDataContent())
+        {
+            for (int i = 0; i < 51; i++) muitos.Add(new ByteArrayContent(new byte[] { 1 }), "file", $"m{i}.txt");
+            Check("ponte: mais de 50 arquivos = 400", http.PostAsync("/api/files", muitos).Result.StatusCode == HttpStatusCode.BadRequest);
         }
         using (var semArquivo = new MultipartFormDataContent { { new StringContent("x"), "nada" } })
             Check("ponte: upload sem arquivo = 400", http.PostAsync("/api/files", semArquivo).Result.StatusCode == HttpStatusCode.BadRequest);
