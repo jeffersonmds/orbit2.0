@@ -14,6 +14,7 @@ using Orbit.Tabs.Mercado;
 using Orbit.Tabs.Ajustes;
 using Orbit.Tabs.Noticias;
 using Orbit.Tabs.Claude;
+using Orbit.Tabs.Clips;
 
 namespace Orbit.Tests;
 
@@ -45,6 +46,7 @@ public static class Program
         NoticiasTests();
         ClaudeTests();
         TabOrderTests();
+        ClipHistoryTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -55,6 +57,72 @@ public static class Program
         var order = string.Join(",", IslandViewModel.TabOrder);
         Check("abas: clipboard e apps entre stats e mercado", order.Contains("stats,clipboard,apps,mercado"));
         Check("abas: 10 ids na ordem", IslandViewModel.TabOrder.Length == 10);
+    }
+
+    private static ClipItem Txt(string t, DateTime at, bool pinned = false) =>
+        new(ClipHistory.ClassifyText(t), t, null, "t:" + t, at, pinned, 0, 0);
+
+    private static void ClipHistoryTests()
+    {
+        Check("clip: link https", ClipHistory.ClassifyText("https://example.com/a?b=1") == ClipKind.Link);
+        Check("clip: link com espaços em volta", ClipHistory.ClassifyText("  http://x.io \n") == ClipKind.Link);
+        Check("clip: frase com url é texto", ClipHistory.ClassifyText("veja https://x.io agora") == ClipKind.Text);
+        Check("clip: ftp é texto", ClipHistory.ClassifyText("ftp://x.io") == ClipKind.Text);
+
+        Check("clip: privado por formato", ClipHistory.IsPrivate(new[] { "Text", "ExcludeClipboardContentFromMonitorProcessing" }, null));
+        Check("clip: privado por CanIncludeInClipboardHistory=0", ClipHistory.IsPrivate(new[] { "Text" }, 0));
+        Check("clip: normal não é privado", !ClipHistory.IsPrivate(new[] { "Text" }, 1) && !ClipHistory.IsPrivate(new[] { "Text" }, null));
+
+        var t0 = new DateTime(2026, 10, 15, 9, 0, 0);
+        var list = new List<ClipItem>();
+        ClipHistory.Add(list, Txt("a", t0));
+        ClipHistory.Add(list, Txt("b", t0.AddMinutes(1)));
+        var removed = ClipHistory.Add(list, Txt("a", t0.AddMinutes(2)));
+        Check("clip: repetido sobe pro topo sem duplicar", list.Count == 2 && list[0].Text == "a" && removed.Count == 0);
+        Check("clip: repetido atualiza a hora", list[0].CopiedAt == t0.AddMinutes(2));
+
+        var big = new List<ClipItem> { Txt("fixo", t0, pinned: true) };
+        for (int i = 0; i < ClipHistory.MaxUnpinned; i++) ClipHistory.Add(big, Txt("x" + i, t0.AddSeconds(i)));
+        var gone = ClipHistory.Add(big, Txt("novo", t0.AddHours(1)));
+        Check("clip: limite descarta o mais antigo não fixado", gone.Count == 1 && gone[0].Text == "x0");
+        Check("clip: fixado nunca sai pelo limite", big.Exists(i => i.Text == "fixo") && big.Count == ClipHistory.MaxUnpinned + 1);
+
+        var items = new List<ClipItem>
+        {
+            Txt("bom dia", t0),
+            Txt("https://github.com", t0.AddMinutes(5)),
+            new(ClipKind.Image, null, "abc.png", "i:abc", t0.AddMinutes(9), false, 1920, 1080),
+            Txt("fixado antigo", t0.AddMinutes(-60), pinned: true),
+        };
+        var all = ClipHistory.View(items, "", ClipFilter.Tudo);
+        Check("clip: fixados primeiro, depois mais recentes", all[0].Text == "fixado antigo" && all[1].Kind == ClipKind.Image);
+        Check("clip: filtro links", ClipHistory.View(items, "", ClipFilter.Links).Count == 1);
+        Check("clip: filtro imagens", ClipHistory.View(items, null, ClipFilter.Imagens).Count == 1);
+        Check("clip: filtro texto", ClipHistory.View(items, "", ClipFilter.Texto).Count == 2);
+        Check("clip: busca sem caixa", ClipHistory.View(items, "BOM", ClipFilter.Tudo).Count == 1);
+
+        var now = new DateTime(2026, 10, 15, 12, 0, 0);
+        Check("clip: agora", ClipHistory.RelativeTime(now, now.AddSeconds(-20)) == "agora");
+        Check("clip: minutos", ClipHistory.RelativeTime(now, now.AddMinutes(-4)) == "4m");
+        Check("clip: horas", ClipHistory.RelativeTime(now, now.AddHours(-2)) == "2h");
+        Check("clip: ontem", ClipHistory.RelativeTime(now, new DateTime(2026, 10, 14, 23, 0, 0)) == "ontem");
+        Check("clip: dias", ClipHistory.RelativeTime(now, now.AddDays(-3)) == "3d");
+
+        Check("clip: descrição de texto", ClipHistory.Describe("oi tudo\nbem") == "11 caracteres · 3 palavras · 2 linhas");
+        Check("clip: descrição singular", ClipHistory.Describe("oi") == "2 caracteres · 1 palavra · 1 linha");
+        Check("clip: linha única p/ lista", ClipHistory.OneLine("  a\n  b  ") == "a b");
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "clipboard.json");
+        Check("clip store: inexistente = vazio", ClipboardStore.Load(path).Count == 0);
+        ClipboardStore.Save(items, path);
+        var back = ClipboardStore.Load(path);
+        Check("clip store: round-trip", back.Count == 4 && back[2].Kind == ClipKind.Image && back[2].Width == 1920
+            && back[3].Pinned && back[0].Text == "bom dia");
+        File.WriteAllText(path, "{ quebrado");
+        Check("clip store: corrompido = vazio", ClipboardStore.Load(path).Count == 0);
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void NoticiasTests()
