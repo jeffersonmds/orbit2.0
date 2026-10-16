@@ -9,6 +9,7 @@ using Orbit.Models;
 using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Ajustes;
+using Orbit.Tabs.Apps;
 using Orbit.Tabs.Claude;
 using Orbit.Tabs.Clips;
 using Orbit.Tabs.Controles;
@@ -88,6 +89,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Clips = new ClipsViewModel(ClipboardStore.FilePath, ClipboardStore.ImagesDir,
             () => !settings.HiddenTabs.Contains("clipboard"));
         Register(Clips);
+        Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;

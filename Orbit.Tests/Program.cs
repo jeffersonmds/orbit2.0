@@ -50,6 +50,7 @@ public static class Program
         ClipHistoryTests();
         ClipsTests();
         AppSearchTests();
+        AppIconTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
@@ -698,6 +699,24 @@ public static class Program
             && AppSearch.IconFileName("x") != AppSearch.IconFileName("y") && AppSearch.IconFileName("x").EndsWith(".png"));
 
         Check("settings: favoritos default vazio", new Orbit.Models.OrbitSettings().FavoriteApps.Count == 0);
+    }
+
+    private static void AppIconTests()
+    {
+        // 2x2 BGRA, linhas de baixo pra cima → inverter
+        var px = new byte[] { 1, 1, 1, 255, 2, 2, 2, 255, /* linha 2 */ 3, 3, 3, 255, 4, 4, 4, 255 };
+        AppIcons.FlipRows(px, stride: 8, height: 2);
+        Check("ícone: inverte linhas", px[0] == 3 && px[8] == 1);
+
+        var semAlfa = new byte[] { 9, 9, 9, 0, 9, 9, 9, 0 };
+        AppIcons.FixAlpha(semAlfa);
+        Check("ícone: sem canal alfa vira opaco", semAlfa[3] == 255 && semAlfa[7] == 255);
+        var comAlfa = new byte[] { 9, 9, 9, 0, 9, 9, 9, 128 };
+        AppIcons.FixAlpha(comAlfa);
+        Check("ícone: com alfa fica como está", comAlfa[3] == 0 && comAlfa[7] == 128);
+
+        var t = Sta.Run(() => System.Threading.Thread.CurrentThread.GetApartmentState()).GetAwaiter().GetResult();
+        Check("sta: roda numa thread STA", t == System.Threading.ApartmentState.STA);
     }
 
     public static void Check(string name, bool ok)
