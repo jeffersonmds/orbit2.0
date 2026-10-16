@@ -41,6 +41,7 @@ public static class Program
         AccentTests();
         PowerTests();
         EnergiaExtrasTests();
+        MixerTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -482,6 +483,20 @@ public static class Program
         var soft = Orbit.Services.Accent.Soft(sys);
         Check("acento: versão suave tem alpha 0x33 e mesma cor", soft.A == 0x33 && soft.R == sys.R && soft.G == sys.G && soft.B == sys.B);
         Check("acento: paleta toda é hex válido", Array.TrueForAll(Orbit.Services.Accent.Paleta, p => Orbit.Services.Accent.ParseHex(p.Hex) is not null));
+    }
+
+    private static void MixerTests()
+    {
+        Check("mixer: nome pela descrição do exe", AudioMixer.DisplayName(" Spotify ", "C:/x/Spotify.exe", null) == "Spotify");
+        Check("mixer: nome da sessão se não há descrição", AudioMixer.DisplayName(null, "C:/x/a.exe", "Meu App") == "Meu App");
+        Check("mixer: ignora nome de recurso (@dll)", AudioMixer.DisplayName("", "C:/x/discord.exe", "@%SystemRoot%/x.dll,-1") == "discord");
+        Check("mixer: sem nada vira App", AudioMixer.DisplayName(null, null, null) == "App");
+        var ordered = AudioMixer.Order([
+            new AudioMixer.App(AudioMixer.SystemKey, "Sons do sistema", null, 50, false),
+            new AudioMixer.App("z", "zoom", null, 50, false),
+            new AudioMixer.App("c", "Chrome", null, 50, false),
+        ]);
+        Check("mixer: por nome, sistema por último", string.Join(",", ordered.Select(a => a.Key)) == "c,z,system");
     }
 
     private static void EnergiaExtrasTests()
