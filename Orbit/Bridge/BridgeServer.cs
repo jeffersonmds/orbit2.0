@@ -154,6 +154,7 @@ public sealed class BridgeServer : IAsyncDisposable
         });
 
         api.MapGet("/media", async () => Results.Ok(await h.GetMedia()));
+        api.MapGet("/media/cover", async () => await h.GetCover() is { } png ? Results.File(png, "image/png") : Results.NoContent());
         api.MapPost("/media/{command}", async (string command) =>
         {
             if (BridgeRules.ParseMedia(command) is not { } m) return Results.NotFound();

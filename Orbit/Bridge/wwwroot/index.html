@@ -53,15 +53,29 @@
       <div class="progress hidden" id="progress"><div id="bar"></div></div>
     </section>
 
-    <section class="card">
+    <section class="card media idle" id="media">
       <h2>Mídia</h2>
-      <p class="now" id="now">—</p>
-      <div class="row center">
-        <button class="round" data-media="prev" aria-label="Anterior">⏮</button>
-        <button class="round big" data-media="playpause" aria-label="Tocar/pausar">⏯</button>
-        <button class="round" data-media="next" aria-label="Próxima">⏭</button>
+      <div class="track">
+        <div class="cover" id="cover">
+          <svg class="note" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18.5a2.5 2.5 0 1 1-2-2.45V6.2a1 1 0 0 1 .76-.97l9-2.2A1 1 0 0 1 18 4v11.5a2.5 2.5 0 1 1-2-2.45V7.3l-7 1.7z"/></svg>
+          <img id="coverImg" alt="">
+        </div>
+        <div class="meta"><b id="mTitle">Nada tocando</b><span id="mArtist">Toque algo no PC</span></div>
       </div>
-      <input id="volume" type="range" min="0" max="100" step="1" aria-label="Volume">
+      <div class="controls">
+        <button class="ctl" data-media="prev" aria-label="Anterior">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5.5a1 1 0 0 1 1 1v4.3l9.5-5.5A1 1 0 0 1 19 6.2v11.6a1 1 0 0 1-1.5.87L8 13.2v4.3a1 1 0 0 1-2 0v-11a1 1 0 0 1 1-1z"/></svg>
+        </button>
+        <button class="ctl play" id="playBtn" data-media="playpause" aria-label="Tocar"></button>
+        <button class="ctl" data-media="next" aria-label="Próxima">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 5.5a1 1 0 0 0-1 1v4.3L6.5 5.3A1 1 0 0 0 5 6.2v11.6a1 1 0 0 0 1.5.87l9.5-5.47v4.3a1 1 0 0 0 2 0v-11a1 1 0 0 0-1-1z"/></svg>
+        </button>
+      </div>
+      <div class="vol">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5a1 1 0 0 0 1 1h3l4.4 3.6A1 1 0 0 0 14 18.3V5.7a1 1 0 0 0-1.6-.8L8 8.5H5a1 1 0 0 0-1 1z"/></svg>
+        <input id="volume" type="range" min="0" max="100" step="1" aria-label="Volume">
+        <span id="volVal">--</span>
+      </div>
     </section>
 
     <section class="card">

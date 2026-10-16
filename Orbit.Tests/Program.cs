@@ -905,6 +905,7 @@ public static class Program
             Power = a => { power = a; return Task.CompletedTask; },
             Media = m => { media = m; return Task.CompletedTask; },
             GetMedia = () => Task.FromResult(new MediaState("Faixa", "Banda", true, 40)),
+            GetCover = () => Task.FromResult<byte[]?>(new byte[] { 0x89, 0x50, 0x4E, 0x47 }),
             SetVolume = v => { volume = v; return Task.CompletedTask; },
             GetStats = () => new StatsSnapshot(12, 4.5, 16, 100, 500, 80, true),
             UploadFolder = () => Path.Combine(dir, "up"),
@@ -950,6 +951,8 @@ public static class Program
         Check("ponte: energia desconhecida = 404", http.PostAsync("/api/power/explodir", null).Result.StatusCode == HttpStatusCode.NotFound);
         Check("ponte: mídia", http.PostAsync("/api/media/next", null).Result.StatusCode == HttpStatusCode.NoContent && media == MediaCommand.Next);
         Check("ponte: estado da mídia", http.GetStringAsync("/api/media").Result.Contains("\"title\":\"Faixa\""));
+        var cover = http.GetAsync("/api/media/cover").Result;
+        Check("ponte: capa em PNG", cover.StatusCode == HttpStatusCode.OK && cover.Content.Headers.ContentType?.MediaType == "image/png");
         Check("ponte: volume clampado", http.PutAsJsonAsync("/api/media/volume", new { percent = 150 }).Result.StatusCode == HttpStatusCode.NoContent
             && volume == 100);
 

@@ -113,22 +113,68 @@ $('#files').onchange = e => {
 };
 
 // --- Mídia ---
+// Ícones fixos (strings constantes do próprio app; nada vindo do PC passa por innerHTML).
+const ICON = {
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.6v12.8a1 1 0 0 0 1.53.85l10.1-6.4a1 1 0 0 0 0-1.7L9.53 4.75A1 1 0 0 0 8 5.6z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.3"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.3"/></svg>',
+};
+let playing = false, lastTrack = null, coverOk = false, coverUrl = null;
+function setPlaying(p) {
+  playing = p;
+  const b = $('#playBtn');
+  b.innerHTML = p ? ICON.pause : ICON.play;
+  b.setAttribute('aria-label', p ? 'Pausar' : 'Tocar');
+}
+function setVol(v) {
+  const n = Math.round(+v);
+  $('#volume').value = n;
+  $('#volume').style.setProperty('--p', n + '%');
+  $('#volVal').textContent = n + '%';
+}
+setPlaying(false);
+
 document.querySelectorAll('[data-media]').forEach(b => b.onclick = () => run(async () => {
+  if (b.dataset.media === 'playpause') setPlaying(!playing); // resposta imediata; o polling confirma
   await api('/media/' + b.dataset.media, { method: 'POST' });
-  setTimeout(refreshMedia, 400);
+  setTimeout(refreshMedia, 600);
 }));
 let volTimer, dragging = false;
 ['pointerdown'].forEach(t => $('#volume').addEventListener(t, () => { dragging = true; }));
 ['pointerup', 'pointercancel'].forEach(t => $('#volume').addEventListener(t, () => { dragging = false; }));
 $('#volume').oninput = e => {
+  setVol(e.target.value);
   clearTimeout(volTimer);
   volTimer = setTimeout(() => run(() => api('/media/volume', { method: 'PUT', json: { percent: +e.target.value } })), 150);
 };
+
+async function loadCover() {
+  try {
+    const r = await fetch('/api/media/cover', { headers: { Authorization: `Bearer ${token}` } });
+    if (r.status !== 200) return;
+    if (coverUrl) URL.revokeObjectURL(coverUrl);
+    coverUrl = URL.createObjectURL(await r.blob());
+    $('#coverImg').src = coverUrl;
+    $('#cover').classList.add('has');
+    coverOk = true;
+  } catch { /* sem capa: fica o ícone */ }
+}
+
 async function refreshMedia() {
   try {
     const m = await api('/media');
-    $('#now').textContent = m.title ? `${m.playing ? '▶' : '⏸'} ${m.title}${m.artist ? ' · ' + m.artist : ''}` : 'Nada tocando';
-    if (!dragging) $('#volume').value = m.volume;
+    const has = !!m.title;
+    $('#media').classList.toggle('idle', !has);
+    $('#mTitle').textContent = has ? m.title : 'Nada tocando';
+    $('#mArtist').textContent = has ? (m.artist || '') : 'Toque algo no PC';
+    setPlaying(m.playing);
+    if (!dragging) setVol(m.volume);
+    const key = has ? `${m.title}|${m.artist}` : null;
+    if (key !== lastTrack) {
+      lastTrack = key;
+      coverOk = false;
+      $('#cover').classList.remove('has');
+    }
+    if (has && !coverOk) loadCover(); // a capa às vezes chega depois do título: tenta de novo no próximo ciclo
   } catch { /* offline: mantém o que está na tela */ }
 }
 

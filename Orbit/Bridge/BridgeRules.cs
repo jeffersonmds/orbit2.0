@@ -107,7 +107,8 @@ public static class BridgeRules
     // Leituras que o PWA faz em polling (stats, mídia) não poluem a auditoria.
     public static bool ShouldAudit(string method, string path) =>
         !(string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
-          && (path.EndsWith("/stats", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/media", StringComparison.OrdinalIgnoreCase)));
+          && (path.EndsWith("/stats", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/media", StringComparison.OrdinalIgnoreCase)
+              || path.EndsWith("/media/cover", StringComparison.OrdinalIgnoreCase)));
 
     public static string Preview(string text)
     {
