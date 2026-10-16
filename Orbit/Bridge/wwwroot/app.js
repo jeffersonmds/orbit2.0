@@ -99,7 +99,11 @@ $('#files').onchange = e => {
     $('#progress').classList.add('hidden');
     $('#bar').style.width = '0';
     e.target.value = '';
-    if (xhr.status === 200) toast(files.length === 1 ? 'Arquivo enviado' : `${files.length} arquivos enviados`);
+    if (xhr.status === 200) {
+      let where = '';
+      try { const f = JSON.parse(xhr.responseText).folder || ''; where = f ? ' → ' + f.split(/[\\/]/).slice(-2).join('\\') : ''; } catch {}
+      toast((files.length === 1 ? 'Arquivo enviado' : `${files.length} arquivos enviados`) + where);
+    }
     else if (xhr.status === 413) toast('Arquivo grande demais (máx. 500 MB por envio)');
     else if (xhr.status === 429) toast('Calma: muitas ações seguidas');
     else if (xhr.status === 401) { showPair(true); toast('Token inválido — pareie de novo'); }

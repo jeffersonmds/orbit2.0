@@ -31,6 +31,12 @@
                     <TextBlock Text="{Binding TailscaleStatus}" FontSize="11.5" Foreground="{StaticResource InkLo}"
                                TextWrapping="Wrap" VerticalAlignment="Center"/>
                 </DockPanel>
+                <DockPanel Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Content="Abrir pasta" Command="{Binding OpenUploadFolderCommand}"/>
+                    <TextBlock FontSize="11.5" Foreground="{StaticResource InkLo}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                        <Run Text="Arquivos do iPhone vão para "/><Run Text="{Binding UploadFolder, Mode=OneWay}"/>
+                    </TextBlock>
+                </DockPanel>
                 <DockPanel Margin="0,0,0,6">
                     <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Parear iPhone" Command="{Binding PairCommand}"/>
                     <TextBlock Text="Aparelhos com acesso" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0"/>

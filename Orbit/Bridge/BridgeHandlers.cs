@@ -8,7 +8,8 @@ namespace Orbit.Bridge;
 public sealed record MediaState(string? Title, string? Artist, bool Playing, double Volume);
 public sealed record StatsSnapshot(double Cpu, double RamUsedGb, double RamTotalGb, double DiskUsedGb, double DiskTotalGb,
     int? BatteryPercent, bool Charging);
-public sealed record BridgeEvent(string Title, string Detail);
+// OpenPath: pasta/arquivo que o clique no alerta abre (ex.: onde o upload foi salvo).
+public sealed record BridgeEvent(string Title, string Detail, string? OpenPath = null);
 
 // O que o servidor pede pra ilha fazer. O BridgeServer não conhece WPF; a ilha implementa
 // estes delegates (com Dispatcher quando precisa da UI thread) e os testes usam fakes.

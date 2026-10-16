@@ -12,16 +12,18 @@ public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2 }
 // Classe (não record): dois alertas iguais seguidos são eventos distintos — igualdade por referência.
 public sealed class Peek
 {
-    public Peek(string title, string? detail, string? tabId)
+    public Peek(string title, string? detail, string? tabId, string? openPath = null)
     {
         Title = title;
         Detail = detail;
         TabId = tabId;
+        OpenPath = openPath;
     }
 
     public string Title { get; }
     public string? Detail { get; }
     public string? TabId { get; }
+    public string? OpenPath { get; } // se houver, o clique abre isto no Explorer em vez da aba
 }
 
 // Lógica pura dos estados da ilha (sem WPF) — testada no harness.

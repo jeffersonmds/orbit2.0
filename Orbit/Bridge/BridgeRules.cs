@@ -27,6 +27,22 @@ public static class BridgeRules
         Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var u)
         && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
 
+    // Aceita "youtube.com" / "www.x.com/a" digitado no iPhone: completa com https://.
+    // Devolve a URL normalizada, ou null se não for link http/https.
+    public static string? NormalizeOpenUrl(string? url)
+    {
+        var t = (url ?? "").Trim();
+        if (t.Length == 0) return null;
+        if (!t.Contains("://", StringComparison.Ordinal) && t.Contains('.') && !t.Any(char.IsWhiteSpace))
+            t = "https://" + t;
+        return IsOpenableUrl(t) ? new Uri(t).AbsoluteUri : null;
+    }
+
+    public static string UploadFolder(string? configured) =>
+        string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Orbit")
+            : configured;
+
     public static string Host(string url) => Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) ? u.Host : "";
 
     public static string? BearerToken(string? header) =>

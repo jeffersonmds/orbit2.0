@@ -130,9 +130,8 @@ public sealed class BridgeServer : IAsyncDisposable
 
         api.MapPost("/links/open", async (LinkRequest req) =>
         {
-            if (!BridgeRules.IsOpenableUrl(req.Url)) return Results.BadRequest(new { erro = "Só links http/https." });
-            var url = req.Url!.Trim();
-            await h.OpenUrl(new Uri(url).AbsoluteUri);
+            if (BridgeRules.NormalizeOpenUrl(req.Url) is not { } url) return Results.BadRequest(new { erro = "Isso não parece um link." });
+            await h.OpenUrl(url);
             h.Notify(new BridgeEvent("Link aberto no PC", BridgeRules.Host(url)));
             return Results.NoContent();
         });
@@ -195,8 +194,8 @@ public sealed class BridgeServer : IAsyncDisposable
                 }
             }
             h.Notify(new BridgeEvent(saved.Count == 1 ? "Arquivo do iPhone" : $"{saved.Count} arquivos do iPhone",
-                string.Join(", ", saved)));
-            return Results.Ok(new { saved });
+                string.Join(", ", saved), OpenPath: dir));
+            return Results.Ok(new { saved, folder = dir });
         });
     }
 

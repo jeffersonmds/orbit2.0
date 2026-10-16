@@ -796,6 +796,12 @@ public static class Program
         Check("ponte: javascript bloqueado", !BridgeRules.IsOpenableUrl("javascript:alert(1)"));
         Check("ponte: file bloqueado", !BridgeRules.IsOpenableUrl("file:///C:/Windows/notepad.exe"));
         Check("ponte: vazio/nulo bloqueado", !BridgeRules.IsOpenableUrl("") && !BridgeRules.IsOpenableUrl(null));
+        Check("ponte: link sem https é completado", BridgeRules.NormalizeOpenUrl("youtube.com") == "https://youtube.com/"
+            && BridgeRules.NormalizeOpenUrl(" www.x.com/a?b=1 ") == "https://www.x.com/a?b=1");
+        Check("ponte: texto qualquer não vira link", BridgeRules.NormalizeOpenUrl("bom dia") is null
+            && BridgeRules.NormalizeOpenUrl("javascript:alert(1)") is null && BridgeRules.NormalizeOpenUrl("") is null);
+        Check("ponte: pasta padrão de upload", BridgeRules.UploadFolder(null).EndsWith(@"Downloads\Orbit")
+            && BridgeRules.UploadFolder(@"D:\x") == @"D:\x");
         Check("ponte: host", BridgeRules.Host("https://www.github.com/a") == "www.github.com");
 
         Check("ponte: bearer", BridgeRules.BearerToken("Bearer abc123 ") == "abc123");
@@ -951,6 +957,7 @@ public static class Program
         {
             form.Add(new ByteArrayContent(new byte[] { 1, 2, 3 }), "file", "../evil.txt");
             var up = http.PostAsync("/api/files", form).Result;
+            Check("ponte: upload devolve a pasta", up.Content.ReadAsStringAsync().Result.Contains("\"folder\""));
             Check("ponte: upload salva com nome seguro", up.StatusCode == HttpStatusCode.OK && File.Exists(Path.Combine(dir, "up", "evil.txt")));
         }
         using (var form = new MultipartFormDataContent())

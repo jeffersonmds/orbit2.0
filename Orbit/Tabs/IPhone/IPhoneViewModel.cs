@@ -244,6 +244,19 @@ public sealed partial class IPhoneViewModel : TabViewModel
         await RefreshTailscaleAsync();
     }
 
+    public string UploadFolder => BridgeRules.UploadFolder(_settings.BridgeUploadFolder);
+
+    [RelayCommand]
+    private void OpenUploadFolder()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(UploadFolder);
+            Process.Start(new ProcessStartInfo(UploadFolder) { UseShellExecute = true });
+        }
+        catch (Exception ex) { Log.Warning(ex, "Não abri {Pasta}", UploadFolder); }
+    }
+
     [RelayCommand]
     private void OpenEnableUrl()
     {

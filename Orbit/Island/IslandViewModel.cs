@@ -108,9 +108,6 @@ public sealed partial class IslandViewModel : ObservableObject
         SelectedTab = Tabs.FirstOrDefault(t => t.Id == last) ?? Tabs.FirstOrDefault();
     }
 
-    private static readonly string DefaultUploadFolder =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Orbit");
-
     // O que a ponte faz de verdade. Roda em threads do Kestrel: o que toca UI/clipboard/SMTC
     // volta pra UI thread via Dispatcher.
     private BridgeHandlers BuildBridgeHandlers()
@@ -174,8 +171,8 @@ public sealed partial class IslandViewModel : ObservableObject
                         Math.Round(s.Disk.UsedGb), Math.Round(s.Disk.TotalGb), battery, charging);
                 }
             },
-            UploadFolder = () => string.IsNullOrWhiteSpace(_settings.BridgeUploadFolder) ? DefaultUploadFolder : _settings.BridgeUploadFolder!,
-            Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone"), false)),
+            UploadFolder = () => BridgeRules.UploadFolder(_settings.BridgeUploadFolder),
+            Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone", e.OpenPath), false)),
         };
     }
 
@@ -247,7 +244,15 @@ public sealed partial class IslandViewModel : ObservableObject
     public void OpenPeekTab()
     {
         var tabId = _machine.CurrentPeek?.TabId;
+        var openPath = _machine.CurrentPeek?.OpenPath;
         _machine.PeekDone();
+        if (openPath is not null)
+        {
+            try { Process.Start(new ProcessStartInfo(openPath) { UseShellExecute = true }); }
+            catch (Exception ex) { Log.Warning(ex, "Não abri {Caminho}", openPath); }
+            Refresh();
+            return;
+        }
         if (tabId is null) Expand();
         else OpenTab(tabId);
     }
