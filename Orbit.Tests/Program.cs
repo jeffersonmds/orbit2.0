@@ -43,6 +43,7 @@ public static class Program
         EnergiaExtrasTests();
         MixerTests();
         CameraPresetTests();
+        StreamTicketTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -493,6 +494,22 @@ public static class Program
         Check("preset: 720p", CameraPreset.Parse("720", "24") == new CameraPreset(1280, 24));
         Check("preset: fps preso em 5..30", CameraPreset.Parse("720", "99").Fps == 30 && CameraPreset.Parse("720", "1").Fps == 5);
         Check("preset: lixo vira padrão", CameraPreset.Parse(null, null) == CameraPreset.Default && CameraPreset.Parse("4k", "x") == CameraPreset.Default);
+    }
+
+    private static void StreamTicketTests()
+    {
+        var t = new StreamTickets();
+        var now = new DateTime(2026, 1, 1, 12, 0, 0);
+        var tk = t.Issue("dev-A", new CameraPreset(1280, 24), now);
+        Check("tíquete: não vazio", !string.IsNullOrEmpty(tk));
+        Check("tíquete: claim certo devolve device+preset", t.Claim(tk, now) is { DeviceId: "dev-A", Preset.Width: 1280 });
+        Check("tíquete: uso único (2ª vez falha)", t.Claim(tk, now) is null);
+        var tk2 = t.Issue("dev-B", CameraPreset.Default, now);
+        Check("tíquete: expira", t.Claim(tk2, now.AddSeconds(31)) is null);
+        Check("tíquete: errado falha", t.Claim("naoexiste", now) is null);
+        var tk3 = t.Issue("dev-C", CameraPreset.Default, now);
+        t.Issue("dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
+        Check("tíquete: emitir substitui", t.Claim(tk3, now) is null);
     }
 
     private static void MixerTests()
