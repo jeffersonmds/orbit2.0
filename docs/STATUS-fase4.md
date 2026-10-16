@@ -18,6 +18,16 @@ Mergeada no `master` em 2026-10-16, após teste real no iPhone (via Tailscale).
 
 Pareamento por código, mídia, envio de arquivos, energia com confirmação, abrir link.
 
+## Câmera do notebook no iPhone (2026-10-16)
+
+Extensão da ponte: ver as câmeras do PC ao vivo no PWA e tirar foto pras Fotos do iOS.
+Spec `docs/superpowers/specs/2026-10-16-camera-iphone-design.md`, plano
+`docs/superpowers/plans/2026-10-16-camera-iphone.md`. **Testado no iPhone** (integrada + Logitech
+C920): stream, troca de câmera/qualidade ao vivo, foto salva nas Fotos, parar fecha a câmera e
+apaga o LED na hora. Capability "Câmera" desligada por padrão; stream autenticado por tíquete de
+uso único (a `<img>` não manda cabeçalho). O LED físico acende sempre que a câmera capta (hardware);
+pedido de "não acender" recusado por ser indicador de privacidade. Áudio do microfone fica no backlog.
+
 ## Pendente / backlog
 
 - Atalhos do iOS (`docs/atalhos-ios.md`) ainda não testados pelo usuário.

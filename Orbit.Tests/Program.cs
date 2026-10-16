@@ -42,6 +42,11 @@ public static class Program
         PowerTests();
         EnergiaExtrasTests();
         MixerTests();
+        CameraPresetTests();
+        StreamTicketTests();
+        MjpegTests();
+        CameraTests();
+        CameraAuditTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -65,10 +70,38 @@ public static class Program
         IPhoneTests();
         TailscaleTests();
         PairingCodeTests();
+        CameraStreamAuthTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    // O stream é autenticado por tíquete (a <img> não manda cabeçalho): tem de passar pelo
+    // middleware de token. Com tíquete válido e device inexistente, o handler falha em 409 — nunca 401.
+    private static void CameraStreamAuthTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-cam-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var web = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        var camera = new Camera();
+        var tickets = new StreamTickets();
+        var handlers = new BridgeHandlers { CameraEnabled = () => true };
+        var server = new BridgeServer();
+        server.StartAsync(0, web, new TokenStore(Path.Combine(dir, "t.json")), new AuditLog(Path.Combine(dir, "a.jsonl")),
+            handlers, null, camera, tickets).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+
+        var semTicket = http.GetAsync("/api/camera/stream").Result;
+        Check("câmera: stream sem tíquete = 401", semTicket.StatusCode == HttpStatusCode.Unauthorized);
+
+        var tk = tickets.Issue("device-inexistente", CameraPreset.Default, DateTime.Now);
+        var comTicket = http.GetAsync($"/api/camera/stream?ticket={tk}").Result; // sem Authorization
+        Check("câmera: stream com tíquete passa o token e falha no device (409)", comTicket.StatusCode == HttpStatusCode.Conflict);
+
+        server.StopAsync().GetAwaiter().GetResult();
+        camera.Dispose();
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void PwaTests()
@@ -83,6 +116,10 @@ public static class Program
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
         var html = http.GetStringAsync("/").Result;
         Check("pwa: / serve o index sem token", html.Contains("<title>Orbit</title>"));
+        Check("pwa: cartão de câmera", html.Contains("id=\"cam-card\""));
+        var appjs = File.ReadAllText(Path.Combine(web, "app.js"));
+        Check("pwa: foto via share", appjs.Contains("navigator.share"));
+        Check("pwa: tíquete na URL do stream", appjs.Contains("/api/camera/stream?ticket="));
         var manifest = http.GetAsync("/manifest.webmanifest").Result;
         Check("pwa: manifest com content-type", manifest.IsSuccessStatusCode
             && manifest.Content.Headers.ContentType?.MediaType == "application/manifest+json");
@@ -483,6 +520,55 @@ public static class Program
         var soft = Orbit.Services.Accent.Soft(sys);
         Check("acento: versão suave tem alpha 0x33 e mesma cor", soft.A == 0x33 && soft.R == sys.R && soft.G == sys.G && soft.B == sys.B);
         Check("acento: paleta toda é hex válido", Array.TrueForAll(Orbit.Services.Accent.Paleta, p => Orbit.Services.Accent.ParseHex(p.Hex) is not null));
+    }
+
+    private static void CameraPresetTests()
+    {
+        Check("preset: padrão 720p/24", CameraPreset.Default.Width == 1280 && CameraPreset.Default.Fps == 24);
+        Check("preset: 480p", CameraPreset.Parse("480", "20") == new CameraPreset(640, 20));
+        Check("preset: 720p", CameraPreset.Parse("720", "24") == new CameraPreset(1280, 24));
+        Check("preset: fps preso em 5..30", CameraPreset.Parse("720", "99").Fps == 30 && CameraPreset.Parse("720", "1").Fps == 5);
+        Check("preset: lixo vira padrão", CameraPreset.Parse(null, null) == CameraPreset.Default && CameraPreset.Parse("4k", "x") == CameraPreset.Default);
+    }
+
+    private static void StreamTicketTests()
+    {
+        var t = new StreamTickets();
+        var now = new DateTime(2026, 1, 1, 12, 0, 0);
+        var tk = t.Issue("dev-A", new CameraPreset(1280, 24), now);
+        Check("tíquete: não vazio", !string.IsNullOrEmpty(tk));
+        Check("tíquete: claim certo devolve device+preset", t.Claim(tk, now) is { DeviceId: "dev-A", Preset.Width: 1280 });
+        Check("tíquete: uso único (2ª vez falha)", t.Claim(tk, now) is null);
+        var tk2 = t.Issue("dev-B", CameraPreset.Default, now);
+        Check("tíquete: expira", t.Claim(tk2, now.AddSeconds(31)) is null);
+        Check("tíquete: errado falha", t.Claim("naoexiste", now) is null);
+        var tk3 = t.Issue("dev-C", CameraPreset.Default, now);
+        t.Issue("dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
+        Check("tíquete: emitir substitui", t.Claim(tk3, now) is null);
+    }
+
+    private static void CameraTests()
+    {
+        var ordered = Camera.OrderDevices([
+            new CameraDevice("b", "Logitech BRIO"),
+            new CameraDevice("a", "Câmera Integrada"),
+        ]);
+        Check("câmera: ordena por nome", string.Join(",", ordered.Select(d => d.Id)) == "a,b");
+    }
+
+    private static void CameraAuditTests()
+    {
+        Check("audit: ignora o stream", !BridgeRules.ShouldAudit("GET", "/api/camera/stream"));
+        Check("audit: lista de câmeras não audita", !BridgeRules.ShouldAudit("GET", "/api/camera/devices"));
+        Check("audit: abrir câmera audita", BridgeRules.ShouldAudit("POST", "/api/camera/open"));
+    }
+
+    private static void MjpegTests()
+    {
+        Check("mjpeg: boundary", Mjpeg.Boundary == "orbitcam");
+        Check("mjpeg: content-type", Mjpeg.ContentType == "multipart/x-mixed-replace; boundary=orbitcam");
+        var header = System.Text.Encoding.ASCII.GetString(Mjpeg.PartHeader(1234));
+        Check("mjpeg: cabeçalho da parte", header == "\r\n--orbitcam\r\nContent-Type: image/jpeg\r\nContent-Length: 1234\r\n\r\n");
     }
 
     private static void MixerTests()

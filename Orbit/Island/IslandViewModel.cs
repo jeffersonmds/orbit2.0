@@ -182,6 +182,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 }
             },
             UploadFolder = () => BridgeRules.UploadFolder(_settings.BridgeUploadFolder),
+            CameraEnabled = () => _settings.BridgeCameraEnabled,
             Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone", e.OpenPath), false)),
         };
     }

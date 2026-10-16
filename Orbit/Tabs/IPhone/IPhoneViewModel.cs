@@ -33,12 +33,15 @@ public sealed partial class IPhoneViewModel : TabViewModel
 
     public BridgeServer Server { get; } = new();
     private readonly PairingCodes _codes = new();
+    private readonly Orbit.Services.Camera _camera = new();
+    private readonly StreamTickets _tickets = new();
     public ObservableCollection<TokenInfo> Tokens { get; } = new();
     public ObservableCollection<AuditRow> Activity { get; } = new();
 
     [ObservableProperty] private bool _enabled;
     [ObservableProperty] private string _status = "Desligada";
     [ObservableProperty] private string _publicUrl = "";
+    [ObservableProperty] private bool _cameraEnabled;
     [ObservableProperty] private BitmapSource? _qrImage;
     [ObservableProperty] private string? _pairLink;
     [ObservableProperty] private bool _hasPairing;
@@ -76,6 +79,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         _syncing = true;
         Enabled = settings.BridgeEnabled;
         PublicUrl = settings.BridgePublicUrl;
+        CameraEnabled = settings.BridgeCameraEnabled;
         _syncing = false;
         _audit.Written += _ => Application.Current?.Dispatcher.BeginInvoke(RefreshActivity);
     }
@@ -100,6 +104,13 @@ public sealed partial class IPhoneViewModel : TabViewModel
         _toggle = ApplyAsync(_toggle);
     }
 
+    partial void OnCameraEnabledChanged(bool value)
+    {
+        if (_syncing) return;
+        _settings.BridgeCameraEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
     partial void OnPublicUrlChanged(string value)
     {
         if (_syncing) return;
@@ -115,7 +126,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         {
             Status = "Ligando…";
             var handlers = _handlers(); // na UI thread: captura o Dispatcher
-            await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers, _codes));
+            await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers, _codes, _camera, _tickets));
             Status = $"Ligada · 127.0.0.1:{Server.Port}";
         }
         catch (Exception ex)
@@ -135,6 +146,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         try { await Task.Run(() => Server.StopAsync()); }
         catch (Exception ex) { Log.Warning(ex, "Ponte: falha ao desligar"); }
         Status = "Desligada";
+        _camera.Dispose();
     }
 
     public override void SetActive(bool active)

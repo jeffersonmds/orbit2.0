@@ -238,8 +238,101 @@ document.querySelectorAll('[data-power]').forEach(b => b.onclick = async () => {
   run(() => api('/power/' + b.dataset.power, { method: 'POST' }), `${label}: enviado`);
 });
 
+// --- Câmera ---
+const camImg = $('#camImg'), camToggle = $('#camToggle'), camShot = $('#camShot');
+const camDevice = $('#camDevice'), camQuality = $('#camQuality'), camView = $('#camView'), camMsg = $('#camMsg');
+let camStreaming = false, camLoaded = false;
+const camName = () => camDevice.selectedOptions[0]?.textContent || '';
+
+function camSay(msg) {
+  camMsg.textContent = msg || '';
+  camMsg.classList.toggle('hidden', !msg);
+}
+
+// Lista as câmeras do PC (não abre nenhuma: a luz não acende aqui). Repetida pelo loop até dar certo,
+// então para; não recarrega durante o stream pra não zerar o seletor.
+async function camLoadDevices() {
+  if (!token || camStreaming) return;
+  try {
+    const r = await fetch('/api/camera/devices', { headers: { Authorization: `Bearer ${token}` } });
+    if (r.status === 403) { camSay('Ligue "Câmera" na aba iPhone do PC.'); return; }
+    if (!r.ok) return;
+    const list = await r.json();
+    camDevice.innerHTML = '';
+    for (const d of list) {
+      const o = document.createElement('option');
+      o.value = d.id; o.textContent = d.name;
+      camDevice.appendChild(o);
+    }
+    camLoaded = true;
+    camSay(list.length ? '' : 'Nenhuma câmera encontrada.');
+  } catch { /* offline: o loop tenta de novo */ }
+}
+
+async function camStart() {
+  try {
+    const r = await fetch('/api/camera/open', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: camDevice.value, name: camName(), quality: camQuality.value, fps: '24' }),
+    });
+    if (r.status === 403) { camSay('Ligue "Câmera" na aba iPhone do PC.'); return; }
+    if (!r.ok) { camSay('Não consegui abrir a câmera.'); return; }
+    const { ticket } = await r.json();
+    camImg.onerror = () => { camSay('Câmera em uso por outro programa, ou o stream caiu.'); camStop(); };
+    // só o tíquete (descartável) vai na URL; o token fica no cabeçalho do /open
+    camImg.src = `/api/camera/stream?ticket=${encodeURIComponent(ticket)}`;
+    camStreaming = true;
+    camToggle.textContent = 'Parar';
+    camView.classList.remove('hidden');
+    camSay('');
+  } catch { camSay('PC fora do ar'); }
+}
+
+// GIF 1x1 transparente: atribuir um src NOVO aborta a conexão MJPEG (o Safari não a fecha só
+// removendo o atributo), e aí o PC solta a câmera e apaga a luz.
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+function camStop() {
+  camImg.onerror = null;
+  camImg.src = BLANK; // solta a <img>
+  camStreaming = false;
+  camToggle.textContent = 'Ver câmera';
+  camView.classList.add('hidden');
+  // o Safari não aborta a conexão MJPEG sozinho: manda o PC fechar a câmera (apaga a luz)
+  if (token) fetch('/api/camera/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+}
+
+camToggle.onclick = () => camStreaming ? camStop() : camStart();
+
+// Trocar câmera/qualidade com o stream ligado reabre direto na nova (novo tíquete; o <img> novo
+// aborta o anterior e o PC solta a câmera antiga).
+const camSwitch = () => { if (camStreaming) camStart(); };
+camDevice.onchange = camSwitch;
+camQuality.onchange = camSwitch;
+
+camShot.onclick = async () => {
+  try {
+    const r = await fetch('/api/camera/photo', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: camDevice.value, name: camName() }),
+    });
+    if (!r.ok) { toast('Não consegui tirar a foto'); return; }
+    const blob = await r.blob();
+    const file = new File([blob], `orbit-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file] }); // iOS: "Salvar imagem" → Fotos
+    } else {
+      window.open(URL.createObjectURL(blob), '_blank'); // fallback: segurar a imagem → Adicionar às Fotos
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // folha cancelada
+    toast('Não consegui salvar a foto');
+  }
+};
+
 // Polling só com o app visível (nada roda em segundo plano no iPhone).
-function refresh() { ping(); if (token) { refreshStats(); refreshMedia(); } }
+function refresh() { ping(); if (token) { refreshStats(); refreshMedia(); if (!camLoaded) camLoadDevices(); } }
 let loop;
 function startLoop() { clearInterval(loop); refresh(); loop = setInterval(refresh, 5000); }
 document.addEventListener('visibilitychange', () => document.hidden ? clearInterval(loop) : startLoop());

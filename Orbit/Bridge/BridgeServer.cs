@@ -24,6 +24,8 @@ public sealed record LinkRequest(string? Url);
 public sealed record TextRequest(string? Text);
 public sealed record VolumeRequest(double Percent);
 public sealed record PairRequest(string? Code);
+public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps);
+public sealed record CameraPhotoRequest(string? DeviceId, string? Name);
 
 // Kestrel dentro do processo do Orbit, só em 127.0.0.1 (o `tailscale serve` é quem expõe).
 // Toda rota /api exige token e passa por rate limit; /health e o PWA (arquivos estáticos) não.
@@ -39,7 +41,7 @@ public sealed class BridgeServer : IAsyncDisposable
     // port 0 = porta efêmera (testes).
     // codes: pareamento por código de 6 dígitos (POST /pair, sem token). null = rota desligada.
     public async Task StartAsync(int port, string webRoot, TokenStore tokens, AuditLog audit, BridgeHandlers h,
-        PairingCodes? codes = null)
+        PairingCodes? codes = null, Orbit.Services.Camera? camera = null, StreamTickets? tickets = null)
     {
         if (_app is not null) return;
         bool hasWeb = Directory.Exists(webRoot);
@@ -78,7 +80,11 @@ public sealed class BridgeServer : IAsyncDisposable
         // Auth ANTES do rate limit e do bind do body: sem token não lê corpo nem gasta a cota do dono.
         app.Use(async (ctx, next) =>
         {
-            if (ctx.Request.Path.StartsWithSegments("/api"))
+            // O stream da câmera é a única rota /api autenticada por tíquete (a <img> não manda
+            // cabeçalho): o próprio handler valida o tíquete de uso único. As demais exigem token.
+            bool ticketRoute = HttpMethods.IsGet(ctx.Request.Method)
+                && ctx.Request.Path.Equals("/api/camera/stream", StringComparison.OrdinalIgnoreCase);
+            if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
                 if (name is null)
@@ -136,7 +142,14 @@ public sealed class BridgeServer : IAsyncDisposable
                 return Results.Problem("Falha no PC.", statusCode: StatusCodes.Status500InternalServerError);
             }
         });
-        MapApi(api, h);
+        // Câmera é capability à parte: 403 enquanto o usuário não liga "Câmera" na aba iPhone.
+        api.AddEndpointFilter(async (ctx, next) =>
+        {
+            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/camera") && !h.CameraEnabled())
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            return await next(ctx);
+        });
+        MapApi(api, h, camera, tickets);
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }
@@ -145,7 +158,7 @@ public sealed class BridgeServer : IAsyncDisposable
         Log.Information("Ponte ouvindo em 127.0.0.1:{Porta}", Port);
     }
 
-    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h)
+    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h, Orbit.Services.Camera? camera, StreamTickets? tickets)
     {
         api.MapGet("/stats", () => h.GetStats());
 
@@ -219,6 +232,66 @@ public sealed class BridgeServer : IAsyncDisposable
                 string.Join(", ", saved), OpenPath: dir));
             return Results.Ok(new { saved, folder = dir });
         });
+
+        if (camera is not null && tickets is not null)
+        {
+            api.MapGet("/camera/devices", async () =>
+                Results.Ok((await Orbit.Services.Camera.DevicesAsync()).Select(d => new { id = d.Id, name = d.Name })));
+
+            api.MapPost("/camera/open", (CameraOpenRequest req) =>
+            {
+                if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
+                var preset = CameraPreset.Parse(req.Quality, req.Fps);
+                var ticket = tickets.Issue(req.DeviceId, preset, DateTime.Now);
+                h.Notify(new BridgeEvent("Câmera aberta pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name));
+                return Results.Ok(new { ticket });
+            });
+
+            api.MapGet("/camera/stream", async (HttpContext ctx, string? ticket) =>
+            {
+                if (tickets.Claim(ticket, DateTime.Now) is not { } claim)
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return;
+                }
+                System.Threading.CancellationTokenSource session;
+                System.Threading.CancellationToken sessionToken;
+                try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset); }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Câmera: não abriu");
+                    ctx.Response.StatusCode = StatusCodes.Status409Conflict; // ocupada por outro app, etc.
+                    return;
+                }
+                // Encerra por: conexão caiu (RequestAborted), parar explícito ou troca (sessionToken).
+                using var link = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, sessionToken);
+                try
+                {
+                    ctx.Response.ContentType = Mjpeg.ContentType;
+                    ctx.Response.Headers.CacheControl = "no-cache, no-store";
+                    var body = ctx.Response.BodyWriter;
+                    while (!link.Token.IsCancellationRequested)
+                    {
+                        var jpeg = await camera.NextFrameAsync(link.Token);
+                        await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), link.Token);
+                        await body.WriteAsync(jpeg, link.Token);
+                        await body.FlushAsync(link.Token);
+                    }
+                }
+                catch (OperationCanceledException) { /* parar, troca ou iPhone fechou */ }
+                finally { await camera.EndStream(session); }
+            });
+
+            api.MapPost("/camera/close", async () => { await camera.CloseAsync(); return Results.NoContent(); });
+
+            api.MapPost("/camera/photo", async (CameraPhotoRequest req) =>
+            {
+                if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
+                var jpeg = await camera.PhotoAsync(req.DeviceId);
+                h.Notify(new BridgeEvent("Foto capturada pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name));
+                return Results.File(jpeg, "image/jpeg");
+            });
+        }
     }
 
     private static int? ActualPort(WebApplication app)
