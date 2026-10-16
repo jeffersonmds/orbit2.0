@@ -78,6 +78,23 @@
       </div>
     </section>
 
+    <section class="card" id="cam-card">
+      <h2>Câmera</h2>
+      <div class="row top">
+        <select id="camDevice" aria-label="Câmera"></select>
+        <select id="camQuality" aria-label="Qualidade">
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+        </select>
+      </div>
+      <div class="cam-view hidden" id="camView">
+        <img id="camImg" alt="">
+        <button id="camShot" class="cam-shot">Foto</button>
+      </div>
+      <button class="primary" id="camToggle">Ver câmera</button>
+      <p class="muted hidden" id="camMsg"></p>
+    </section>
+
     <section class="card">
       <h2>PC</h2>
       <div class="stats">

@@ -88,6 +88,10 @@ public static class Program
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
         var html = http.GetStringAsync("/").Result;
         Check("pwa: / serve o index sem token", html.Contains("<title>Orbit</title>"));
+        Check("pwa: cartão de câmera", html.Contains("id=\"cam-card\""));
+        var appjs = File.ReadAllText(Path.Combine(web, "app.js"));
+        Check("pwa: foto via share", appjs.Contains("navigator.share"));
+        Check("pwa: tíquete na URL do stream", appjs.Contains("/api/camera/stream?ticket="));
         var manifest = http.GetAsync("/manifest.webmanifest").Result;
         Check("pwa: manifest com content-type", manifest.IsSuccessStatusCode
             && manifest.Content.Headers.ContentType?.MediaType == "application/manifest+json");
