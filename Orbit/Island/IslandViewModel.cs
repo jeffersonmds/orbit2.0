@@ -26,7 +26,7 @@ public sealed partial class IslandViewModel : ObservableObject
 {
     // Ordem fixa das abas no painel. Ids ainda não registrados são pulados.
     public static readonly string[] TabOrder =
-        { "controles", "hoje", "stats", "mercado", "noticias", "claude", "energia", "ajustes" };
+        { "controles", "hoje", "stats", "clipboard", "apps", "mercado", "noticias", "claude", "energia", "ajustes" };
 
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;

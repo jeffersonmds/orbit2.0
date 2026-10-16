@@ -44,9 +44,17 @@ public static class Program
         MercadoTests();
         NoticiasTests();
         ClaudeTests();
+        TabOrderTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static void TabOrderTests()
+    {
+        var order = string.Join(",", IslandViewModel.TabOrder);
+        Check("abas: clipboard e apps entre stats e mercado", order.Contains("stats,clipboard,apps,mercado"));
+        Check("abas: 10 ids na ordem", IslandViewModel.TabOrder.Length == 10);
     }
 
     private static void NoticiasTests()
