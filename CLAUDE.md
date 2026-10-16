@@ -41,6 +41,18 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   `IslandViewModel.SetActivity`: `NowPlayingViewModel` (SMTC), `PomodoroViewModel` (timer só
   rodando) e `ClaudeHookServer` (pipe `Orbit2ClaudeHooks`, distinto do 1.0; o Claude Code chama
   `Orbit.exe --claude-hook`). Prioridade na pílula: Claude aguardando > Pomodoro > mídia.
+- **Clipboard** (`Tabs/Clips/`, namespace `Orbit.Tabs.Clips` — nunca `...Clipboard`, que esconderia
+  `System.Windows.Clipboard`): `ClipboardWatcher` (WM_CLIPBOARDUPDATE) chama
+  `ClipsViewModel.CaptureAsync`; histórico em `clipboard.json` + `clipboard-img\` (chave de texto =
+  hash). Conteúdo marcado como privado (gerenciadores de senha) é ignorado; arquivo de imagem
+  copiado no Explorer vira imagem. Imagem do clipboard é copiada pra `WriteableBitmap` antes do
+  encode em `Task.Run` (BitmapFrame congelado ainda prende o decoder da UI thread).
+  Colar = clipboard + recolher + `Input.SendCtrlV` no `_prevFg`.
+- **`_prevFg`** (app em foco antes da ilha) vem de `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` —
+  `WM_ACTIVATE` não serve (lParam nulo pra app de outro processo).
+- **Apps** (`Tabs/Apps/`): `shell:AppsFolder` via COM numa thread STA (`Sta.Run`); ícones por
+  `IShellItemImageFactory` (alfa direto → `Bgra32`) com cache em `app-icons\`; abre por shell
+  execute de `shell:AppsFolder\<id>`.
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça
