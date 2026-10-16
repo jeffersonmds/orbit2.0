@@ -43,10 +43,68 @@ public sealed partial class EnergiaViewModel : TabViewModel
     private PowerAction? _pending;
     private DateTime _armedAt;
     private readonly DispatcherTimer _disarm = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromSeconds(30) }; // só com a aba aberta
+    private DateTime? _shutdownAt; // ponytail: só em memória; reiniciar o Orbit esquece (o Windows não)
+
+    [ObservableProperty] private string _batteryText = "—";
+    [ObservableProperty] private string _batteryDetail = "";
+    [ObservableProperty] private string _scheduleText = "Nada agendado";
+    [ObservableProperty] private bool _isScheduled;
 
     public EnergiaViewModel()
     {
         _disarm.Tick += (_, _) => SetPending(null);
+        _refresh.Tick += (_, _) => RefreshInfo();
+    }
+
+    private void RefreshInfo()
+    {
+        var (percent, charging, secondsLeft) = Battery.ReadFull();
+        (BatteryText, BatteryDetail) = Battery.Describe(percent, charging, secondsLeft);
+        if (_shutdownAt is { } at && at > DateTime.Now)
+        {
+            IsScheduled = true;
+            ScheduleText = $"Desliga às {at:HH:mm} (em {Battery.FormatDuration(at - DateTime.Now)})";
+        }
+        else
+        {
+            _shutdownAt = null;
+            IsScheduled = false;
+            ScheduleText = "Nada agendado";
+        }
+    }
+
+    [RelayCommand]
+    private void Schedule(string minutes)
+    {
+        if (!int.TryParse(minutes, out var m) || m <= 0) return;
+        try
+        {
+            Power.Schedule(TimeSpan.FromMinutes(m));
+            _shutdownAt = DateTime.Now.AddMinutes(m);
+            Log.Information("Energia: desligamento agendado em {Minutos} min", m);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Falha ao agendar desligamento");
+        }
+        RefreshInfo();
+    }
+
+    [RelayCommand]
+    private void CancelSchedule()
+    {
+        try { Power.CancelScheduled(); }
+        catch (Exception ex) { Log.Error(ex, "Falha ao cancelar desligamento"); }
+        _shutdownAt = null;
+        RefreshInfo();
+    }
+
+    [RelayCommand]
+    private async System.Threading.Tasks.Task ScreenOff()
+    {
+        await System.Threading.Tasks.Task.Delay(600); // senão o próprio clique (soltar o mouse) já acende a tela
+        Power.ScreenOff();
     }
 
     // Ação destrutiva precisa de dois cliques no mesmo botão (sem MessageBox sobre a ilha).
@@ -77,7 +135,14 @@ public sealed partial class EnergiaViewModel : TabViewModel
 
     public override void SetActive(bool active)
     {
-        if (!active) SetPending(null);
+        if (!active)
+        {
+            SetPending(null);
+            _refresh.Stop();
+            return;
+        }
+        RefreshInfo();
+        _refresh.Start();
     }
 
     private void SetPending(PowerAction? pending)

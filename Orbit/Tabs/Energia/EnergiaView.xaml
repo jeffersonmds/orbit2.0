@@ -1,29 +1,64 @@
 <UserControl x:Class="Orbit.Tabs.Energia.EnergiaView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ItemsControl ItemsSource="{Binding Botoes}" VerticalAlignment="Top">
-        <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-                <UniformGrid Columns="4"/>
-            </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-            <DataTemplate>
-                <Button Style="{StaticResource CardButton}" Height="96" Margin="5"
-                        Command="{Binding DataContext.ClickCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                        CommandParameter="{Binding}">
-                    <StackPanel x:Name="content">
-                        <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="20"
-                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                        <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+    <StackPanel>
+        <ItemsControl ItemsSource="{Binding Botoes}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="4"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Button Style="{StaticResource CardButton}" Height="96" Margin="5"
+                            Command="{Binding DataContext.ClickCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}">
+                        <StackPanel x:Name="content">
+                            <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="20"
+                                       HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsPending}" Value="True">
+                            <Setter TargetName="content" Property="TextElement.Foreground" Value="{DynamicResource AccentBrush}"/>
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <UniformGrid Columns="3" Margin="0,4,0,0">
+            <Border Style="{StaticResource Card}" Margin="5" Height="138">
+                <StackPanel>
+                    <TextBlock Text="Bateria" Style="{StaticResource Label}"/>
+                    <TextBlock Text="{Binding BatteryText}" FontSize="30" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"/>
+                    <TextBlock Text="{Binding BatteryDetail}" FontSize="12" Foreground="{StaticResource InkLo}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="5" Height="138">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Desligar em…" Style="{StaticResource Label}"/>
+                    <TextBlock DockPanel.Dock="Bottom" Text="Fecha os programas sem perguntar." FontSize="10.5"
+                               Foreground="{StaticResource InkLo}" Margin="0,6,0,0"/>
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal">
+                        <Button Style="{StaticResource SmallButton}" Content="30 min" Command="{Binding ScheduleCommand}" CommandParameter="30" Margin="0,0,4,0"/>
+                        <Button Style="{StaticResource SmallButton}" Content="1 h" Command="{Binding ScheduleCommand}" CommandParameter="60" Margin="0,0,4,0"/>
+                        <Button Style="{StaticResource SmallButton}" Content="2 h" Command="{Binding ScheduleCommand}" CommandParameter="120" Margin="0,0,4,0"/>
+                        <Button Style="{StaticResource SmallButton}" Content="Cancelar" Command="{Binding CancelScheduleCommand}"
+                                Foreground="{DynamicResource AccentBrush}" Visibility="{Binding IsScheduled, Converter={StaticResource BoolToVis}}"/>
                     </StackPanel>
-                </Button>
-                <DataTemplate.Triggers>
-                    <DataTrigger Binding="{Binding IsPending}" Value="True">
-                        <Setter TargetName="content" Property="TextElement.Foreground" Value="{DynamicResource AccentBrush}"/>
-                    </DataTrigger>
-                </DataTemplate.Triggers>
-            </DataTemplate>
-        </ItemsControl.ItemTemplate>
-    </ItemsControl>
+                    <TextBlock Text="{Binding ScheduleText}" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="5" Height="138">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Tela" Style="{StaticResource Label}"/>
+                    <Button DockPanel.Dock="Bottom" Style="{StaticResource SmallButton}" Content="Apagar a tela" HorizontalAlignment="Left"
+                            Command="{Binding ScreenOffCommand}"/>
+                    <TextBlock Text="Desliga o monitor sem bloquear nem suspender. Mexer o mouse acende." FontSize="12"
+                               Foreground="{StaticResource InkLo}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+        </UniformGrid>
+    </StackPanel>
 </UserControl>

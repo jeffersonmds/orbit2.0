@@ -40,6 +40,7 @@ public static class Program
         IslandGeometryTests();
         AccentTests();
         PowerTests();
+        EnergiaExtrasTests();
         FullscreenTests();
         TabIsolationTests();
         SharedInfraTests();
@@ -481,6 +482,17 @@ public static class Program
         var soft = Orbit.Services.Accent.Soft(sys);
         Check("acento: versão suave tem alpha 0x33 e mesma cor", soft.A == 0x33 && soft.R == sys.R && soft.G == sys.G && soft.B == sys.B);
         Check("acento: paleta toda é hex válido", Array.TrueForAll(Orbit.Services.Accent.Paleta, p => Orbit.Services.Accent.ParseHex(p.Hex) is not null));
+    }
+
+    private static void EnergiaExtrasTests()
+    {
+        Check("energia: agendar 30 min", Power.ScheduleArgs(TimeSpan.FromMinutes(30)) == "/s /t 1800");
+        Check("energia: agendar nunca 0 (seria imediato)", Power.ScheduleArgs(TimeSpan.Zero) == "/s /t 1");
+        Check("bateria: duração", Battery.FormatDuration(TimeSpan.FromMinutes(80)) == "1 h 20 min"
+            && Battery.FormatDuration(TimeSpan.FromMinutes(35)) == "35 min" && Battery.FormatDuration(TimeSpan.FromSeconds(30)) == "1 min");
+        Check("bateria: sem bateria", Battery.Describe(null, true, null).Detail.Contains("Sem bateria"));
+        Check("bateria: carregando/carregada", Battery.Describe(80, true, null).Detail == "Carregando" && Battery.Describe(100, true, null).Detail.StartsWith("Carregada"));
+        Check("bateria: na bateria com tempo", Battery.Describe(55, false, 5400) == ("55%", "Na bateria · 1 h 30 min restantes"));
     }
 
     private static void PowerTests()
