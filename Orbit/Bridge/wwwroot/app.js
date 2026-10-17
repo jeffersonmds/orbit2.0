@@ -349,6 +349,98 @@ camShot.onclick = async () => {
   }
 };
 
+// --- Arquivos do PC (só leitura) ---
+// Nomes vindos do PC só entram por textContent; innerHTML só recebe os ícones constantes abaixo.
+const PF_ICON = {
+  dir: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  other: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
+  doc: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
+  image: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>',
+  video: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>',
+  audio: '<svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+};
+const PF_KIND = [
+  ['image', /\.(jpe?g|png|gif|webp|heic|bmp|svg)$/i],
+  ['video', /\.(mp4|mov|mkv|avi|webm|m4v)$/i],
+  ['audio', /\.(mp3|m4a|wav|flac|ogg|aac)$/i],
+  ['doc', /\.(pdf|docx?|xlsx?|pptx?|txt|md|csv|odt)$/i],
+];
+const pfKind = name => (PF_KIND.find(([, re]) => re.test(name)) || ['other'])[0]; // 'other', não 'file': .file é o botão de upload no CSS
+
+// "hoje 09:12", "ontem 18:35", "15 out", "02/03/2025"
+function pfDate(iso) {
+  const d = new Date(iso), now = new Date();
+  if (isNaN(d)) return '';
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86400000);
+  const hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (diff === 0) return `hoje ${hm}`;
+  if (diff === 1) return `ontem ${hm}`;
+  if (d.getFullYear() === now.getFullYear()) return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '');
+  return d.toLocaleDateString('pt-BR');
+}
+const pf = { root: null, rootName: '', path: '' };
+const pfJoin = name => pf.path ? `${pf.path}/${name}` : name;
+
+function pfSize(b) {
+  if (b < 1024) return `${b} B`;
+  const u = ['KB', 'MB', 'GB'];
+  let i = -1;
+  do { b /= 1024; i++; } while (b >= 1024 && i < u.length - 1);
+  return `${b.toLocaleString('pt-BR', { maximumFractionDigits: b < 10 ? 1 : 0 })} ${u[i]}`;
+}
+
+function pfRow(icon, name, sub, onclick) {
+  const b = document.createElement('button');
+  b.className = 'frow ' + icon;
+  b.innerHTML = `<span class="fico">${PF_ICON[icon]}</span>`;
+  const t = document.createElement('span'); t.className = 'ftext';
+  const n = document.createElement('span'); n.className = 'fname'; n.textContent = name;
+  t.append(n);
+  if (sub) { const s = document.createElement('span'); s.className = 'fsub'; s.textContent = sub; t.append(s); }
+  b.append(t);
+  b.onclick = onclick;
+  return b;
+}
+
+async function pfLoad() {
+  const list = $('#pfList'), msg = $('#pfMsg');
+  msg.classList.add('hidden');
+  try {
+    if (!pf.root) {
+      const roots = await api('/pcfiles/roots');
+      $('#pfCrumb').textContent = 'Pastas do PC';
+      list.replaceChildren(...roots.map(r => pfRow('dir', r.name, '', () => { pf.root = r.id; pf.rootName = r.name; pf.path = ''; pfLoad(); })));
+      return;
+    }
+    const entries = await api(`/pcfiles/list?root=${encodeURIComponent(pf.root)}&path=${encodeURIComponent(pf.path)}`);
+    const parts = [pf.rootName, ...pf.path.split('/').filter(Boolean)];
+    $('#pfCrumb').textContent = parts.join(' › ');
+    const up = pfRow('up', parts.length > 1 ? parts[parts.length - 2] : 'Pastas do PC', '', () => {
+      if (pf.path) pf.path = pf.path.split('/').slice(0, -1).join('/'); else pf.root = null;
+      pfLoad();
+    });
+    list.replaceChildren(up, ...entries.map(e => e.dir
+      ? pfRow('dir', e.name, pfDate(e.modified), () => { pf.path = pfJoin(e.name); pfLoad(); })
+      : pfRow(pfKind(e.name), e.name, `${pfSize(e.size)} · ${pfDate(e.modified)}`, () => pfDownload(e.name))));
+    if (!entries.length) { msg.textContent = 'Pasta vazia.'; msg.classList.remove('hidden'); }
+  } catch (e) {
+    list.replaceChildren();
+    msg.textContent = /403/.test(e.message) ? 'Ligue "Arquivos" na aba iPhone do PC.' : e.message;
+    msg.classList.remove('hidden');
+  }
+}
+
+// Tíquete (com token) e depois navega pro download: o PC responde como anexo, então o iOS
+// oferece baixar sem sair do app. Só o tíquete descartável vai na URL, nunca o token.
+async function pfDownload(name) {
+  try {
+    const { ticket } = await api('/pcfiles/ticket', { method: 'POST', json: { root: pf.root, path: pfJoin(name) } });
+    location.href = `/api/pcfiles/download?ticket=${encodeURIComponent(ticket)}`;
+  } catch (e) { toast(e.message); }
+}
+
 // --- Páginas ---
 // Uma página por feature, escolhida pelo #hash; hash vazio/desconhecido = início (atalhos).
 let page = '';
@@ -364,6 +456,7 @@ function route() {
   window.scrollTo(0, 0);
   if (page !== 'camera' && camStreaming) camStop(); // saiu da câmera: solta e apaga o LED
   if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
+  if (page === 'pcfiles' && token) pfLoad();
   refresh();
 }
 window.addEventListener('hashchange', route);

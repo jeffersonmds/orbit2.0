@@ -51,7 +51,11 @@
       </a>
       <a class="tile" href="#arquivos">
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg></span>
-        <b>Arquivos</b><span>Fotos pro PC</span>
+        <b>Enviar</b><span>Fotos e arquivos pro PC</span>
+      </a>
+      <a class="tile" href="#pcfiles">
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+        <b>Arquivos do PC</b><span>Ver e baixar</span>
       </a>
       <a class="tile" href="#camera">
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>
@@ -91,12 +95,18 @@
       </div>
     </section>
 
-    <section class="page card" data-page="arquivos" data-title="Arquivos">
+    <section class="page card" data-page="arquivos" data-title="Enviar arquivos">
       <label class="file">
         <input id="files" type="file" multiple>
         <span>Escolher fotos ou arquivos</span>
       </label>
       <div class="progress hidden" id="progress"><div id="bar"></div></div>
+    </section>
+
+    <section class="page card" data-page="pcfiles" data-title="Arquivos do PC">
+      <p class="crumb" id="pfCrumb"></p>
+      <div class="flist" id="pfList"></div>
+      <p class="muted hidden" id="pfMsg"></p>
     </section>
 
     <section class="page card media idle" id="media" data-page="midia" data-title="Mídia">

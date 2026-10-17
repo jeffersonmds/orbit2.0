@@ -71,6 +71,7 @@ public static class Program
         TailscaleTests();
         PairingCodeTests();
         CameraStreamAuthTests();
+        PcFilesTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -101,6 +102,77 @@ public static class Program
 
         server.StopAsync().GetAwaiter().GetResult();
         camera.Dispose();
+        Directory.Delete(dir, recursive: true);
+    }
+
+    // Arquivos do PC: só dentro da raiz (sem traversal, unidade, oculto ou link) e download por tíquete.
+    private static void PcFilesTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-pcf-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(dir, "raiz");
+        Directory.CreateDirectory(Path.Combine(root, "sub"));
+        File.WriteAllText(Path.Combine(root, "a.txt"), "olá");
+        File.WriteAllText(Path.Combine(root, "sub", "b.txt"), "b");
+        File.WriteAllText(Path.Combine(dir, "fora.txt"), "segredo");
+        var oculto = Path.Combine(root, "oculto.txt");
+        File.WriteAllText(oculto, "x");
+        File.SetAttributes(oculto, FileAttributes.Hidden);
+        var roots = new[] { new PcRoot("r", "Raiz", root) };
+
+        Check("pcfiles: raiz", PcFiles.Resolve(roots, "r", "") == root);
+        Check("pcfiles: subpasta com /", PcFiles.Resolve(roots, "r", "sub/b.txt") == Path.Combine(root, "sub", "b.txt"));
+        Check("pcfiles: raiz desconhecida", PcFiles.Resolve(roots, "x", "a.txt") is null);
+        Check("pcfiles: .. sai da raiz", PcFiles.Resolve(roots, "r", "../fora.txt") is null);
+        Check("pcfiles: .. disfarçado", PcFiles.Resolve(roots, "r", "sub/../../fora.txt") is null);
+        Check("pcfiles: caminho absoluto", PcFiles.Resolve(roots, "r", Path.Combine(dir, "fora.txt")) is null);
+        Check("pcfiles: prefixo parecido (raiz2)", PcFiles.Resolve(roots, "r", "../raiz2/x") is null);
+        Check("pcfiles: fluxo alternativo", PcFiles.Resolve(roots, "r", "a.txt:zone") is null);
+        Check("pcfiles: oculto recusado", PcFiles.Resolve(roots, "r", "oculto.txt") is null);
+        var lista = PcFiles.List(root);
+        Check("pcfiles: lista pasta antes, sem oculto", lista.Count == 2 && lista[0].Dir && lista[0].Name == "sub" && lista[1].Name == "a.txt");
+        // Link pra fora da raiz (junção não precisa de admin; se o ambiente não deixar, pula).
+        var link = Path.Combine(root, "atalho");
+        using (var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{dir}\"")
+                   { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true }))
+            mk?.WaitForExit(5000);
+        if (!Directory.Exists(link)) link = null;
+        Check("pcfiles: junção criada pro teste", link is not null);
+        if (link is not null)
+        {
+            Check("pcfiles: link pra fora recusado", PcFiles.Resolve(roots, "r", "atalho/fora.txt") is null);
+            Check("pcfiles: link fora da lista", PcFiles.List(root).All(e => e.Name != "atalho"));
+        }
+
+        var enabled = false;
+        var handlers = new BridgeHandlers { PcFilesEnabled = () => enabled, PcRoots = () => roots };
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var token = tokens.Create("teste");
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers)
+            .GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        Check("pcfiles: desligado = 403", http.GetAsync("/api/pcfiles/roots").Result.StatusCode == HttpStatusCode.Forbidden);
+        enabled = true;
+        Check("pcfiles: raízes", http.GetStringAsync("/api/pcfiles/roots").Result.Contains("\"id\":\"r\""));
+        Check("pcfiles: lista", http.GetStringAsync("/api/pcfiles/list?root=r&path=sub").Result.Contains("b.txt"));
+        Check("pcfiles: lista fora da raiz = 404", http.GetAsync("/api/pcfiles/list?root=r&path=..").Result.StatusCode == HttpStatusCode.NotFound);
+        Check("pcfiles: tíquete fora da raiz = 404",
+            http.PostAsJsonAsync("/api/pcfiles/ticket", new { root = "r", path = "../fora.txt" }).Result.StatusCode == HttpStatusCode.NotFound);
+        var tk = http.PostAsJsonAsync("/api/pcfiles/ticket", new { root = "r", path = "a.txt" }).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+        using var anon = new HttpClient { BaseAddress = http.BaseAddress }; // download sem token, só tíquete
+        var down = anon.GetAsync($"/api/pcfiles/download?ticket={tk}").Result;
+        Check("pcfiles: download com tíquete", down.StatusCode == HttpStatusCode.OK && down.Content.ReadAsStringAsync().Result == "olá"
+            && down.Content.Headers.ContentDisposition?.FileNameStar == "a.txt");
+        Check("pcfiles: tíquete aguenta 2ª requisição (faixas)", anon.GetAsync($"/api/pcfiles/download?ticket={tk}").Result.StatusCode == HttpStatusCode.OK);
+        Check("pcfiles: tíquete errado = 401", anon.GetAsync("/api/pcfiles/download?ticket=errado").Result.StatusCode == HttpStatusCode.Unauthorized);
+        Check("pcfiles: lista sem token = 401", anon.GetAsync("/api/pcfiles/list?root=r").Result.StatusCode == HttpStatusCode.Unauthorized);
+
+        server.StopAsync().GetAwaiter().GetResult();
+        if (link is not null) Directory.Delete(link);
+        File.SetAttributes(oculto, FileAttributes.Normal);
         Directory.Delete(dir, recursive: true);
     }
 

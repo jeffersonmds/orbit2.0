@@ -65,6 +65,8 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   auditoria em `audit.jsonl`; `/health` e o PWA (`Bridge/wwwroot`, HTML/JS puro, copiado pra
   `<saída>\wwwroot`) são abertos. Testada de ponta a ponta no harness com `HttpClient` em porta
   efêmera. Exposição ao iPhone é pelo `tailscale serve` (docs/tailscale-setup.md), nunca funnel.
+  Capabilities à parte, desligadas por padrão (403): Câmera e Arquivos do PC (`PcFiles`: só leitura,
+  só pastas do usuário, caminho sempre raiz + relativo validado; download por tíquete de 10 min).
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça

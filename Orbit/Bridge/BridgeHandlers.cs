@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Orbit.Services;
@@ -33,4 +34,8 @@ public sealed class BridgeHandlers
 
     // true = a câmera pode responder. Lida a cada requisição /api/camera/*.
     public Func<bool> CameraEnabled { get; init; } = () => false;
+
+    // Arquivos do PC (só leitura): capability à parte, lida a cada requisição /api/pcfiles/*.
+    public Func<bool> PcFilesEnabled { get; init; } = () => false;
+    public Func<IReadOnlyList<PcRoot>> PcRoots { get; init; } = () => Array.Empty<PcRoot>();
 }

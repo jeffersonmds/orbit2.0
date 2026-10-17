@@ -42,6 +42,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [ObservableProperty] private string _status = "Desligada";
     [ObservableProperty] private string _publicUrl = "";
     [ObservableProperty] private bool _cameraEnabled;
+    [ObservableProperty] private bool _pcFilesEnabled;
     [ObservableProperty] private BitmapSource? _qrImage;
     [ObservableProperty] private string? _pairLink;
     [ObservableProperty] private bool _hasPairing;
@@ -80,6 +81,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         Enabled = settings.BridgeEnabled;
         PublicUrl = settings.BridgePublicUrl;
         CameraEnabled = settings.BridgeCameraEnabled;
+        PcFilesEnabled = settings.BridgePcFilesEnabled;
         _syncing = false;
         _audit.Written += _ => Application.Current?.Dispatcher.BeginInvoke(RefreshActivity);
     }
@@ -108,6 +110,13 @@ public sealed partial class IPhoneViewModel : TabViewModel
     {
         if (_syncing) return;
         _settings.BridgeCameraEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    partial void OnPcFilesEnabledChanged(bool value)
+    {
+        if (_syncing) return;
+        _settings.BridgePcFilesEnabled = value;
         SettingsStore.Save(_settings);
     }
 

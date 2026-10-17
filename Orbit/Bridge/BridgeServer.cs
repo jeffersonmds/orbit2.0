@@ -26,6 +26,7 @@ public sealed record VolumeRequest(double Percent);
 public sealed record PairRequest(string? Code);
 public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps);
 public sealed record CameraPhotoRequest(string? DeviceId, string? Name);
+public sealed record PcFileRequest(string? Root, string? Path);
 
 // Kestrel dentro do processo do Orbit, só em 127.0.0.1 (o `tailscale serve` é quem expõe).
 // Toda rota /api exige token e passa por rate limit; /health e o PWA (arquivos estáticos) não.
@@ -80,10 +81,11 @@ public sealed class BridgeServer : IAsyncDisposable
         // Auth ANTES do rate limit e do bind do body: sem token não lê corpo nem gasta a cota do dono.
         app.Use(async (ctx, next) =>
         {
-            // O stream da câmera é a única rota /api autenticada por tíquete (a <img> não manda
-            // cabeçalho): o próprio handler valida o tíquete de uso único. As demais exigem token.
+            // Stream da câmera e download de arquivo do PC são as rotas /api autenticadas por tíquete
+            // (<img>/window.open não mandam cabeçalho): o próprio handler valida. As demais exigem token.
             bool ticketRoute = HttpMethods.IsGet(ctx.Request.Method)
-                && ctx.Request.Path.Equals("/api/camera/stream", StringComparison.OrdinalIgnoreCase);
+                && (ctx.Request.Path.Equals("/api/camera/stream", StringComparison.OrdinalIgnoreCase)
+                    || ctx.Request.Path.Equals("/api/pcfiles/download", StringComparison.OrdinalIgnoreCase));
             if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
@@ -147,9 +149,12 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/camera") && !h.CameraEnabled())
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/pcfiles") && !h.PcFilesEnabled())
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             return await next(ctx);
         });
         MapApi(api, h, camera, tickets);
+        MapPcFiles(api, h, new FileTickets());
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }
@@ -302,6 +307,32 @@ public sealed class BridgeServer : IAsyncDisposable
                 return Results.File(jpeg, "image/jpeg");
             });
         }
+    }
+
+    private static void MapPcFiles(RouteGroupBuilder api, BridgeHandlers h, FileTickets tickets)
+    {
+        api.MapGet("/pcfiles/roots", () => Results.Ok(h.PcRoots().Select(r => new { id = r.Id, name = r.Name })));
+
+        api.MapGet("/pcfiles/list", (string? root, string? path) =>
+        {
+            if (PcFiles.Resolve(h.PcRoots(), root, path) is not { } dir || !Directory.Exists(dir)) return Results.NotFound();
+            return Results.Ok(PcFiles.List(dir));
+        });
+
+        // Emite o tíquete (com token) pro download que vem em seguida sem cabeçalho.
+        api.MapPost("/pcfiles/ticket", (PcFileRequest req) =>
+        {
+            if (PcFiles.Resolve(h.PcRoots(), req.Root, req.Path) is not { } file || !File.Exists(file)) return Results.NotFound();
+            return Results.Ok(new { ticket = tickets.Issue(file, DateTime.Now) });
+        });
+
+        api.MapGet("/pcfiles/download", (string? ticket) =>
+        {
+            if (tickets.Path(ticket, DateTime.Now) is not { } file) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            if (!File.Exists(file)) return Results.NotFound();
+            new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(file, out var type);
+            return Results.File(file, type ?? "application/octet-stream", Path.GetFileName(file), enableRangeProcessing: true);
+        });
     }
 
     private static int? ActualPort(WebApplication app)
