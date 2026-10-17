@@ -43,6 +43,10 @@ public static class BridgeRules
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Orbit")
             : configured;
 
+    // Tipo da capa pelos primeiros bytes (o app de mídia entrega JPEG ou PNG).
+    public static string ImageType(byte[] img) =>
+        img.Length >= 2 && img[0] == 0xFF && img[1] == 0xD8 ? "image/jpeg" : "image/png";
+
     public static string Host(string url) => Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) ? u.Host : "";
 
     public static string? BearerToken(string? header) =>

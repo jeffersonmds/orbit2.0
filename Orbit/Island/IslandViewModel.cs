@@ -156,15 +156,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 _ => NowPlaying.PreviousCommand.ExecuteAsync(null),
             }).Task.Unwrap(),
             // Capa que o SMTC já entrega pra aba Controles (128 px), reencodada em PNG.
-            GetCover = () => ui.InvokeAsync(() =>
-            {
-                if (NowPlaying.Thumbnail is not { } thumb) return (byte[]?)null;
-                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(thumb));
-                using var ms = new MemoryStream();
-                encoder.Save(ms);
-                return ms.ToArray();
-            }).Task,
+            GetCover = () => ui.InvokeAsync(() => NowPlaying.ThumbnailBytes).Task,
             GetMedia = () => ui.InvokeAsync(() =>
             {
                 using var volume = new Volume();

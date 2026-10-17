@@ -18,6 +18,10 @@ public sealed partial class NowPlayingViewModel : ObservableObject
     [ObservableProperty] private string _title = "";
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private BitmapImage? _thumbnail;
+
+    // Bytes originais da capa (como o app de mídia entregou): a ponte manda estes pro iPhone,
+    // que mostra a capa grande — o Thumbnail acima é reduzido pra 128 px da ilha.
+    public byte[]? ThumbnailBytes { get; private set; }
     [ObservableProperty] private string _playPauseGlyph = "\uE768";
     [ObservableProperty] private string? _activityText;
 
@@ -39,12 +43,14 @@ public sealed partial class NowPlayingViewModel : ObservableObject
             Subtitle = "";
             PlayPauseGlyph = PlayPauseGlyphFor(false);
             Thumbnail = null;
+            ThumbnailBytes = null;
             return;
         }
         Title = DisplayTitle(info.Title);
         Subtitle = info.Artist ?? "";
         PlayPauseGlyph = PlayPauseGlyphFor(info.IsPlaying);
         Thumbnail = info.Thumbnail == null ? null : BuildThumbnail(info.Thumbnail);
+        ThumbnailBytes = Thumbnail == null ? null : info.Thumbnail; // só se decodificou: formato válido
     }
 
     private static BitmapImage? BuildThumbnail(byte[] bytes)

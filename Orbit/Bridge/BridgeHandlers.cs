@@ -25,7 +25,7 @@ public sealed class BridgeHandlers
     public Func<PowerAction, Task> Power { get; init; } = _ => Task.CompletedTask;
     public Func<MediaCommand, Task> Media { get; init; } = _ => Task.CompletedTask;
     public Func<Task<MediaState>> GetMedia { get; init; } = () => Task.FromResult(new MediaState(null, null, false, 0));
-    public Func<Task<byte[]?>> GetCover { get; init; } = () => Task.FromResult<byte[]?>(null); // PNG da capa, ou null
+    public Func<Task<byte[]?>> GetCover { get; init; } = () => Task.FromResult<byte[]?>(null); // capa original (JPEG/PNG), ou null
     public Func<double, Task> SetVolume { get; init; } = _ => Task.CompletedTask;
     public Func<StatsSnapshot> GetStats { get; init; } = () => new StatsSnapshot(0, 0, 0, 0, 0, null, false);
     public Func<string> UploadFolder { get; init; } = () => Path.GetTempPath();

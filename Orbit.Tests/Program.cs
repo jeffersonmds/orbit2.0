@@ -1065,6 +1065,8 @@ public static class Program
         Check("ponte: comando de mídia", BridgeRules.ParseMedia("playpause") == MediaCommand.PlayPause
             && BridgeRules.ParseMedia("PREV") == MediaCommand.Prev && BridgeRules.ParseMedia("x") is null);
         Check("ponte: GET de stats/mídia não audita", !BridgeRules.ShouldAudit("GET", "/api/stats") && !BridgeRules.ShouldAudit("GET", "/api/media"));
+        Check("ponte: capa JPEG/PNG pelo cabeçalho", BridgeRules.ImageType(new byte[] { 0xFF, 0xD8, 0xFF }) == "image/jpeg"
+            && BridgeRules.ImageType(new byte[] { 0x89, 0x50, 0x4E, 0x47 }) == "image/png");
         Check("ponte: o resto audita", BridgeRules.ShouldAudit("POST", "/api/links/open") && BridgeRules.ShouldAudit("GET", "/api/clipboard"));
         Check("ponte: prévia curta numa linha", BridgeRules.Preview("a\nb") == "a b" && BridgeRules.Preview(new string('x', 100)).Length == 61);
         Check("ponte: link de pareamento", BridgeRules.PairingLink("https://pc.tail1.ts.net/", "tok-_1") == "https://pc.tail1.ts.net/#token=tok-_1");
