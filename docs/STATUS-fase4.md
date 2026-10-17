@@ -26,11 +26,10 @@ Spec `docs/superpowers/specs/2026-10-16-camera-iphone-design.md`, plano
 C920): stream, troca de câmera/qualidade ao vivo, foto salva nas Fotos, parar fecha a câmera e
 apaga o LED na hora. Capability "Câmera" desligada por padrão; stream autenticado por tíquete de
 uso único (a `<img>` não manda cabeçalho). O LED físico acende sempre que a câmera capta (hardware);
-pedido de "não acender" recusado por ser indicador de privacidade. Áudio do microfone fica no backlog.
+pedido de "não acender" recusado por ser indicador de privacidade. Áudio do microfone fica no backlog. Funciona com o PC bloqueado (testado).
 
 ## Pendente / backlog
 
 - Atalhos do iOS (`docs/atalhos-ios.md`) ainda não testados pelo usuário.
-- "Trazer do PC" (clipboard → iPhone) depende do suporte a `ClipboardItem` do iOS.
 - Agendar desligamento pelo iPhone (o usuário preferiu deixar só na ilha por enquanto).
 - Backlog geral na spec principal (§11).

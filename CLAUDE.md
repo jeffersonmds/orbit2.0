@@ -14,6 +14,7 @@ Código, comentários e commits são em **português**.
 dotnet build                              # app + testes (Orbit.slnx)
 dotnet run --project Orbit                # roda a ilha
 dotnet run --project Orbit.Tests          # roda TODOS os testes; exit != 0 se falhar
+installer\build.ps1                       # publish self-contained + Inno Setup → installer\Orbit2Setup.exe
 ```
 
 `Orbit.Tests` é um exe com harness próprio (`Check(nome, bool)`), sem xUnit. Só testa métodos

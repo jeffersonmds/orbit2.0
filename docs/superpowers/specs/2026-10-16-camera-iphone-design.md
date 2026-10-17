@@ -131,5 +131,5 @@ reaproveitado de `Orbit/Bridge/PairingCodes.cs`.
 - Gravar vídeo em arquivo.
 - Ver duas câmeras ao mesmo tempo.
 - Detecção de movimento / alerta.
-- Câmera com o PC bloqueado — depende de o Windows liberar o sensor com a sessão
-  bloqueada; verificar na implementação e documentar o que der.
+- ~~Câmera com o PC bloqueado~~ — testado pelo usuário em 2026-10-16: funciona com a
+  sessão bloqueada.
