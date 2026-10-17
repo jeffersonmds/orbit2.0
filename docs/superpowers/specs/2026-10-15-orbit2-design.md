@@ -210,7 +210,6 @@ Cada fase tem o seu próprio plano em `docs/superpowers/plans/`.
 
 ## 11. Backlog
 
-Investigar memória nativa retida após usar as abas (suspeito: contadores de GPU da aba
-Stats); acento extraído do wallpaper (incluindo Wallpaper Engine, via captura esporádica e reduzida
+Acento extraído do wallpaper (incluindo Wallpaper Engine, via captura esporádica e reduzida
 — requer spike); aba Wallpaper; luz noturna; passkey; Web Push;
-navegar e baixar arquivos; notas rápidas; scripts; escolha de monitor; IA por voz.
+navegar e baixar arquivos; scripts; escolha de monitor; IA por voz.

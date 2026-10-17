@@ -56,6 +56,11 @@ public partial class App : Application
             Log.Fatal(args.ExceptionObject as Exception, "Exceção fatal não tratada");
 
         Log.Information("Orbit 2 iniciado");
+        // Render por software: em janela transparente o WPF já lê cada quadro da GPU de volta pra RAM,
+        // e o dispositivo D3D + driver de vídeo retinha ~165 MB nativos que nunca voltavam
+        // (medido: repouso 145 → 78 MB, após usar as abas ~260 → ~95 MB; ~30% mais CPU só animando).
+        // ponytail: fixo; vira opção em Ajustes se a animação engasgar numa máquina fraca.
+        System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         try
         {
             var settings = SettingsStore.Load();

@@ -27,6 +27,8 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 
 - **Uma janela fixa** (`Island/IslandWindow`, 760×400, transparente, topmost). Só a `Border`
   "Pill" anima; pixels alpha 0 deixam o clique passar.
+  Render por **software** (`App.OnStartup`): no modo hardware o D3D + driver retinha ~165 MB
+  nativos (medido 260 → 95 MB após usar as abas). Não volte pro hardware sem medir.
 - **`IslandMachine`** (puro) decide o estado: Repouso, Atividade, Alerta, Expandida, Oculta.
   `IslandViewModel` orquestra a máquina e as abas; a janela reage a `Mode` (layout/animação)
   e a `Peek` (reinicia o timer do alerta).
