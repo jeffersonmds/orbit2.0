@@ -12,6 +12,7 @@
         xmlns:clips="clr-namespace:Orbit.Tabs.Clips"
         xmlns:apps="clr-namespace:Orbit.Tabs.Apps"
         xmlns:iphone="clr-namespace:Orbit.Tabs.IPhone"
+        xmlns:notas="clr-namespace:Orbit.Tabs.Notas"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
@@ -50,6 +51,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type apps:AppsViewModel}">
             <apps:AppsView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type notas:NotasViewModel}">
+            <notas:NotasView/>
         </DataTemplate>
     </Window.Resources>
 

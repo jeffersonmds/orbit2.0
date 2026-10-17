@@ -213,9 +213,9 @@ public static class Program
     private static void TabOrderTests()
     {
         var order = string.Join(",", IslandViewModel.TabOrder);
-        Check("abas: clipboard e apps entre stats e mercado", order.Contains("stats,clipboard,apps,mercado"));
+        Check("abas: clipboard, notas e apps entre stats e mercado", order.Contains("stats,clipboard,notas,apps,mercado"));
         Check("abas: iphone antes de energia", order.Contains("claude,iphone,energia"));
-        Check("abas: 11 ids na ordem", IslandViewModel.TabOrder.Length == 11);
+        Check("abas: 12 ids na ordem", IslandViewModel.TabOrder.Length == 12);
     }
 
     private static ClipItem Txt(string t, DateTime at, bool pinned = false) =>

@@ -1,0 +1,7 @@
+<UserControl x:Class="Orbit.Tabs.Notas.NotasView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <TextBox Style="{StaticResource Field}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+             VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+             Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"/>
+</UserControl>

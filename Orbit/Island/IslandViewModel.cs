@@ -22,6 +22,7 @@ using Orbit.Tabs.Hoje;
 using Orbit.Tabs.IPhone;
 using Orbit.Tabs.Mercado;
 using Orbit.Tabs.Noticias;
+using Orbit.Tabs.Notas;
 using Orbit.Tabs.Stats;
 using Serilog;
 
@@ -33,7 +34,7 @@ public sealed partial class IslandViewModel : ObservableObject
 {
     // Ordem fixa das abas no painel. Ids ainda não registrados são pulados.
     public static readonly string[] TabOrder =
-        { "controles", "hoje", "stats", "clipboard", "apps", "mercado", "noticias", "claude", "iphone", "energia", "ajustes" };
+        { "controles", "hoje", "stats", "clipboard", "notas", "apps", "mercado", "noticias", "claude", "iphone", "energia", "ajustes" };
 
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;
@@ -101,6 +102,7 @@ public sealed partial class IslandViewModel : ObservableObject
             BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"));
         Register(IPhone);
         _ = IPhone.StartIfEnabledAsync();
+        Register(new NotasViewModel(NotasViewModel.FilePath));
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
