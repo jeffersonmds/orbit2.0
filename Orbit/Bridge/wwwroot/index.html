@@ -18,6 +18,7 @@
     <a id="back" class="back hidden" href="#" aria-label="Voltar">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
     </a>
+    <img class="logo" src="icon-192.png" alt="">
     <h1 id="title">Orbit</h1>
     <div class="pill" id="pill"><span class="dot" id="dot"></span><span id="state">Conectando…</span></div>
   </header>
@@ -63,11 +64,7 @@
       </a>
       <a class="tile" href="#pc">
         <span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
-        <b>PC</b><span id="tileStats">--</span>
-      </a>
-      <a class="tile" href="#energia">
-        <span class="ico danger"><svg viewBox="0 0 24 24"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><path d="M12 2v10"/></svg></span>
-        <b>Energia</b><span>Bloquear, desligar…</span>
+        <b>PC e energia</b><span id="tileStats">--</span>
       </a>
     </nav>
 
@@ -77,10 +74,12 @@
         <button id="pasteUrl" class="ghost" title="Colar">Colar</button>
       </div>
       <button class="primary" id="openUrl">Abrir no navegador do PC</button>
+      <p class="crumb recent-title hidden" id="linksTitle">Recentes</p>
+      <div class="flist" id="links"></div>
     </section>
 
     <section class="page card" data-page="clipboard" data-title="Clipboard">
-      <textarea id="clip" rows="5" placeholder="Texto para o PC…"></textarea>
+      <textarea id="clip" class="fill" placeholder="Texto para o PC…"></textarea>
       <div class="row">
         <button class="primary" id="sendClip">Enviar pro PC</button>
         <button id="getClip">Trazer do PC</button>
@@ -88,7 +87,7 @@
     </section>
 
     <section class="page card" data-page="notas" data-title="Notas">
-      <textarea id="notes" class="tall" placeholder="As notas da ilha aparecem aqui…"></textarea>
+      <textarea id="notes" class="fill" placeholder="As notas da ilha aparecem aqui…"></textarea>
       <div class="row">
         <button class="primary" id="saveNotes">Salvar no PC</button>
         <button id="loadNotes">Recarregar</button>
@@ -96,9 +95,11 @@
     </section>
 
     <section class="page card" data-page="arquivos" data-title="Enviar arquivos">
-      <label class="file">
+      <label class="file drop">
         <input id="files" type="file" multiple>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
         <span>Escolher fotos ou arquivos</span>
+        <small>Vão pra pasta "Recebidos do iPhone" no PC</small>
       </label>
       <div class="progress hidden" id="progress"><div id="bar"></div></div>
     </section>
@@ -109,7 +110,7 @@
       <p class="muted hidden" id="pfMsg"></p>
     </section>
 
-    <section class="page card media idle" id="media" data-page="midia" data-title="Mídia">
+    <section class="page media idle" id="media" data-page="midia" data-title="Mídia">
       <div class="track">
         <div class="cover" id="cover">
           <svg class="note" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18.5a2.5 2.5 0 1 1-2-2.45V6.2a1 1 0 0 1 .76-.97l9-2.2A1 1 0 0 1 18 4v11.5a2.5 2.5 0 1 1-2-2.45V7.3l-7 1.7z"/></svg>
@@ -141,29 +142,31 @@
           <option value="480">480p</option>
         </select>
       </div>
-      <div class="cam-view hidden" id="camView">
+      <div class="cam-view" id="camView">
+        <div class="cam-ph">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 7l-7 5 7 5z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          <span>Câmera desligada</span>
+        </div>
         <img id="camImg" alt="">
-        <button id="camShot" class="cam-shot">Foto</button>
+        <button id="camShot" class="cam-shot" aria-label="Tirar foto"></button>
       </div>
       <button class="primary" id="camToggle">Ver câmera</button>
       <p class="muted hidden" id="camMsg"></p>
     </section>
 
-    <section class="page card" data-page="pc" data-title="PC">
-      <div class="stats">
-        <div><b id="cpu">--</b><span>CPU</span></div>
-        <div><b id="ram">--</b><span>RAM</span></div>
-        <div><b id="disk">--</b><span>Disco</span></div>
-        <div><b id="bat">--</b><span>Bateria</span></div>
+    <section class="page" data-page="pc" data-title="PC e energia">
+      <div class="meters">
+        <div class="meter card"><span>CPU</span><b id="cpu">--</b><small id="cpuSub">Processador</small><i><em id="cpuBar"></em></i></div>
+        <div class="meter card"><span>RAM</span><b id="ram">--</b><small id="ramSub"></small><i><em id="ramBar"></em></i></div>
+        <div class="meter card"><span>Disco</span><b id="disk">--</b><small id="diskSub"></small><i><em id="diskBar"></em></i></div>
+        <div class="meter card"><span>Bateria</span><b id="bat">--</b><small id="batSub"></small><i><em id="batBar"></em></i></div>
       </div>
-    </section>
-
-    <section class="page card" data-page="energia" data-title="Energia">
-      <div class="grid">
-        <button data-power="lock">Bloquear</button>
-        <button data-power="sleep">Suspender</button>
-        <button data-power="restart" class="danger">Reiniciar</button>
-        <button data-power="shutdown" class="danger">Desligar</button>
+      <p class="crumb section-title">Energia</p>
+      <div class="power">
+        <button data-power="lock"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Bloquear</button>
+        <button data-power="sleep"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>Suspender</button>
+        <button data-power="restart" class="danger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Reiniciar</button>
+        <button data-power="shutdown" class="danger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><path d="M12 2v10"/></svg>Desligar</button>
       </div>
     </section>
   </main>

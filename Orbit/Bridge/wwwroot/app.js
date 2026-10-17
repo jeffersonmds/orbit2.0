@@ -82,8 +82,24 @@ showPair(!token);
 
 // --- Link ---
 $('#pasteUrl').onclick = () => run(async () => { $('#url').value = await navigator.clipboard.readText(); });
-$('#openUrl').onclick = () => run(
-  () => api('/links/open', { method: 'POST', json: { url: $('#url').value.trim() } }), 'Aberto no PC');
+// Últimos links abertos (só neste iPhone, no localStorage): tocar reabre no PC.
+const LINKS_KEY = 'orbit.links';
+function loadLinks() { try { return JSON.parse(localStorage.getItem(LINKS_KEY)) || []; } catch { return []; } }
+async function openLink(url) {
+  await api('/links/open', { method: 'POST', json: { url } });
+  localStorage.setItem(LINKS_KEY, JSON.stringify([url, ...loadLinks().filter(u => u !== url)].slice(0, 10)));
+  renderLinks();
+}
+function renderLinks() {
+  const links = loadLinks();
+  $('#linksTitle').classList.toggle('hidden', !links.length);
+  $('#links').replaceChildren(...links.map(u => {
+    let host = u;
+    try { host = new URL(u.includes('://') ? u : 'https://' + u).host; } catch {}
+    return pfRow('link', host, u, () => run(() => openLink(u), 'Aberto no PC'));
+  }));
+}
+$('#openUrl').onclick = () => run(() => openLink($('#url').value.trim()), 'Aberto no PC');
 
 // --- Clipboard ---
 $('#sendClip').onclick = () => run(
@@ -215,11 +231,20 @@ $('#saveNotes').onclick = () => run(async () => {
 async function refreshStats() {
   try {
     const s = await api('/stats');
-    $('#cpu').textContent = `${s.cpu}%`;
-    $('#tileStats').textContent = `CPU ${s.cpu}% · RAM ${s.ramUsedGb}/${s.ramTotalGb}`;
-    $('#ram').textContent = `${s.ramUsedGb}/${s.ramTotalGb}`;
-    $('#disk').textContent = `${s.diskUsedGb}/${s.diskTotalGb}`;
-    $('#bat').textContent = s.batteryPercent == null ? '—' : `${s.batteryPercent}%${s.charging ? '⚡' : ''}`;
+    const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+    const gb = n => (+n).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const meter = (id, value, sub, percent) => {
+      $('#' + id).textContent = value;
+      if (sub != null) $('#' + id + 'Sub').textContent = sub;
+      $('#' + id + 'Bar').style.width = Math.min(100, Math.max(0, percent)) + '%';
+    };
+    const cpu = Math.round(s.cpu);
+    meter('cpu', `${cpu}%`, null, cpu);
+    meter('ram', `${pct(s.ramUsedGb, s.ramTotalGb)}%`, `${gb(s.ramUsedGb)} de ${gb(s.ramTotalGb)} GB`, pct(s.ramUsedGb, s.ramTotalGb));
+    meter('disk', `${pct(s.diskUsedGb, s.diskTotalGb)}%`, `${gb(s.diskTotalGb - s.diskUsedGb)} GB livres`, pct(s.diskUsedGb, s.diskTotalGb));
+    const b = s.batteryPercent;
+    meter('bat', b == null ? '—' : `${b}%`, b == null ? 'Sem bateria' : (s.charging ? 'Carregando' : 'Na bateria'), b ?? 0);
+    $('#tileStats').textContent = `CPU ${cpu}% · RAM ${pct(s.ramUsedGb, s.ramTotalGb)}%`;
   } catch { /* idem */ }
 }
 
@@ -302,7 +327,7 @@ async function camStart() {
     camImg.src = `/api/camera/stream?ticket=${encodeURIComponent(ticket)}`;
     camStreaming = true;
     camToggle.textContent = 'Parar';
-    camView.classList.remove('hidden');
+    camView.classList.add('live');
     camSay('');
   } catch { camSay('PC fora do ar'); }
 }
@@ -315,7 +340,7 @@ function camStop() {
   camImg.src = BLANK; // solta a <img>
   camStreaming = false;
   camToggle.textContent = 'Ver câmera';
-  camView.classList.add('hidden');
+  camView.classList.remove('live');
   // o Safari não aborta a conexão MJPEG sozinho: manda o PC fechar a câmera (apaga a luz)
   if (token) fetch('/api/camera/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
 }
@@ -359,6 +384,7 @@ const PF_ICON = {
   video: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>',
   audio: '<svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>',
   up: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+  link: '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
 };
 const PF_KIND = [
   ['image', /\.(jpe?g|png|gif|webp|heic|bmp|svg)$/i],
@@ -445,7 +471,7 @@ async function pfDownload(name) {
 // Uma página por feature, escolhida pelo #hash; hash vazio/desconhecido = início (atalhos).
 let page = '';
 function route() {
-  const want = location.hash.slice(1);
+  const want = location.hash.slice(1).replace(/^energia$/, 'pc'); // atalho antigo do Energia
   const pages = [...document.querySelectorAll('.page')];
   const shown = pages.find(p => p.dataset.page === want) || pages.find(p => p.dataset.page === '');
   pages.forEach(p => p.classList.toggle('hidden', p !== shown));
@@ -457,6 +483,7 @@ function route() {
   if (page !== 'camera' && camStreaming) camStop(); // saiu da câmera: solta e apaga o LED
   if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
   if (page === 'pcfiles' && token) pfLoad();
+  if (page === 'link') renderLinks();
   refresh();
 }
 window.addEventListener('hashchange', route);
