@@ -182,6 +182,7 @@ async function refreshMedia() {
     $('#media').classList.toggle('idle', !has);
     $('#mTitle').textContent = has ? m.title : 'Nada tocando';
     $('#mArtist').textContent = has ? (m.artist || '') : 'Toque algo no PC';
+    $('#tileMedia').textContent = has ? [m.title, m.artist].filter(Boolean).join(' · ') : 'Nada tocando';
     setPlaying(m.playing);
     if (!dragging) setVol(m.volume);
     const key = has ? `${m.title}|${m.artist}` : null;
@@ -194,11 +195,28 @@ async function refreshMedia() {
   } catch { /* offline: mantém o que está na tela */ }
 }
 
+// --- Notas ---
+// Carrega ao entrar na página (não no loop de 5 s, que apagaria o que está sendo digitado);
+// com edição não salva, só o "Recarregar" explícito sobrescreve.
+let notesDirty = false;
+async function loadNotes() {
+  const { text } = await api('/notes');
+  $('#notes').value = text;
+  notesDirty = false;
+}
+$('#notes').oninput = () => { notesDirty = true; };
+$('#loadNotes').onclick = () => run(loadNotes, 'Notas do PC');
+$('#saveNotes').onclick = () => run(async () => {
+  await api('/notes', { method: 'PUT', json: { text: $('#notes').value } });
+  notesDirty = false;
+}, 'Notas salvas no PC');
+
 // --- Stats ---
 async function refreshStats() {
   try {
     const s = await api('/stats');
     $('#cpu').textContent = `${s.cpu}%`;
+    $('#tileStats').textContent = `CPU ${s.cpu}% · RAM ${s.ramUsedGb}/${s.ramTotalGb}`;
     $('#ram').textContent = `${s.ramUsedGb}/${s.ramTotalGb}`;
     $('#disk').textContent = `${s.diskUsedGb}/${s.diskTotalGb}`;
     $('#bat').textContent = s.batteryPercent == null ? '—' : `${s.batteryPercent}%${s.charging ? '⚡' : ''}`;
@@ -331,11 +349,37 @@ camShot.onclick = async () => {
   }
 };
 
-// Polling só com o app visível (nada roda em segundo plano no iPhone).
-function refresh() { ping(); if (token) { refreshStats(); refreshMedia(); if (!camLoaded) camLoadDevices(); } }
+// --- Páginas ---
+// Uma página por feature, escolhida pelo #hash; hash vazio/desconhecido = início (atalhos).
+let page = '';
+function route() {
+  const want = location.hash.slice(1);
+  const pages = [...document.querySelectorAll('.page')];
+  const shown = pages.find(p => p.dataset.page === want) || pages.find(p => p.dataset.page === '');
+  pages.forEach(p => p.classList.toggle('hidden', p !== shown));
+  page = shown.dataset.page;
+  $('#title').textContent = shown.dataset.title;
+  $('#back').classList.toggle('hidden', !page);
+  document.body.classList.toggle('home', !page);
+  window.scrollTo(0, 0);
+  if (page !== 'camera' && camStreaming) camStop(); // saiu da câmera: solta e apaga o LED
+  if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
+  refresh();
+}
+window.addEventListener('hashchange', route);
+
+// Polling só com o app visível (nada roda em segundo plano no iPhone) e só do que está na tela.
+function refresh() {
+  ping();
+  if (!token) return;
+  if (page === '' || page === 'midia') refreshMedia();
+  if (page === '' || page === 'pc') refreshStats();
+  if (page === 'camera' && !camLoaded) camLoadDevices();
+}
 let loop;
 function startLoop() { clearInterval(loop); refresh(); loop = setInterval(refresh, 5000); }
 document.addEventListener('visibilitychange', () => document.hidden ? clearInterval(loop) : startLoop());
-startLoop();
+route(); // já faz o 1º refresh
+loop = setInterval(refresh, 5000);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
