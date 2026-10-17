@@ -41,6 +41,7 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public ClipsViewModel Clips { get; }
     public IPhoneViewModel IPhone { get; }
+    public NotasViewModel Notas { get; } = new(NotasViewModel.FilePath);
     private readonly ApiService _api = new();
     private readonly ClaudeHookServer _claudeServer = new();
     private readonly List<TabViewModel> _allTabs = new();
@@ -102,7 +103,7 @@ public sealed partial class IslandViewModel : ObservableObject
             BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"));
         Register(IPhone);
         _ = IPhone.StartIfEnabledAsync();
-        Register(new NotasViewModel(NotasViewModel.FilePath));
+        Register(Notas);
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
@@ -131,6 +132,8 @@ public sealed partial class IslandViewModel : ObservableObject
             {
                 if (!ClipboardReader.SetText(text)) throw new InvalidOperationException("Clipboard ocupado");
             }).Task,
+            GetNotes = () => ui.InvokeAsync(() => Notas.Text).Task,
+            SetNotes = text => ui.InvokeAsync(() => Notas.Text = text).Task,
             Power = action =>
             {
                 // Responde antes: suspender só retorna quando o PC acorda; desligar mataria a resposta.

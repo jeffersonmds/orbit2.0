@@ -18,6 +18,9 @@ public sealed class BridgeHandlers
     public Func<string, Task> OpenUrl { get; init; } = _ => Task.CompletedTask;
     public Func<Task<string>> GetClipboard { get; init; } = () => Task.FromResult("");
     public Func<string, Task> SetClipboard { get; init; } = _ => Task.CompletedTask;
+    // Texto da aba Notas (notes.txt).
+    public Func<Task<string>> GetNotes { get; init; } = () => Task.FromResult("");
+    public Func<string, Task> SetNotes { get; init; } = _ => Task.CompletedTask;
     public Func<PowerAction, Task> Power { get; init; } = _ => Task.CompletedTask;
     public Func<MediaCommand, Task> Media { get; init; } = _ => Task.CompletedTask;
     public Func<Task<MediaState>> GetMedia { get; init; } = () => Task.FromResult(new MediaState(null, null, false, 0));

@@ -1051,7 +1051,7 @@ public static class Program
         var tokens = new TokenStore(Path.Combine(dir, "tokens.json"));
         var token = tokens.Create("teste");
         var audit = new AuditLog(Path.Combine(dir, "audit.jsonl"));
-        string? opened = null, clip = null;
+        string? opened = null, clip = null, notes = null;
         Orbit.Services.PowerAction? power = null;
         MediaCommand? media = null;
         double? volume = null;
@@ -1061,6 +1061,8 @@ public static class Program
             OpenUrl = u => { opened = u; return Task.CompletedTask; },
             GetClipboard = () => Task.FromResult("do pc"),
             SetClipboard = t => { clip = t; return Task.CompletedTask; },
+            GetNotes = () => Task.FromResult(notes ?? "nota do pc"),
+            SetNotes = t => { notes = t; return Task.CompletedTask; },
             Power = a => { power = a; return Task.CompletedTask; },
             Media = m => { media = m; return Task.CompletedTask; },
             GetMedia = () => Task.FromResult(new MediaState("Faixa", "Banda", true, 40)),
@@ -1104,6 +1106,10 @@ public static class Program
         var put = http.PutAsJsonAsync("/api/clipboard", new { text = "do iPhone" }).Result;
         Check("ponte: PUT clipboard", put.StatusCode == HttpStatusCode.NoContent && clip == "do iPhone");
         Check("ponte: GET clipboard", http.GetStringAsync("/api/clipboard").Result.Contains("do pc"));
+        Check("ponte: GET notas", http.GetStringAsync("/api/notes").Result.Contains("nota do pc"));
+        Check("ponte: PUT notas", http.PutAsJsonAsync("/api/notes", new { text = "do iPhone\nlinha 2" }).Result.StatusCode == HttpStatusCode.NoContent
+            && notes == "do iPhone\nlinha 2");
+        Check("ponte: PUT notas sem texto = 400", http.PutAsJsonAsync("/api/notes", new { }).Result.StatusCode == HttpStatusCode.BadRequest);
 
         Check("ponte: energia", http.PostAsync("/api/power/shutdown", null).Result.StatusCode == HttpStatusCode.NoContent
             && power == Orbit.Services.PowerAction.Desligar);

@@ -180,6 +180,16 @@ public sealed class BridgeServer : IAsyncDisposable
             return Results.NoContent();
         });
 
+        // ponytail: última gravação vence; editar ao mesmo tempo no PC e no iPhone perde uma das versões.
+        api.MapGet("/notes", async () => Results.Ok(new { text = await h.GetNotes() }));
+        api.MapPut("/notes", async (TextRequest req) =>
+        {
+            if (req.Text is null || req.Text.Length > BridgeRules.MaxClipboardChars)
+                return Results.BadRequest(new { erro = "Nota grande demais." });
+            await h.SetNotes(req.Text);
+            return Results.NoContent();
+        });
+
         api.MapPost("/power/{action}", async (string action) =>
         {
             if (BridgeRules.ParsePower(action) is not { } a) return Results.NotFound();
