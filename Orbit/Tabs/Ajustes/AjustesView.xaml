@@ -38,6 +38,20 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <TextBlock Text="Monitor da ilha" Style="{StaticResource Label}"/>
+            <ItemsControl ItemsSource="{Binding Monitores}" Margin="0,0,0,10">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <CheckBox Style="{StaticResource Chip}" Content="{Binding Name}" IsChecked="{Binding Selected}"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
             <TextBlock Text="Alertas" Style="{StaticResource Label}"/>
             <WrapPanel Margin="0,0,0,10">
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AlertasComoToast}"

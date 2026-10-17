@@ -27,5 +27,18 @@ public static class IslandGeometry
         _ => 5,
     };
 
-    public static double LeftFor(double screenWidth) => Math.Round((screenWidth - WindowWidth) / 2);
+    // Índice do monitor da ilha: o salvo se estiver conectado, senão o principal.
+    public static int PickScreen(string[] deviceNames, int primaryIndex, string? wanted)
+    {
+        int i = wanted is null ? -1 : Array.FindIndex(deviceNames, n => string.Equals(n, wanted, StringComparison.OrdinalIgnoreCase));
+        return i >= 0 ? i : Math.Max(primaryIndex, 0);
+    }
+
+    // Retângulo físico da janela, centralizada no topo do monitor (bounds em pixels físicos;
+    // scale = DPI do monitor / 96).
+    public static (int X, int Y, int W, int H) PlaceOn(int boundsX, int boundsY, int boundsWidth, double scale)
+    {
+        int w = (int)Math.Round(WindowWidth * scale), h = (int)Math.Round(WindowHeight * scale);
+        return (boundsX + (boundsWidth - w) / 2, boundsY, w, h);
+    }
 }

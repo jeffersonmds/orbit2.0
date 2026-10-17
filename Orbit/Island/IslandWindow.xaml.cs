@@ -41,9 +41,8 @@ public partial class IslandWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        Top = 0;
-        Recenter();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        vm.MonitorChanged += Recenter;
 
         _hover.Tick += (_, _) => { _hover.Stop(); _vm.Expand(); };
         _leave.Tick += (_, _) => { _leave.Stop(); _vm.Collapse(); };
@@ -104,6 +103,7 @@ public partial class IslandWindow : Window
 
         // WS_EX_TOOLWINDOW: fora do Alt+Tab.
         SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_TOOLWINDOW);
+        Recenter(); // antes do Show: já nasce no monitor certo
 
         // Último app em primeiro plano que não é a ilha (alvo do "colar" e de quem recebe o foco de
         // volta ao recolher). WM_ACTIVATE não serve: o lParam vem nulo quando o app anterior é de
@@ -187,10 +187,25 @@ public partial class IslandWindow : Window
         wait.Start();
     }
 
-    // Resolução/DPI/monitor principal mudou: recentraliza no topo do principal.
+    // Monitor conectado/desconectado, resolução ou escala mudou: reposiciona (o monitor salvo
+    // some → principal; volta → ele de novo).
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(Recenter);
 
-    private void Recenter() => Left = IslandGeometry.LeftFor(SystemParameters.PrimaryScreenWidth);
+    // Topo central do monitor escolhido em Ajustes, em pixels físicos (processo PerMonitorV2).
+    private void Recenter()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        var b = screens[IslandGeometry.PickScreen(Array.ConvertAll(screens, s => s.DeviceName),
+            Array.FindIndex(screens, s => s.Primary), _vm.MonitorDevice)].Bounds;
+        var monitor = MonitorFromPoint(new POINT { X = b.X + 1, Y = b.Y + 1 }, MONITOR_DEFAULTTONEAREST);
+        double scale = GetDpiForMonitor(monitor, 0, out uint dpi, out _) == 0 ? dpi / 96.0 : 1;
+        // 1º leva a janela pro monitor (o WPF reescala no WM_DPICHANGED), depois crava o retângulo.
+        SetWindowPos(hwnd, IntPtr.Zero, b.X, b.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        var r = IslandGeometry.PlaceOn(b.X, b.Y, b.Width, scale);
+        SetWindowPos(hwnd, IntPtr.Zero, r.X, r.Y, r.W, r.H, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
 
     private void OnModeChanged()
     {
@@ -317,4 +332,11 @@ public partial class IslandWindow : Window
     [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hook);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    private const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, MONITOR_DEFAULTTONEAREST = 2;
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
 }

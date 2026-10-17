@@ -36,28 +36,52 @@ public sealed partial class TabToggle : ObservableObject
     partial void OnVisibleChanged(bool value) => _changed(this);
 }
 
+// Um monitor onde a ilha pode morar. Device null = "sempre o principal".
+public sealed partial class MonitorOption : ObservableObject
+{
+    private readonly Action<MonitorOption> _picked;
+
+    public MonitorOption(string? device, string name, bool selected, Action<MonitorOption> picked)
+    {
+        Device = device;
+        Name = name;
+        _picked = picked;
+        _selected = selected; // campo direto: não dispara _picked na construção
+    }
+
+    public string? Device { get; }
+    public string Name { get; }
+
+    [ObservableProperty] private bool _selected;
+
+    partial void OnSelectedChanged(bool value) => _picked(this);
+}
+
 public sealed partial class AjustesViewModel : TabViewModel
 {
     private readonly OrbitSettings _settings;
     private readonly PomodoroViewModel _pomodoro;
     private readonly Func<IEnumerable<TabViewModel>> _allTabs;
     private readonly Action _tabsChanged;
+    private readonly Action _monitorChanged;
 
     public override string Id => "ajustes";
     public override string Title => "Ajustes";
 
     public ObservableCollection<AccentOption> Opcoes { get; }
     public ObservableCollection<TabToggle> Abas { get; } = new();
+    public ObservableCollection<MonitorOption> Monitores { get; } = new();
 
     [ObservableProperty] private bool _alertasComoToast;
     [ObservableProperty] private bool _somClaude;
 
-    public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged)
+    public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged, Action monitorChanged)
     {
         _settings = settings;
         _pomodoro = pomodoro;
         _allTabs = allTabs;
         _tabsChanged = tabsChanged;
+        _monitorChanged = monitorChanged;
         Opcoes = new ObservableCollection<AccentOption>(new[] { SystemOption() }
             .Concat(Accent.Paleta.Select(p => new AccentOption(p.Nome, p.Hex, new SolidColorBrush(Accent.ParseHex(p.Hex)!.Value)))));
         // A amostra "Windows" acompanha a cor do sistema (antes ficava congelada na abertura).
@@ -122,6 +146,38 @@ public sealed partial class AjustesViewModel : TabViewModel
                      .Where(t => t.Id != "ajustes")
                      .OrderBy(t => Array.IndexOf(IslandViewModel.TabOrder, t.Id)))
             Abas.Add(new TabToggle(t.Id, t.Title, !_settings.HiddenTabs.Contains(t.Id), OnTabToggled));
+        BuildMonitores();
+    }
+
+    // Lida a cada abertura: monitores entram e saem. O salvo desconectado continua na lista
+    // (marcado), pra mostrar que a ilha volta pra ele quando reconectar.
+    private void BuildMonitores()
+    {
+        Monitores.Clear();
+        var saved = _settings.IslandMonitor;
+        Monitores.Add(new MonitorOption(null, "Sempre o principal", saved is null, OnMonitorPicked));
+        // Numerados: 1 = principal, 2… = os outros.
+        var screens = System.Windows.Forms.Screen.AllScreens.OrderByDescending(s => s.Primary).ToArray();
+        for (int i = 0; i < screens.Length; i++)
+            Monitores.Add(new MonitorOption(screens[i].DeviceName, MonitorName(i + 1, screens[i].Bounds.Width, screens[i].Bounds.Height),
+                string.Equals(screens[i].DeviceName, saved, StringComparison.OrdinalIgnoreCase), OnMonitorPicked));
+        if (saved is not null && !screens.Any(s => string.Equals(s.DeviceName, saved, StringComparison.OrdinalIgnoreCase)))
+            Monitores.Add(new MonitorOption(saved, "Monitor salvo (desconectado)", true, OnMonitorPicked));
+    }
+
+    public static string MonitorName(int number, int width, int height) => $"{number} · {width}×{height}";
+
+    // Chips funcionam como rádio: clicar no marcado não desmarca. A lista é refeita depois do
+    // clique (não dentro dele: mexer na coleção durante o binding do CheckBox dá erro).
+    private void OnMonitorPicked(MonitorOption option)
+    {
+        if (option.Selected && option.Device != _settings.IslandMonitor)
+        {
+            _settings.IslandMonitor = option.Device;
+            SettingsStore.Save(_settings);
+            _monitorChanged();
+        }
+        System.Windows.Application.Current.Dispatcher.BeginInvoke(BuildMonitores);
     }
 
     private void OnTabToggled(TabToggle toggle)

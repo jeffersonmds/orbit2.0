@@ -55,6 +55,10 @@ public sealed partial class IslandViewModel : ObservableObject
     [ObservableProperty] private string _activityText = "";
     [ObservableProperty] private Peek? _peek;
 
+    // Monitor da ilha (Ajustes). A janela escuta MonitorChanged e se reposiciona.
+    public string? MonitorDevice => _settings.IslandMonitor;
+    public event Action? MonitorChanged;
+
     public IslandViewModel(OrbitSettings settings)
     {
         _settings = settings;
@@ -74,7 +78,7 @@ public sealed partial class IslandViewModel : ObservableObject
         NowPlaying.Start();
         // Sem DI: abas e serviços de fundo são criados aqui na mão.
         Register(new EnergiaViewModel());
-        Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility));
+        Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke()));
         Register(new HojeViewModel(_api, Pomodoro, TodoStore.FilePath));
         Register(new ControlesViewModel(NowPlaying));
         Register(new StatsViewModel());

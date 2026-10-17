@@ -45,4 +45,8 @@ public sealed class OrbitSettings
 
     // Câmera pelo iPhone: desligada mesmo com a ponte ligada, até o usuário ligar na aba.
     public bool BridgeCameraEnabled { get; set; }
+
+    // Monitor da ilha (Screen.DeviceName, ex.: \\.\DISPLAY2). null = sempre o principal;
+    // desconectado = principal até ele voltar.
+    public string? IslandMonitor { get; set; }
 }

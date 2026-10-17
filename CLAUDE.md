@@ -29,6 +29,8 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   "Pill" anima; pixels alpha 0 deixam o clique passar.
   Render por **software** (`App.OnStartup`): no modo hardware o D3D + driver retinha ~165 MB
   nativos (medido 260 → 95 MB após usar as abas). Não volte pro hardware sem medir.
+  Processo **PerMonitorV2** (`app.manifest`): `IslandWindow.Recenter` posiciona em pixels físicos no
+  monitor de Ajustes (`IslandMonitor`; desconectado → principal; reposiciona no DisplaySettingsChanged).
 - **`IslandMachine`** (puro) decide o estado: Repouso, Atividade, Alerta, Expandida, Oculta.
   `IslandViewModel` orquestra a máquina e as abas; a janela reage a `Mode` (layout/animação)
   e a `Peek` (reinicia o timer do alerta).

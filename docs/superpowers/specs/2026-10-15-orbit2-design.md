@@ -212,4 +212,4 @@ Cada fase tem o seu próprio plano em `docs/superpowers/plans/`.
 
 Acento extraído do wallpaper (incluindo Wallpaper Engine, via captura esporádica e reduzida
 — requer spike); aba Wallpaper; luz noturna; passkey; Web Push;
-navegar e baixar arquivos; scripts; escolha de monitor; IA por voz.
+navegar e baixar arquivos; scripts; IA por voz.

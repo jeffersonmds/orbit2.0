@@ -736,7 +736,12 @@ public static class Program
         Check("geometria: todo estado cabe na janela", allFit);
         Check("geometria: repouso é pílula fininha", IslandGeometry.SizeFor(IslandMode.Repouso) == new IslandSize(110, 10));
         Check("geometria: expandida 720x380", IslandGeometry.SizeFor(IslandMode.Expandida) == new IslandSize(720, 380));
-        Check("geometria: janela centralizada em 1920", IslandGeometry.LeftFor(1920) == 580);
+        Check("monitor: salvo conectado", IslandGeometry.PickScreen(new[] { @"\.\DISPLAY1", @"\.\DISPLAY5" }, 0, @"\.\display5") == 1);
+        Check("monitor: salvo desconectado = principal", IslandGeometry.PickScreen(new[] { @"\.\DISPLAY1", @"\.\DISPLAY2" }, 1, @"\.\DISPLAY5") == 1);
+        Check("monitor: null = principal", IslandGeometry.PickScreen(new[] { "a", "b" }, 1, null) == 1);
+        Check("monitor: centraliza em 1920 a 100%", IslandGeometry.PlaceOn(0, 0, 1920, 1.0) == (580, 0, 760, 400));
+        Check("monitor: à esquerda a 150%", IslandGeometry.PlaceOn(-2560, 76, 2560, 1.5) == (-2560 + (2560 - 1140) / 2, 76, 1140, 600));
+        Check("monitor: nome", Orbit.Tabs.Ajustes.AjustesViewModel.MonitorName(2, 2560, 1440) == "2 · 2560×1440");
         Check("geometria: raio cresce com o estado",
             IslandGeometry.RadiusFor(IslandMode.Repouso) < IslandGeometry.RadiusFor(IslandMode.Expandida));
     }
