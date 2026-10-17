@@ -67,6 +67,9 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   efêmera. Exposição ao iPhone é pelo `tailscale serve` (docs/tailscale-setup.md), nunca funnel.
   Capabilities à parte, desligadas por padrão (403): Câmera e Arquivos do PC (`PcFiles`: só leitura,
   só pastas do usuário, caminho sempre raiz + relativo validado; download por tíquete de 10 min).
+  Avisos no iPhone por **Web Push** (`WebPush`: RFC 8291/8292 com cripto nativa, testado contra o
+  vetor do RFC; endpoint só de serviço de push conhecido — anti-SSRF; inscrição ligada ao token).
+  `Notify` empurra os alertas da ilha com a ponte ligada, exceto os causados pelo próprio iPhone.
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça

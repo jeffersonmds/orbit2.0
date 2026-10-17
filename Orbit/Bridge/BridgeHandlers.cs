@@ -38,4 +38,8 @@ public sealed class BridgeHandlers
     // Arquivos do PC (só leitura): capability à parte, lida a cada requisição /api/pcfiles/*.
     public Func<bool> PcFilesEnabled { get; init; } = () => false;
     public Func<IReadOnlyList<PcRoot>> PcRoots { get; init; } = () => Array.Empty<PcRoot>();
+
+    // Avisos no iPhone (Web Push). null = rotas /api/push respondem 404.
+    public WebPush? Push { get; init; }
+    public Func<IReadOnlyCollection<string>> ValidTokens { get; init; } = () => Array.Empty<string>();
 }

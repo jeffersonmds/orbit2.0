@@ -43,6 +43,8 @@ public sealed partial class IslandViewModel : ObservableObject
     public IPhoneViewModel IPhone { get; }
     public NotasViewModel Notas { get; } = new(NotasViewModel.FilePath);
     private readonly ApiService _api = new();
+    private readonly TokenStore _tokens = new(TokenStore.FilePath);
+    private readonly WebPush _push = new(WebPush.KeyPath, WebPush.SubsPath);
     private readonly ClaudeHookServer _claudeServer = new();
     private readonly List<TabViewModel> _allTabs = new();
 
@@ -103,7 +105,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(Clips);
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
         // Ponte com o iPhone: desligada até o usuário ligar na aba (BridgeEnabled).
-        IPhone = new IPhoneViewModel(settings, new TokenStore(TokenStore.FilePath), new AuditLog(AuditLog.FilePath),
+        IPhone = new IPhoneViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
             BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"));
         Register(IPhone);
         _ = IPhone.StartIfEnabledAsync();
@@ -186,6 +188,8 @@ public sealed partial class IslandViewModel : ObservableObject
             CameraEnabled = () => _settings.BridgeCameraEnabled,
             PcFilesEnabled = () => _settings.BridgePcFilesEnabled,
             PcRoots = () => PcFiles.DefaultRoots(BridgeRules.UploadFolder(_settings.BridgeUploadFolder)),
+            Push = _push,
+            ValidTokens = ValidTokenNames,
             Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone", e.OpenPath), false)),
         };
     }
@@ -236,6 +240,10 @@ public sealed partial class IslandViewModel : ObservableObject
     // toast do Windows; senão é peek na pílula (com bip curto, já que o peek é silencioso).
     public void Notify(Peek peek, bool sound)
     {
+        // Também no iPhone (Web Push), com a ponte ligada. Eventos causados pelo próprio iPhone
+        // (link aberto, arquivo recebido) não voltam pra ele.
+        if (_settings.BridgeEnabled && peek.TabId != "iphone")
+            _ = _push.SendAsync(peek.Title, peek.Detail ?? "", ValidTokenNames());
         if (ShouldToast(_machine.Fullscreen, _settings.AlertsAsToastInFullscreen))
         {
             ToastNotifier.Notify(peek.Title, peek.Detail ?? "", sound);
@@ -246,6 +254,8 @@ public sealed partial class IslandViewModel : ObservableObject
     }
 
     public static bool ShouldToast(bool fullscreen, bool preferToast) => fullscreen && preferToast;
+
+    private IReadOnlyCollection<string> ValidTokenNames() => _tokens.List().Select(t => t.Name).ToHashSet();
 
     public void OpenTab(string id)
     {

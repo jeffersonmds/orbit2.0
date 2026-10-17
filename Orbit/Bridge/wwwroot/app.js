@@ -503,3 +503,52 @@ route(); // já faz o 1º refresh
 loop = setInterval(refresh, 5000);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// --- Avisos do PC (Web Push) ---
+// iOS só entrega push pro app aberto pelo ícone da Tela de Início (16.4+) e só pede permissão
+// dentro de um toque: por isso requestPermission é a 1ª coisa do clique, antes de qualquer await.
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const b64urlBytes = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+async function pushRender() {
+  const btn = $('#pushBtn'), off = $('#pushOff'), state = $('#pushState');
+  if (!pushSupported()) {
+    state.textContent = 'Abra pelo ícone da Tela de Início pra receber';
+    btn.classList.add('hidden'); off.classList.add('hidden');
+    return;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const on = !!(await reg.pushManager.getSubscription()) && Notification.permission === 'granted';
+  state.textContent = on ? 'Ligados neste iPhone' : 'Claude aguardando, Pomodoro…';
+  btn.textContent = on ? 'Testar' : 'Ativar';
+  btn.classList.remove('hidden');
+  off.classList.toggle('hidden', !on);
+}
+
+$('#pushBtn').onclick = () => {
+  if (!pushSupported()) return;
+  const perm = Notification.requestPermission(); // no gesto, antes de qualquer await
+  run(async () => {
+    if ((await perm) !== 'granted') throw new Error('Permissão negada — libere em Ajustes › Notificações › Orbit');
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const { publicKey } = await api('/push/key');
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlBytes(publicKey) });
+    }
+    await api('/push/subscribe', { method: 'POST', json: sub.toJSON() });
+    await api('/push/test', { method: 'POST' });
+    await pushRender();
+  }, 'Aviso de teste enviado');
+};
+
+$('#pushOff').onclick = () => run(async () => {
+  const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+  if (sub) {
+    await api('/push/unsubscribe', { method: 'POST', json: { endpoint: sub.endpoint } }).catch(() => {});
+    await sub.unsubscribe();
+  }
+  await pushRender();
+}, 'Avisos desligados');
+
+if (token) pushRender().catch(() => {});

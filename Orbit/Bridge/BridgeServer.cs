@@ -27,6 +27,8 @@ public sealed record PairRequest(string? Code);
 public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps);
 public sealed record CameraPhotoRequest(string? DeviceId, string? Name);
 public sealed record PcFileRequest(string? Root, string? Path);
+public sealed record PushKeys(string? P256dh, string? Auth);
+public sealed record PushSubRequest(string? Endpoint, PushKeys? Keys);
 
 // Kestrel dentro do processo do Orbit, só em 127.0.0.1 (o `tailscale serve` é quem expõe).
 // Toda rota /api exige token e passa por rate limit; /health e o PWA (arquivos estáticos) não.
@@ -155,6 +157,7 @@ public sealed class BridgeServer : IAsyncDisposable
         });
         MapApi(api, h, camera, tickets);
         MapPcFiles(api, h, new FileTickets());
+        if (h.Push is { } push) MapPush(api, h, push);
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }
@@ -332,6 +335,25 @@ public sealed class BridgeServer : IAsyncDisposable
             if (!File.Exists(file)) return Results.NotFound();
             new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(file, out var type);
             return Results.File(file, type ?? "application/octet-stream", Path.GetFileName(file), enableRangeProcessing: true);
+        });
+    }
+
+    // O iPhone se inscreve com o próprio token: revogar o token corta os avisos dele.
+    private static void MapPush(RouteGroupBuilder api, BridgeHandlers h, WebPush push)
+    {
+        static string Token(HttpContext ctx) => (string)ctx.Items["token"]!;
+
+        api.MapGet("/push/key", () => Results.Ok(new { publicKey = push.PublicKey }));
+        api.MapGet("/push/status", (HttpContext ctx) => Results.Ok(new { subscriptions = push.CountFor(Token(ctx)) }));
+        api.MapPost("/push/subscribe", (PushSubRequest req, HttpContext ctx) =>
+            push.Subscribe(req.Endpoint, req.Keys?.P256dh, req.Keys?.Auth, Token(ctx))
+                ? Results.NoContent()
+                : Results.BadRequest(new { erro = "Inscrição inválida." }));
+        api.MapPost("/push/unsubscribe", (PushSubRequest req) => { push.Unsubscribe(req.Endpoint); return Results.NoContent(); });
+        api.MapPost("/push/test", async (HttpContext ctx) =>
+        {
+            await push.SendAsync("Orbit", "Avisos do PC funcionando.", h.ValidTokens(), onlyToken: Token(ctx));
+            return Results.NoContent();
         });
     }
 

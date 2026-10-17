@@ -72,6 +72,7 @@ public static class Program
         PairingCodeTests();
         CameraStreamAuthTests();
         PcFilesTests();
+        WebPushTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -102,6 +103,105 @@ public static class Program
 
         server.StopAsync().GetAwaiter().GetResult();
         camera.Dispose();
+        Directory.Delete(dir, recursive: true);
+    }
+
+    // Web Push: o teste faz o papel do iPhone — decifra o payload (RFC 8291) com a chave privada do
+    // "aparelho" e confere a assinatura VAPID com a chave pública que o PWA recebe.
+    private static void WebPushTests()
+    {
+        using System.Security.Cryptography.ECDiffieHellman ua = System.Security.Cryptography.ECDiffieHellman.Create(
+            System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var uaPublic = WebPush.Uncompressed(ua.ExportParameters(false).Q);
+        var auth = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+        var msg = System.Text.Encoding.UTF8.GetBytes("{\"title\":\"Claude · orbit\",\"body\":\"aguardando você\"}");
+        var body = WebPush.Encrypt(msg, uaPublic, auth);
+
+        // lado do aparelho: cabeçalho aes128gcm = salt(16) | rs(4) | idlen(1) | chave do servidor | cifra
+        var salt = body[..16];
+        var rs = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(body.AsSpan(16, 4));
+        int idlen = body[20];
+        var asPublic = body[21..(21 + idlen)];
+        var cipher = body[(21 + idlen)..];
+        using var asKey = System.Security.Cryptography.ECDiffieHellman.Create(WebPush.PublicParams(asPublic));
+        var ecdh = ua.DeriveRawSecretAgreement(asKey.PublicKey);
+        byte[] keyInfo = [.. "WebPush: info\0"u8, .. uaPublic, .. asPublic];
+        var sha = System.Security.Cryptography.HashAlgorithmName.SHA256;
+        var ikm = System.Security.Cryptography.HKDF.DeriveKey(sha, ecdh, 32, auth, keyInfo);
+        var prk = System.Security.Cryptography.HKDF.Extract(sha, ikm, salt);
+        var cek = System.Security.Cryptography.HKDF.Expand(sha, prk, 16, "Content-Encoding: aes128gcm\0"u8.ToArray());
+        var nonce = System.Security.Cryptography.HKDF.Expand(sha, prk, 12, "Content-Encoding: nonce\0"u8.ToArray());
+        var plain = new byte[cipher.Length - 16];
+        bool decrypted;
+        try
+        {
+            using var gcm = new System.Security.Cryptography.AesGcm(cek, 16);
+            gcm.Decrypt(nonce, cipher[..^16], cipher[^16..], plain);
+            decrypted = true;
+        }
+        catch { decrypted = false; }
+        Check("push: cabeçalho aes128gcm (rs 4096, chave de 65 bytes)", rs == 4096 && idlen == 65 && asPublic[0] == 0x04);
+        Check("push: aparelho decifra o payload", decrypted && plain[^1] == 0x02 && plain[..^1].AsSpan().SequenceEqual(msg));
+        // Vetor oficial do RFC 8291, Apêndice A: com as mesmas chaves e salt, o corpo tem de sair idêntico.
+        {
+            byte[] B(string s) => System.Buffers.Text.Base64Url.DecodeFromChars(s);
+            var rfc = WebPush.PublicParams(B("BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8"));
+            rfc.D = B("yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw");
+            using var rfcKey = System.Security.Cryptography.ECDiffieHellman.Create(rfc);
+            var rfcBody = WebPush.Encrypt("When I grow up, I want to be a watermelon"u8.ToArray(),
+                B("BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4"),
+                B("BTBZMqHH6r4Tts7J_aSIgg"), rfcKey, B("DGv6ra1nlYgDCS1FRnbzlw"));
+            Check("push: igual ao vetor do RFC 8291", System.Buffers.Text.Base64Url.EncodeToString(rfcBody) ==
+                "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN");
+        }
+        Check("push: cada envio usa salt e chave novos", !WebPush.Encrypt(msg, uaPublic, auth).AsSpan(0, 86).SequenceEqual(body.AsSpan(0, 86)));
+
+        // VAPID: JWT ES256 verificável com a chave pública anunciada
+        using var vapid = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var jwt = WebPush.VapidJwt(vapid, "https://web.push.apple.com", new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc));
+        var parts = jwt.Split('.');
+        using var verifier = System.Security.Cryptography.ECDsa.Create(WebPush.PublicParams(WebPush.Uncompressed(vapid.ExportParameters(false).Q)));
+        bool sigOk = parts.Length == 3 && verifier.VerifyData(System.Text.Encoding.ASCII.GetBytes(parts[0] + "." + parts[1]),
+            System.Buffers.Text.Base64Url.DecodeFromChars(parts[2]), sha, System.Security.Cryptography.DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        var claims = System.Text.Encoding.UTF8.GetString(System.Buffers.Text.Base64Url.DecodeFromChars(parts[1]));
+        Check("push: JWT VAPID assinado (ES256)", sigOk);
+        Check("push: JWT com aud, exp em 12 h e sub", claims.Contains("\"aud\":\"https://web.push.apple.com\"")
+            && claims.Contains($"\"exp\":{new DateTimeOffset(2026, 10, 18, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds()}") && claims.Contains("\"sub\":\"mailto:"));
+
+        Check("push: endpoint da Apple aceito", WebPush.IsAllowedEndpoint("https://web.push.apple.com/QGx3abc"));
+        Check("push: endpoint do Google aceito", WebPush.IsAllowedEndpoint("https://fcm.googleapis.com/fcm/send/x"));
+        Check("push: host parecido recusado", !WebPush.IsAllowedEndpoint("https://push.apple.com.evil.net/x")
+            && !WebPush.IsAllowedEndpoint("https://evilpush.apple.com.br/x"));
+        Check("push: rede local recusada (SSRF)", !WebPush.IsAllowedEndpoint("https://192.168.0.1/x") && !WebPush.IsAllowedEndpoint("http://web.push.apple.com/x")
+            && !WebPush.IsAllowedEndpoint("https://web.push.apple.com:8443/x"));
+        var p256 = System.Buffers.Text.Base64Url.EncodeToString(uaPublic);
+        var auth64 = System.Buffers.Text.Base64Url.EncodeToString(auth);
+        Check("push: chaves válidas", WebPush.TryKeys(p256, auth64, out _, out _));
+        Check("push: chaves inválidas", !WebPush.TryKeys(p256[..20], auth64, out _, out _) && !WebPush.TryKeys(p256, "!!", out _, out _));
+
+        // Rotas: inscrição fica ligada ao token que a fez.
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-push-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var token = tokens.Create("iPhone teste");
+        var push = new WebPush(Path.Combine(dir, "vapid.json"), Path.Combine(dir, "push.json"));
+        var handlers = new BridgeHandlers { Push = push, ValidTokens = () => tokens.List().Select(t => t.Name).ToHashSet() };
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Check("push: chave pública = 65 bytes", System.Buffers.Text.Base64Url.DecodeFromChars(
+            http.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/push/key").Result.GetProperty("publicKey").GetString()!).Length == 65);
+        var ok = http.PostAsJsonAsync("/api/push/subscribe", new { endpoint = "https://web.push.apple.com/abc", keys = new { p256dh = p256, auth = auth64 } }).Result;
+        Check("push: inscrição aceita", ok.StatusCode == HttpStatusCode.NoContent && push.CountFor("iPhone teste") == 1);
+        var bad = http.PostAsJsonAsync("/api/push/subscribe", new { endpoint = "https://10.0.0.1/abc", keys = new { p256dh = p256, auth = auth64 } }).Result;
+        Check("push: endpoint fora da lista = 400", bad.StatusCode == HttpStatusCode.BadRequest && push.CountFor("iPhone teste") == 1);
+        Check("push: status conta as do token", http.GetStringAsync("/api/push/status").Result.Contains("\"subscriptions\":1"));
+        Check("push: inscrição sobrevive a reiniciar", new WebPush(Path.Combine(dir, "vapid.json"), Path.Combine(dir, "push.json")).CountFor("iPhone teste") == 1
+            && new WebPush(Path.Combine(dir, "vapid.json"), Path.Combine(dir, "push.json")).PublicKey == push.PublicKey);
+        http.PostAsJsonAsync("/api/push/unsubscribe", new { endpoint = "https://web.push.apple.com/abc" }).Result.Dispose();
+        Check("push: desinscrever", push.CountFor("iPhone teste") == 0);
+        server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
     }
 
