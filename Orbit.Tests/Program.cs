@@ -73,6 +73,7 @@ public static class Program
         CameraStreamAuthTests();
         PcFilesTests();
         WebPushTests();
+        RemoteScreenTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -103,6 +104,129 @@ public static class Program
 
         server.StopAsync().GetAwaiter().GetResult();
         camera.Dispose();
+        Directory.Delete(dir, recursive: true);
+    }
+
+    // Tela remota: parse da entrada, tíquetes, sessões e rotas com captura/execução falsas
+    // (nenhum teste mexe no mouse de verdade). Uma captura real confere que sai JPEG.
+    private static void RemoteScreenTests()
+    {
+        var abs = RemoteInput.Parse("{\"t\":\"abs\",\"x\":0.5,\"y\":1}");
+        Check("remoto: abs", abs is { Kind: RemoteKind.Abs, X: 0.5, Y: 1 });
+        Check("remoto: abs fora de 0..1 recusado", RemoteInput.Parse("{\"t\":\"abs\",\"x\":1.5,\"y\":0}") is null);
+        Check("remoto: move", RemoteInput.Parse("{\"t\":\"move\",\"dx\":-12,\"dy\":3.5}") is { Kind: RemoteKind.Move, X: -12, Y: 3.5 });
+        Check("remoto: move gigante recusado", RemoteInput.Parse("{\"t\":\"move\",\"dx\":99999,\"dy\":0}") is null);
+        Check("remoto: clique direito duplo", RemoteInput.Parse("{\"t\":\"click\",\"b\":\"right\",\"n\":2}") is { Kind: RemoteKind.Click, Right: true, Count: 2 });
+        Check("remoto: clique padrão = esquerdo simples", RemoteInput.Parse("{\"t\":\"click\"}") is { Right: false, Count: 1 });
+        Check("remoto: rolar", RemoteInput.Parse("{\"t\":\"scroll\",\"dy\":-120}") is { Kind: RemoteKind.Scroll, X: 0, Y: -120 });
+        Check("remoto: texto", RemoteInput.Parse("{\"t\":\"text\",\"s\":\"olá ✓\"}") is { Kind: RemoteKind.Text, Text: "olá ✓" });
+        Check("remoto: texto grande recusado", RemoteInput.Parse("{\"t\":\"text\",\"s\":\"" + new string('a', RemoteInput.MaxText + 1) + "\"}") is null);
+        var ctrlC = RemoteInput.Parse("{\"t\":\"key\",\"k\":\"c\",\"mods\":[\"ctrl\"]}");
+        Check("remoto: Ctrl+C", ctrlC is { Kind: RemoteKind.Key, Vk: 0x43 } && ctrlC.Mods!.SequenceEqual(new ushort[] { 0x11 }));
+        Check("remoto: tecla desconhecida recusada", RemoteInput.Parse("{\"t\":\"key\",\"k\":\"launchmissiles\"}") is null);
+        Check("remoto: modificador desconhecido recusado", RemoteInput.Parse("{\"t\":\"key\",\"k\":\"a\",\"mods\":[\"hyper\"]}") is null);
+        Check("remoto: lixo recusado", RemoteInput.Parse("{ruim") is null && RemoteInput.Parse("{\"t\":\"format\"}") is null);
+        Check("remoto: sequência do atalho", RemoteInput.KeySequence(0x43, new ushort[] { 0x11, 0x10 }).SequenceEqual(
+            new (ushort, bool)[] { (0x11, false), (0x10, false), (0x43, false), (0x43, true), (0x10, true), (0x11, true) }));
+        var b = new System.Drawing.Rectangle(-2560, 76, 2560, 1440);
+        Check("remoto: abs no monitor da esquerda", RemoteInput.ToScreen(0, 0, b) == new System.Drawing.Point(-2560, 76)
+            && RemoteInput.ToScreen(1, 1, b) == new System.Drawing.Point(-1, 1515));
+
+        var screens = ScreenCapture.Order(new[] { ("B", new System.Drawing.Rectangle(-2560, 0, 2560, 1440), false), ("A", new System.Drawing.Rectangle(0, 0, 1920, 1080), true) });
+        Check("tela: principal é o 1", screens[0].Id == "A" && screens[0].Name == "1 · 1920×1080" && screens[1].Name == "2 · 2560×1440");
+        Check("tela: reduz mantendo proporção", ScreenCapture.Fit(new System.Drawing.Size(2560, 1600), 960) == new System.Drawing.Size(960, 600));
+        Check("tela: não amplia", ScreenCapture.Fit(new System.Drawing.Size(800, 600), 960) == new System.Drawing.Size(800, 600));
+        Check("tela: qualidade", ScreenQuality.Parse("nitida") == ScreenQuality.Nitida && ScreenQuality.Parse("original") == ScreenQuality.Original
+            && ScreenQuality.Parse("x") == ScreenQuality.Leve);
+        Check("tela: original não reduz", ScreenCapture.Fit(new System.Drawing.Size(2560, 1600), ScreenQuality.Original.MaxWidth) == new System.Drawing.Size(2560, 1600));
+        var real = ScreenCapture.Screens();
+        var shot = real.Count > 0 ? ScreenCapture.Capture(real[0].Bounds, ScreenQuality.Leve) : null;
+        Check("tela: captura real sai JPEG", shot is { Length: > 1000 } && shot[0] == 0xFF && shot[1] == 0xD8);
+
+        var tk = new OneShotTickets<string>();
+        var t1 = tk.Issue("x", DateTime.Now);
+        Check("tela: tíquete uso único", tk.TryClaim(t1, DateTime.Now, out var v1) && v1 == "x" && !tk.TryClaim(t1, DateTime.Now, out _));
+        var t2 = tk.Issue("y", DateTime.Now);
+        Check("tela: tíquete vencido", !tk.TryClaim(t2, DateTime.Now.AddSeconds(31), out _));
+
+        Check("tela: texto da pílula", IslandViewModel.RemoteActivity(true, false) == "Tela no iPhone"
+            && IslandViewModel.RemoteActivity(true, true) == "iPhone controlando o PC" && IslandViewModel.RemoteActivity(false, false) is null);
+
+        // Rotas
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tela-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var token = tokens.Create("iPhone teste");
+        bool screenOn = false, controlOn = false;
+        var fakeScreen = new ScreenInfo("DISPLAY1", "1 · 640×480", new System.Drawing.Rectangle(0, 0, 640, 480));
+        var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 0xFF, 0xD9 };
+        var received = new System.Collections.Concurrent.ConcurrentQueue<RemoteCommand>();
+        var states = new System.Collections.Concurrent.ConcurrentQueue<(bool, bool)>();
+        var handlers = new BridgeHandlers
+        {
+            ScreenEnabled = () => screenOn,
+            ControlEnabled = () => controlOn,
+            Screens = () => new[] { fakeScreen },
+            CaptureScreen = (_, _) => jpeg,
+            RemoteInput = (c, _) => received.Enqueue(c),
+            RemoteChanged = (v, c) => states.Enqueue((v, c)),
+        };
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        Check("tela: desligada = 403", http.GetAsync("/api/screen/list").Result.StatusCode == HttpStatusCode.Forbidden);
+        screenOn = true;
+        Check("tela: lista", http.GetStringAsync("/api/screen/list").Result.Contains("DISPLAY1"));
+        Check("tela: controle desligado = 403", http.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result.StatusCode == HttpStatusCode.Forbidden);
+        using var anon = new HttpClient { BaseAddress = http.BaseAddress };
+        Check("tela: stream sem tíquete = 401", anon.GetAsync("/api/screen/stream").Result.StatusCode == HttpStatusCode.Unauthorized);
+        var vt = http.PostAsJsonAsync("/api/screen/open", new { screen = "DISPLAY1", quality = "leve" }).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+        using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        using (var resp = anon.GetAsync($"/api/screen/stream?ticket={vt}", HttpCompletionOption.ResponseHeadersRead, cts.Token).Result)
+        {
+            var stream = resp.Content.ReadAsStream(cts.Token);
+            var buf = new byte[256];
+            int n = 0;
+            while (n < 80) { int r = stream.Read(buf, n, buf.Length - n); if (r == 0) break; n += r; }
+            var head = System.Text.Encoding.ASCII.GetString(buf, 0, n);
+            Check("tela: stream MJPEG com tíquete (sem token)", resp.StatusCode == HttpStatusCode.OK
+                && resp.Content.Headers.ContentType?.MediaType == "multipart/x-mixed-replace" && head.Contains("Content-Type: image/jpeg"));
+            System.Threading.Thread.Sleep(200);
+            Check("tela: sessão de vídeo avisa a ilha", states.Contains((true, false)));
+        }
+        Check("tela: tíquete do stream é de uso único", anon.GetAsync($"/api/screen/stream?ticket={vt}").Result.StatusCode == HttpStatusCode.Unauthorized);
+
+        controlOn = true;
+        var it = http.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+        using (var ws = new System.Net.WebSockets.ClientWebSocket())
+        {
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/remote/input?ticket={it}"), System.Threading.CancellationToken.None).Wait();
+            foreach (var m in new[] { "{\"t\":\"abs\",\"x\":0.25,\"y\":0.5}", "{\"t\":\"click\"}", "{lixo", "{\"t\":\"text\",\"s\":\"oi\"}" })
+                ws.SendAsync(System.Text.Encoding.UTF8.GetBytes(m), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
+            for (int i = 0; i < 50 && received.Count < 3; i++) System.Threading.Thread.Sleep(20);
+            var got = received.ToArray();
+            Check("tela: WebSocket entrega os comandos válidos e ignora lixo", got.Length == 3 && got[0].Kind == RemoteKind.Abs
+                && got[1].Kind == RemoteKind.Click && got[2].Text == "oi");
+            Check("tela: controle avisa a ilha", states.Any(s => s.Item2));
+            server.StopRemote(); // o "Encerrar" da aba iPhone
+            for (int i = 0; i < 50 && ws.State == System.Net.WebSockets.WebSocketState.Open; i++)
+            {
+                try { ws.ReceiveAsync(new byte[16], new System.Threading.CancellationTokenSource(100).Token).Wait(); } catch { }
+            }
+            Check("tela: Encerrar derruba o controle", ws.State != System.Net.WebSockets.WebSocketState.Open && states.Last() == (false, false));
+        }
+        using (var ws2 = new System.Net.WebSockets.ClientWebSocket())
+        {
+            var ok = true;
+            try { ws2.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/remote/input?ticket={it}"), System.Threading.CancellationToken.None).Wait(); }
+            catch { ok = false; }
+            Check("tela: tíquete do controle é de uso único", !ok);
+        }
+        server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
     }
 

@@ -43,6 +43,10 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [ObservableProperty] private string _publicUrl = "";
     [ObservableProperty] private bool _cameraEnabled;
     [ObservableProperty] private bool _pcFilesEnabled;
+    [ObservableProperty] private bool _screenEnabled;
+    [ObservableProperty] private bool _controlEnabled;
+    [ObservableProperty] private bool _remoteActive;
+    [ObservableProperty] private string _remoteText = "";
     [ObservableProperty] private BitmapSource? _qrImage;
     [ObservableProperty] private string? _pairLink;
     [ObservableProperty] private bool _hasPairing;
@@ -82,6 +86,8 @@ public sealed partial class IPhoneViewModel : TabViewModel
         PublicUrl = settings.BridgePublicUrl;
         CameraEnabled = settings.BridgeCameraEnabled;
         PcFilesEnabled = settings.BridgePcFilesEnabled;
+        ScreenEnabled = settings.BridgeScreenEnabled;
+        ControlEnabled = settings.BridgeControlEnabled;
         _syncing = false;
         _audit.Written += _ => Application.Current?.Dispatcher.BeginInvoke(RefreshActivity);
     }
@@ -112,6 +118,32 @@ public sealed partial class IPhoneViewModel : TabViewModel
         _settings.BridgeCameraEnabled = value;
         SettingsStore.Save(_settings);
     }
+
+    partial void OnScreenEnabledChanged(bool value)
+    {
+        if (_syncing) return;
+        _settings.BridgeScreenEnabled = value;
+        SettingsStore.Save(_settings);
+        if (!value) Server.StopRemote(); // desligou a permissão: derruba a sessão na hora
+    }
+
+    partial void OnControlEnabledChanged(bool value)
+    {
+        if (_syncing) return;
+        _settings.BridgeControlEnabled = value;
+        SettingsStore.Save(_settings);
+        if (!value) Server.StopRemote();
+    }
+
+    // Chamado pela ilha quando a sessão de tela remota muda (já na UI thread).
+    public void SetRemote(bool viewing, bool controlling)
+    {
+        RemoteActive = viewing || controlling;
+        RemoteText = controlling ? "O iPhone está vendo e controlando a tela" : "O iPhone está vendo a tela";
+    }
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void StopRemote() => Server.StopRemote();
 
     partial void OnPcFilesEnabledChanged(bool value)
     {

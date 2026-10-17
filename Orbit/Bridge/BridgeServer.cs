@@ -41,6 +41,11 @@ public sealed class BridgeServer : IAsyncDisposable
 
     public bool Running => _app is not null;
 
+    private RemoteSessions? _remote;
+
+    // "Encerrar" da aba iPhone: derruba vídeo e controle da tela remota.
+    public void StopRemote() => _remote?.StopAll();
+
     // port 0 = porta efêmera (testes).
     // codes: pareamento por código de 6 dígitos (POST /pair, sem token). null = rota desligada.
     public async Task StartAsync(int port, string webRoot, TokenStore tokens, AuditLog audit, BridgeHandlers h,
@@ -87,7 +92,9 @@ public sealed class BridgeServer : IAsyncDisposable
             // (<img>/window.open não mandam cabeçalho): o próprio handler valida. As demais exigem token.
             bool ticketRoute = HttpMethods.IsGet(ctx.Request.Method)
                 && (ctx.Request.Path.Equals("/api/camera/stream", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/pcfiles/download", StringComparison.OrdinalIgnoreCase));
+                    || ctx.Request.Path.Equals("/api/pcfiles/download", StringComparison.OrdinalIgnoreCase)
+                    || ctx.Request.Path.Equals("/api/screen/stream", StringComparison.OrdinalIgnoreCase)
+                    || ctx.Request.Path.Equals("/api/remote/input", StringComparison.OrdinalIgnoreCase));
             if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
@@ -107,6 +114,7 @@ public sealed class BridgeServer : IAsyncDisposable
             catch (Exception ex) { Log.Warning(ex, "Ponte: erro fora das rotas"); throw; }
         });
         app.UseRateLimiter();
+        app.UseWebSockets(); // controle da tela remota
         if (hasWeb)
         {
             app.UseDefaultFiles();
@@ -153,11 +161,17 @@ public sealed class BridgeServer : IAsyncDisposable
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/pcfiles") && !h.PcFilesEnabled())
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/screen") && !h.ScreenEnabled())
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/remote") && !(h.ScreenEnabled() && h.ControlEnabled()))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             return await next(ctx);
         });
         MapApi(api, h, camera, tickets);
         MapPcFiles(api, h, new FileTickets());
         if (h.Push is { } push) MapPush(api, h, push);
+        _remote = new RemoteSessions(h.RemoteChanged);
+        RemoteScreen.Map(api, h, _remote);
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }

@@ -147,6 +147,38 @@ button.danger { color: var(--danger); }
 .pushtext span { color: var(--ink-lo); font-size: 13px; }
 .pushcard .primary { width: auto; margin: 0; flex: 0 0 auto; }
 .pushcard .ghost { flex: 0 0 auto; padding: 10px 6px; }
+/* Tela do PC: imagem ao vivo + camada de toque por cima (gestos viram mouse no PC). */
+.scr-view { position: relative; flex: 1; min-height: 220px; margin-top: 10px; border-radius: 12px; background: #000;
+  overflow: hidden; display: grid; place-items: center; }
+.scr-view.live .cam-ph, .scr-view:not(.live) #scrImg, .scr-view:not(.live) .scr-touch { display: none; }
+#scrImg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; max-width: none; object-fit: contain; display: block; }
+.scr-touch { position: absolute; inset: 0; touch-action: none; -webkit-user-select: none; user-select: none; }
+.scr-bar { display: flex; gap: 6px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
+.scr-bar::-webkit-scrollbar { display: none; }
+.scr-bar button { flex: 0 0 auto; min-width: 44px; padding: 8px 12px; font-size: 15px; }
+.scr-bar button.on { background: var(--accent); color: #0b0b0c; }
+/* fora da tela mas focável: abre o teclado do iOS */
+/* botões sobre a imagem (acima da camada de toque) */
+.scr-float { position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; gap: 6px; }
+.scr-view:not(.live) .scr-float { display: none; }
+.scr-float button { min-height: 36px; padding: 6px 10px; border-radius: 10px; background: rgba(0, 0, 0, .55);
+  color: #fff; font-size: 14px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.scr-float svg { width: 20px; height: 20px; display: block; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+
+/* Tela cheia: a página cobre tudo (cabeçalho incluso), a imagem ocupa a tela e as teclas flutuam embaixo. */
+body.immersive { overflow: hidden; }
+.page[data-page="tela"].immersive { position: fixed; inset: 0; z-index: 30; margin: 0; background: #000;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.immersive > .row, .immersive > #scrToggle, .immersive > #scrMsg { display: none !important; }
+.immersive .scr-view { margin: 0; border-radius: 0; min-height: 0; }
+.immersive .scr-bar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 8px);
+  max-width: calc(100% - 24px); margin: 0; padding: 6px; border-radius: 14px; background: rgba(0, 0, 0, .55);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); z-index: 2; }
+.immersive .scr-bar button { background: rgba(255, 255, 255, .12); min-height: 38px; padding: 6px 10px; }
+.immersive .scr-bar button.on { background: var(--accent); }
+.scr-input { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+/* atalho que sobra sozinho na última linha da grade ocupa a linha toda */
+.tiles .tile:last-of-type:nth-of-type(odd) { grid-column: 1 / -1; min-height: 0; }
 .hidden { display: none !important; }
 
 /* --- Páginas em tela cheia: cada página ocupa a altura e o conteúdo principal estica --- */

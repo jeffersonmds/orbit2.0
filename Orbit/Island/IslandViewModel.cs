@@ -189,6 +189,16 @@ public sealed partial class IslandViewModel : ObservableObject
             PcFilesEnabled = () => _settings.BridgePcFilesEnabled,
             PcRoots = () => PcFiles.DefaultRoots(BridgeRules.UploadFolder(_settings.BridgeUploadFolder)),
             Push = _push,
+            ScreenEnabled = () => _settings.BridgeScreenEnabled,
+            ControlEnabled = () => _settings.BridgeControlEnabled,
+            Screens = ScreenCapture.Screens,
+            CaptureScreen = ScreenCapture.Capture,
+            RemoteInput = Orbit.Services.RemoteInput.Execute,
+            RemoteChanged = (viewing, controlling) => ui.BeginInvoke(() =>
+            {
+                SetActivity(ActivityKind.TelaRemota, RemoteActivity(viewing, controlling));
+                IPhone.SetRemote(viewing, controlling);
+            }),
             ValidTokens = ValidTokenNames,
             Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone", e.OpenPath), false)),
         };
@@ -254,6 +264,9 @@ public sealed partial class IslandViewModel : ObservableObject
     }
 
     public static bool ShouldToast(bool fullscreen, bool preferToast) => fullscreen && preferToast;
+
+    public static string? RemoteActivity(bool viewing, bool controlling) =>
+        controlling ? "iPhone controlando o PC" : viewing ? "Tela no iPhone" : null;
 
     private IReadOnlyCollection<string> ValidTokenNames() => _tokens.List().Select(t => t.Name).ToHashSet();
 

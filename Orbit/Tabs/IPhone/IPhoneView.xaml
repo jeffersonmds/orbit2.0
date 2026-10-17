@@ -11,15 +11,31 @@
         <!-- Esquerda: liga/desliga, endereço, tokens -->
         <DockPanel>
             <StackPanel DockPanel.Dock="Top">
-                <DockPanel Margin="0,0,0,10">
+                <DockPanel Margin="0,0,0,8">
                     <CheckBox DockPanel.Dock="Left" Style="{StaticResource Chip}" IsChecked="{Binding Enabled}" Content="Ponte ligada" Margin="0,0,10,0"/>
-                    <CheckBox DockPanel.Dock="Left" Style="{StaticResource Chip}" IsChecked="{Binding CameraEnabled}"
-                              Content="Câmera" Margin="0,0,10,0" ToolTip="Permite o iPhone ver as câmeras do PC"/>
-                    <CheckBox DockPanel.Dock="Left" Style="{StaticResource Chip}" IsChecked="{Binding PcFilesEnabled}"
-                              Content="Arquivos" Margin="0,0,10,0" ToolTip="Permite o iPhone ver e baixar arquivos das pastas do usuário (só leitura)"/>
                     <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
+                <!-- Permissões à parte, todas desligadas por padrão -->
+                <WrapPanel Margin="0,0,0,10">
+                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding CameraEnabled}"
+                              Content="Câmera" ToolTip="Permite o iPhone ver as câmeras do PC"/>
+                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding PcFilesEnabled}"
+                              Content="Arquivos" ToolTip="Permite o iPhone ver e baixar arquivos das pastas do usuário (só leitura)"/>
+                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding ScreenEnabled}"
+                              Content="Tela" ToolTip="Permite o iPhone ver a tela do PC ao vivo"/>
+                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding ControlEnabled}" IsEnabled="{Binding ScreenEnabled}"
+                              Content="Controle" ToolTip="Permite o iPhone usar mouse e teclado (precisa de Tela)"/>
+                </WrapPanel>
+                <!-- Sessão de tela remota ativa: quem está no PC vê e pode derrubar -->
+                <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="10" Padding="10,6" Margin="0,0,0,10"
+                        Visibility="{Binding RemoteActive, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource PlainButton}" Content="Encerrar"
+                                Command="{Binding StopRemoteCommand}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding RemoteText}" FontSize="12" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
                 <TextBlock Text="Endereço do Tailscale (ex.: https://notebook.tail1234.ts.net)" Style="{StaticResource Label}"/>
                 <TextBox Style="{StaticResource Field}" Text="{Binding PublicUrl, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,6"/>
                 <DockPanel Margin="0,0,0,10">

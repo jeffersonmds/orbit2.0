@@ -49,6 +49,10 @@ public sealed class OrbitSettings
     // Arquivos do PC pelo iPhone (só leitura, pastas do usuário): desligado até ligar na aba.
     public bool BridgePcFilesEnabled { get; set; }
 
+    // Tela remota pelo iPhone: ver (Tela) e mouse/teclado (Controle, só com Tela). Desligados por padrão.
+    public bool BridgeScreenEnabled { get; set; }
+    public bool BridgeControlEnabled { get; set; }
+
     // Monitor da ilha (Screen.DeviceName, ex.: \\.\DISPLAY2). null = sempre o principal;
     // desconectado = principal até ele voltar.
     public string? IslandMonitor { get; set; }

@@ -62,6 +62,10 @@
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>
         <b>Câmera</b><span>Ao vivo e foto</span>
       </a>
+      <a class="tile" href="#tela">
+        <span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10 9l4 2-4 2z"/></svg></span>
+        <b>Tela do PC</b><span>Ver e controlar</span>
+      </a>
       <a class="tile" href="#pc">
         <span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
         <b>PC e energia</b><span id="tileStats">--</span>
@@ -159,6 +163,49 @@
       </div>
       <button class="primary" id="camToggle">Ver câmera</button>
       <p class="muted hidden" id="camMsg"></p>
+    </section>
+
+    <section class="page" data-page="tela" data-title="Tela do PC">
+      <div class="row top">
+        <select id="scrScreen" aria-label="Monitor"></select>
+        <select id="scrQuality" aria-label="Qualidade">
+          <option value="leve">Leve</option>
+          <option value="nitida">Nítida</option>
+          <option value="original">Original (texto)</option>
+        </select>
+      </div>
+      <div class="scr-view" id="scrView">
+        <div class="cam-ph">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          <span>Tela desligada</span>
+        </div>
+        <img id="scrImg" alt="">
+        <div class="scr-touch" id="scrTouch"></div>
+        <div class="scr-float">
+          <button id="scrZoomReset" class="hidden">1×</button>
+          <button id="scrFs" aria-label="Tela cheia">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          </button>
+        </div>
+      </div>
+      <!-- Teclas e modo: só aparecem com o controle conectado -->
+      <div class="scr-bar hidden" id="scrBar">
+        <button id="scrMode">Toque</button>
+        <button id="scrKbd">Teclado</button>
+        <button id="scrCtrl">Ctrl</button>
+        <button data-key="esc">Esc</button>
+        <button data-key="tab">Tab</button>
+        <button data-key="win">Win</button>
+        <button data-key="enter">⏎</button>
+        <button data-key="backspace">⌫</button>
+        <button data-key="left">←</button>
+        <button data-key="up">↑</button>
+        <button data-key="down">↓</button>
+        <button data-key="right">→</button>
+      </div>
+      <input id="scrInput" class="scr-input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Teclado do PC">
+      <button class="primary" id="scrToggle">Ver tela</button>
+      <p class="muted hidden" id="scrMsg"></p>
     </section>
 
     <section class="page" data-page="pc" data-title="PC e energia">

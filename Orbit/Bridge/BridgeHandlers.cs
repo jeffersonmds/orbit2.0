@@ -41,5 +41,15 @@ public sealed class BridgeHandlers
 
     // Avisos no iPhone (Web Push). null = rotas /api/push respondem 404.
     public WebPush? Push { get; init; }
+
+    // Tela remota: ver (Tela) e controlar (Controle, só com Tela ligada). Captura e entrada vêm da
+    // ilha; os testes injetam fakes (nenhum teste mexe no mouse de verdade).
+    public Func<bool> ScreenEnabled { get; init; } = () => false;
+    public Func<bool> ControlEnabled { get; init; } = () => false;
+    public Func<IReadOnlyList<ScreenInfo>> Screens { get; init; } = () => Array.Empty<ScreenInfo>();
+    public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
+    public Action<RemoteCommand, System.Drawing.Rectangle> RemoteInput { get; init; } = (_, _) => { };
+    // (vendo, controlando) — pro indicador na pílula. Chamado de thread do Kestrel.
+    public Action<bool, bool> RemoteChanged { get; init; } = (_, _) => { };
     public Func<IReadOnlyCollection<string>> ValidTokens { get; init; } = () => Array.Empty<string>();
 }

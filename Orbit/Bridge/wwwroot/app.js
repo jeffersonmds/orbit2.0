@@ -467,6 +467,231 @@ async function pfDownload(name) {
   } catch (e) { toast(e.message); }
 }
 
+// --- Tela do PC (ver + controlar) ---
+// Vídeo: MJPEG por tíquete (como a câmera). Controle: WebSocket por tíquete, mensagens JSON pequenas.
+// Modo toque: tocar clica ali, arrastar arrasta, segurar = botão direito, dois dedos rolam.
+// Modo trackpad: o dedo move o cursor (relativo), toque clica, toque com dois dedos = botão direito.
+const scr = { live: false, loaded: false, ws: null, mode: 'touch', ctrl: false };
+const scrImg = $('#scrImg'), scrView = $('#scrView'), scrTouch = $('#scrTouch');
+const scrSay = msg => { $('#scrMsg').textContent = msg || ''; $('#scrMsg').classList.toggle('hidden', !msg); };
+const scrSend = o => { if (scr.ws && scr.ws.readyState === 1) scr.ws.send(JSON.stringify(o)); };
+
+async function scrLoad() {
+  if (!token || scr.live) return;
+  try {
+    const list = await api('/screen/list');
+    $('#scrScreen').replaceChildren(...list.map(s => Object.assign(document.createElement('option'), { value: s.id, textContent: s.name })));
+    scr.loaded = true;
+    scrSay(list.length ? '' : 'Nenhum monitor encontrado.');
+  } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba iPhone do PC.' : e.message); }
+}
+
+async function scrStart() {
+  try {
+    const screen = $('#scrScreen').value;
+    const { ticket } = await api('/screen/open', { method: 'POST', json: { screen, quality: $('#scrQuality').value } });
+    scrImg.onerror = () => { scrSay('A transmissão caiu.'); scrStop(); };
+    scrImg.src = `/api/screen/stream?ticket=${encodeURIComponent(ticket)}`;
+    scr.live = true;
+    scrView.classList.add('live');
+    $('#scrToggle').textContent = 'Parar';
+    scrSay('');
+    resetView();
+    if (landscape.matches) scrImmersive(true); // já deitado: vai direto pra tela cheia
+    scrConnectControl(screen);
+  } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba iPhone do PC.' : e.message); }
+}
+
+// Controle é opcional: sem a permissão "Controle", fica só olhando.
+async function scrConnectControl(screen) {
+  try {
+    const { ticket } = await api('/remote/ticket', { method: 'POST', json: { screen } });
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/api/remote/input?ticket=${encodeURIComponent(ticket)}`);
+    ws.onopen = () => $('#scrBar').classList.remove('hidden');
+    ws.onclose = () => { $('#scrBar').classList.add('hidden'); if (scr.ws === ws) scr.ws = null; };
+    scr.ws = ws;
+  } catch (e) {
+    if (/403/.test(e.message)) scrSay('Só visualização — ligue "Controle" na aba iPhone pra usar mouse e teclado.');
+  }
+}
+
+function scrStop() {
+  scrImg.onerror = null;
+  scrImg.src = BLANK; // aborta a <img>…
+  if (token) fetch('/api/screen/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {}); // …e o Safari precisa do aviso
+  if (scr.ws) { scr.ws.close(); scr.ws = null; }
+  scr.live = false;
+  scrView.classList.remove('live');
+  scrImmersive(false);
+  $('#scrBar').classList.add('hidden');
+  $('#scrToggle').textContent = 'Ver tela';
+}
+
+$('#scrToggle').onclick = () => scr.live ? scrStop() : scrStart();
+const scrRestart = () => { if (scr.live) { scrStop(); scrStart(); } };
+$('#scrScreen').onchange = scrRestart;
+$('#scrQuality').onchange = scrRestart;
+
+// Ponto do toque em 0..1 dentro da imagem (object-fit: contain deixa faixas pretas). null = fora dela.
+function scrPoint(t) {
+  const r = scrImg.getBoundingClientRect(), iw = scrImg.naturalWidth, ih = scrImg.naturalHeight;
+  if (!iw || !ih) return null;
+  const k = Math.min(r.width / iw, r.height / ih), w = iw * k, h = ih * k;
+  const x = (t.clientX - r.left - (r.width - w) / 2) / w, y = (t.clientY - r.top - (r.height - h) / 2) / h;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
+}
+
+// --- Zoom (pinça) ---
+// Zoom pelo tamanho real da imagem na página (width/left), NÃO por transform: com transform o Safari
+// rasteriza no tamanho sem zoom e estica — o texto borra mesmo com a qualidade Original. scrPoint usa
+// o retângulo da imagem, então o toque continua acertando o ponto certo no PC com qualquer zoom.
+const view = { z: 1, tx: 0, ty: 0 };
+const MAX_ZOOM = 5;
+
+function applyView() {
+  const r = scrView.getBoundingClientRect();
+  view.z = Math.min(MAX_ZOOM, Math.max(1, view.z));
+  // não deixa a imagem sair da área: com zoom 1 fica parada; com zoom, as bordas não descolam
+  view.tx = Math.min(0, Math.max(r.width - r.width * view.z, view.tx));
+  view.ty = Math.min(0, Math.max(r.height - r.height * view.z, view.ty));
+  scrImg.style.width = scrImg.style.height = `${view.z * 100}%`;
+  scrImg.style.left = `${view.tx}px`;
+  scrImg.style.top = `${view.ty}px`;
+  $('#scrZoomReset').classList.toggle('hidden', view.z <= 1.01);
+  $('#scrZoomReset').textContent = `${view.z.toFixed(1).replace('.', ',')}× ✕`;
+}
+function resetView() { view.z = 1; view.tx = 0; view.ty = 0; applyView(); }
+$('#scrZoomReset').onclick = resetView;
+
+// --- Gestos ---
+// Um dedo: toque/trackpad (ver acima). Dois dedos: pinça = zoom (ancorado nos dedos);
+// arrastar = move a imagem se houver zoom, senão rola no PC. Toque rápido de dois dedos = botão direito.
+let gesture = null;
+const mid = ts => ({ x: (ts[0].clientX + ts[1].clientX) / 2, y: (ts[0].clientY + ts[1].clientY) / 2 });
+const dist = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+
+scrTouch.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length >= 2) {
+    if (gesture?.drag) scrSend({ t: 'up' });
+    clearTimeout(gesture?.timer);
+    const r = scrView.getBoundingClientRect(), m = mid(e.touches);
+    gesture = {
+      two: true, kind: null, at: Date.now(), moved: false,
+      d0: dist(e.touches), m0: m, last: m, z0: view.z, tx0: view.tx, ty0: view.ty,
+      // ponto da imagem (sem zoom) que está sob os dedos: fica sob eles durante a pinça
+      u: { x: (m.x - r.left - view.tx) / view.z, y: (m.y - r.top - view.ty) / view.z },
+    };
+    return;
+  }
+  const t = e.touches[0];
+  const g = gesture = { x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, at: Date.now(), moved: false, drag: false, done: false, p0: scrPoint(t) };
+  if (scr.mode === 'touch' && g.p0) {
+    g.timer = setTimeout(() => {
+      if (!g.moved) { scrSend({ t: 'abs', ...g.p0 }); scrSend({ t: 'click', b: 'right' }); g.done = true; }
+    }, 550);
+  }
+}, { passive: false });
+
+scrTouch.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const g = gesture;
+  if (!g) return;
+  if (g.two) {
+    if (e.touches.length < 2) return;
+    const m = mid(e.touches), d = dist(e.touches), r = scrView.getBoundingClientRect();
+    // decide uma vez: mudou a distância entre os dedos = pinça; senão é arrasto
+    if (!g.kind) {
+      if (Math.abs(d - g.d0) > 14) g.kind = 'pinch';
+      else if (Math.hypot(m.x - g.m0.x, m.y - g.m0.y) > 8) g.kind = view.z > 1.01 ? 'pan' : 'scroll';
+      else return;
+      g.moved = true;
+    }
+    if (g.kind === 'pinch') {
+      view.z = Math.min(MAX_ZOOM, Math.max(1, g.z0 * d / g.d0));
+      view.tx = m.x - r.left - g.u.x * view.z;
+      view.ty = m.y - r.top - g.u.y * view.z;
+      applyView();
+    } else if (g.kind === 'pan') {
+      view.tx = g.tx0 + (m.x - g.m0.x);
+      view.ty = g.ty0 + (m.y - g.m0.y);
+      applyView();
+    } else {
+      const dy = m.y - g.last.y, dx = m.x - g.last.x;
+      if (Math.abs(dy) + Math.abs(dx) > 2) {
+        scrSend({ t: 'scroll', dy: Math.round(dy * 4), dx: Math.round(-dx * 4) });
+        g.last = m;
+      }
+    }
+    return;
+  }
+  const t = e.touches[0];
+  if (Math.hypot(t.clientX - g.x0, t.clientY - g.y0) > 8) { g.moved = true; clearTimeout(g.timer); }
+  if (scr.mode === 'pad') {
+    scrSend({ t: 'move', dx: Math.round((t.clientX - g.x) * 2), dy: Math.round((t.clientY - g.y) * 2) });
+  } else if (g.moved && !g.done && g.p0) {
+    if (!g.drag) { scrSend({ t: 'abs', ...g.p0 }); scrSend({ t: 'down' }); g.drag = true; }
+    const p = scrPoint(t);
+    if (p) scrSend({ t: 'abs', ...p });
+  }
+  g.x = t.clientX; g.y = t.clientY;
+}, { passive: false });
+
+scrTouch.addEventListener('touchend', e => {
+  e.preventDefault();
+  const g = gesture;
+  if (!g || e.touches.length) return;
+  clearTimeout(g.timer);
+  const quick = Date.now() - g.at < 300;
+  if (g.two) { if (!g.moved && quick) scrSend({ t: 'click', b: 'right' }); }
+  else if (g.drag) scrSend({ t: 'up' });
+  else if (!g.moved && !g.done) {
+    if (scr.mode === 'pad') scrSend({ t: 'click' });
+    else if (g.p0) { scrSend({ t: 'abs', ...g.p0 }); scrSend({ t: 'click' }); }
+  }
+  gesture = null;
+}, { passive: false });
+
+// --- Tela cheia ---
+// No iPhone não há Fullscreen API pra imagem; o app instalado já não tem barra do Safari, então
+// basta a página cobrir tudo. Deitar o celular com a tela ligada entra sozinho; levantar sai.
+const landscape = matchMedia('(orientation: landscape)');
+function scrImmersive(on) {
+  $('section[data-page="tela"]').classList.toggle('immersive', on);
+  document.body.classList.toggle('immersive', on);
+  $('#scrFs').setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
+  requestAnimationFrame(resetView); // a área mudou de tamanho
+}
+$('#scrFs').onclick = () => scrImmersive(!document.body.classList.contains('immersive'));
+landscape.addEventListener('change', e => { if (scr.live) scrImmersive(e.matches); });
+
+$('#scrMode').onclick = () => {
+  scr.mode = scr.mode === 'touch' ? 'pad' : 'touch';
+  $('#scrMode').textContent = scr.mode === 'touch' ? 'Toque' : 'Trackpad';
+  $('#scrMode').classList.toggle('on', scr.mode === 'pad');
+};
+
+// Ctrl "grudento": vale pra próxima tecla (Ctrl+C, Ctrl+V…) e solta.
+$('#scrCtrl').onclick = () => { scr.ctrl = !scr.ctrl; $('#scrCtrl').classList.toggle('on', scr.ctrl); };
+function scrKey(k) {
+  scrSend({ t: 'key', k, mods: scr.ctrl ? ['ctrl'] : [] });
+  if (scr.ctrl) { scr.ctrl = false; $('#scrCtrl').classList.remove('on'); }
+}
+document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => scrKey(b.dataset.key));
+
+// Teclado do iOS num campo invisível: beforeinput diz o que foi digitado; o campo fica sempre vazio.
+$('#scrKbd').onclick = () => $('#scrInput').focus();
+$('#scrInput').addEventListener('beforeinput', e => {
+  e.preventDefault();
+  if (e.inputType === 'insertLineBreak') scrKey('enter');
+  else if (e.inputType === 'deleteContentBackward') scrKey('backspace');
+  else if (e.data) {
+    if (scr.ctrl && /^[a-z0-9]$/i.test(e.data)) scrKey(e.data.toLowerCase());
+    else scrSend({ t: 'text', s: e.data });
+  }
+});
+
 // --- Páginas ---
 // Uma página por feature, escolhida pelo #hash; hash vazio/desconhecido = início (atalhos).
 let page = '';
@@ -481,6 +706,8 @@ function route() {
   document.body.classList.toggle('home', !page);
   window.scrollTo(0, 0);
   if (page !== 'camera' && camStreaming) camStop(); // saiu da câmera: solta e apaga o LED
+  if (page !== 'tela' && scr.live) scrStop();         // saiu da tela: encerra vídeo e controle
+  if (page === 'tela' && !scr.loaded) scrLoad();
   if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
   if (page === 'pcfiles' && token) pfLoad();
   if (page === 'link') renderLinks();
