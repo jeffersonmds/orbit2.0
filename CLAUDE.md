@@ -98,6 +98,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - Ligar "Iniciar com o Windows" apaga a entrada `Run\Orbit` do 1.0.
 - Itens "Debug: …" da bandeja (alerta/atividade de teste) só existem em build Debug.
 - Instância única: mutex `Orbit2_SingleInstance`.
+- **Autoatualização** (`Services/SelfUpdate`): o build grava a pasta do repo (`AssemblyMetadata RepoRoot`) e o
+  commit (`git describe --dirty` → InformationalVersion). O instalado compara com o repo, roda `dotnet publish`
+  em `%LocalAppData%\Orbit2\update` e um script troca a pasta (backup + volta atrás se o novo fechar em 8 s;
+  preserva `unins*`). Rodando de dentro do repo (Debug) fica desligada. Remoto: github.com/jeffersonmds/orbit2.0 (privado).
 
 ## Convenções
 

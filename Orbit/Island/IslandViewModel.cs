@@ -63,6 +63,10 @@ public sealed partial class IslandViewModel : ObservableObject
     public string? MonitorDevice => _settings.IslandMonitor;
     public event Action? MonitorChanged;
 
+    // Autoatualização: a janela fecha o app (sem perguntar) quando o script de troca já foi disparado.
+    public event Action? ExitForUpdate;
+    private bool _updating;
+
     public IslandViewModel(OrbitSettings settings)
     {
         _settings = settings;
@@ -82,7 +86,8 @@ public sealed partial class IslandViewModel : ObservableObject
         NowPlaying.Start();
         // Sem DI: abas e serviços de fundo são criados aqui na mão.
         Register(new EnergiaViewModel());
-        Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke()));
+        Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke(),
+            SelfUpdate.CheckAsync, UpdateNowAsync));
         Register(new HojeViewModel(_api, Pomodoro, TodoStore.FilePath));
         Register(new ControlesViewModel(NowPlaying));
         Register(new StatsViewModel());
@@ -119,6 +124,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(IPhone);
         _ = IPhone.StartIfEnabledAsync();
         Register(Notas);
+        _ = AnnounceUpdateAsync();
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
@@ -378,6 +384,53 @@ public sealed partial class IslandViewModel : ObservableObject
         added is [{ Text: { } t }] && IsLink(t) ? t.Trim() : "./#recebidos";
 
     private static bool IsLink(string t) => ClipHistory.ClassifyText(t) == ClipKind.Link;
+
+    // Ao abrir: resultado da última troca (se foi agora) ou "tem versão nova no código".
+    private async Task AnnounceUpdateAsync()
+    {
+        try
+        {
+            if (SelfUpdate.RecentOutcome(SelfUpdate.LastLogLine(), DateTime.Now) is { } r)
+            {
+                RaisePeek(r.Ok
+                    ? new Peek("Orbit atualizado", SelfUpdate.Current.Commit is { } c ? $"Versão {c}" : null, "ajustes")
+                    : new Peek("Atualização desfeita", r.Message, "ajustes"));
+                return;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(15)); // não disputa o começo com o resto
+            var s = await SelfUpdate.CheckAsync();
+            if (s.CanUpdate && s.Behind > 0)
+                RaisePeek(new Peek("Atualização do Orbit disponível", SelfUpdate.Describe(s), "ajustes"));
+        }
+        catch (Exception ex) { Log.Warning(ex, "Autoatualização: falha ao verificar"); }
+    }
+
+    // Republica a partir do código e troca os arquivos (script com backup e volta atrás).
+    public async Task UpdateNowAsync()
+    {
+        if (_updating) return;
+        var s = await SelfUpdate.CheckAsync();
+        if (!s.CanUpdate) { RaisePeek(new Peek("Não dá pra atualizar", s.Reason, "ajustes")); return; }
+        _updating = true;
+        SetActivity(ActivityKind.Atualizacao, "Atualizando Orbit…");
+        try
+        {
+            var staging = await Task.Run(SelfUpdate.PublishAsync);
+            SetActivity(ActivityKind.Atualizacao, "Reiniciando o Orbit…");
+            SelfUpdate.LaunchSwap(staging);
+            ExitForUpdate?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Autoatualização: falhou");
+            RaisePeek(new Peek("Atualização falhou", ex.Message, "ajustes"));
+        }
+        finally
+        {
+            _updating = false;
+            SetActivity(ActivityKind.Atualizacao, null);
+        }
+    }
 
     public static string? RemoteActivity(RemoteState s)
     {

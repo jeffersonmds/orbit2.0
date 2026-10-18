@@ -15,6 +15,7 @@ public sealed class TrayIcon : IDisposable
     public event Action? SettingsRequested;
     public event Action? ExitRequested;
     public event Action? SendClipboardToIPhone;
+    public event Action? UpdateRequested;
 #if DEBUG
     public event Action? DebugPeek;
     public event Action? DebugActivity;
@@ -30,6 +31,7 @@ public sealed class TrayIcon : IDisposable
         _menu.Items.Add("Mostrar/Ocultar ilha", null, (_, _) => ToggleVisibility?.Invoke());
         _menu.Items.Add("Ajustes", null, (_, _) => SettingsRequested?.Invoke());
         _menu.Items.Add("Mandar clipboard pro iPhone (Ctrl+Alt+I)", null, (_, _) => SendClipboardToIPhone?.Invoke());
+        _menu.Items.Add("Atualizar Orbit (do código)", null, (_, _) => UpdateRequested?.Invoke());
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(_autostartItem);
 #if DEBUG

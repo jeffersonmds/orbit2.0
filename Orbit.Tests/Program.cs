@@ -77,6 +77,7 @@ public static class Program
         MicTests();
         OutboxTests();
         KeyboardTests();
+        SelfUpdateTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -236,6 +237,37 @@ public static class Program
         }
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
+    }
+
+    // Autoatualização: versão gravada no build, situação em relação ao código e o script de troca.
+    private static void SelfUpdateTests()
+    {
+        Check("atualizar: versão com commit", SelfUpdate.ParseVersion("1.0.0+6ac9043") == ("6ac9043", false));
+        Check("atualizar: versão suja", SelfUpdate.ParseVersion("1.0.0+6ac9043-dirty") == ("6ac9043", true));
+        Check("atualizar: sem commit", SelfUpdate.ParseVersion("1.0.0") == (null, false) && SelfUpdate.ParseVersion(null) == (null, false));
+        Check("atualizar: build atual tem commit gravado", SelfUpdate.Current.Commit is { Length: >= 7 });
+        Check("atualizar: sabe onde está o código", SelfUpdate.RepoRoot is { } root && Directory.Exists(Path.Combine(root, ".git")));
+        Check("atualizar: rodando de dentro do repo", SelfUpdate.IsInside(@"C:\repos\orbit2.0\Orbit\bin\Debug", @"C:\repos\orbit2.0")
+            && !SelfUpdate.IsInside(@"C:\repos\orbit2.0-copia\bin", @"C:\repos\orbit2.0")
+            && !SelfUpdate.IsInside(@"C:\Users\x\AppData\Local\Programs\Orbit2", @"C:\repos\orbit2.0"));
+
+        Check("atualizar: texto em dia", SelfUpdate.Describe(new UpdateStatus("abc1234", 0, false, true, "")) == "Versão abc1234 · em dia com o código");
+        Check("atualizar: texto com commits e sujeira", SelfUpdate.Describe(new UpdateStatus("abc1234", 3, true, true, ""))
+            == "Versão abc1234 · 3 commits novos no código, código com alterações não commitadas");
+        Check("atualizar: texto quando não dá", SelfUpdate.Describe(new UpdateStatus("abc1234", 0, false, false, "Rodando do código (Debug): use dotnet run"))
+            == "Versão abc1234 · Rodando do código (Debug): use dotnet run");
+
+        var now = new DateTime(2026, 10, 18, 15, 0, 0);
+        Check("atualizar: troca de agora há pouco deu certo", SelfUpdate.RecentOutcome("2026-10-18 14:58:30 atualizado", now) is { Ok: true });
+        Check("atualizar: troca desfeita", SelfUpdate.RecentOutcome("2026-10-18 14:59:00 falhou: x — voltando", now) is { Ok: false } r && r.Message.StartsWith("falhou"));
+        Check("atualizar: troca antiga não avisa", SelfUpdate.RecentOutcome("2026-10-18 10:00:00 atualizado", now) is null
+            && SelfUpdate.RecentOutcome("lixo", now) is null && SelfUpdate.RecentOutcome(null, now) is null);
+
+        var script = SelfUpdate.SwapScript(1234, @"C:\Users\O'Neil\Programs\Orbit2", @"C:\tmp\publish", @"C:\tmp\update.log");
+        Check("atualizar: script escapa aspas", script.Contains(@"'C:\Users\O''Neil\Programs\Orbit2'") && script.Contains("$leaf = 'Orbit2'"));
+        Check("atualizar: script espera o Orbit fechar, preserva desinstalador e volta atrás",
+            script.Contains("Wait-Process -Id 1234") && script.Contains("'unins*'") && script.Contains("Rename-Item $old $leaf")
+            && script.Contains("$p.HasExited"));
     }
 
     // Teclado remoto: permissão própria e o canal só deixa passar texto e teclas (mouse é descartado).

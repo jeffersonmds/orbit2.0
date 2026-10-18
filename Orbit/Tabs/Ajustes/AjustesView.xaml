@@ -79,6 +79,13 @@
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding SomPomodoro}" Content="Som na troca de fase"
                           VerticalAlignment="Bottom"/>
             </WrapPanel>
+            <TextBlock Text="Versão" Style="{StaticResource Label}"/>
+            <DockPanel Margin="0,0,0,10">
+                <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Atualizar agora"
+                        Command="{Binding AtualizarAgoraCommand}" IsEnabled="{Binding CanUpdate}" Margin="10,0,0,0"/>
+                <TextBlock Text="{Binding VersionText}" FontSize="12" Foreground="{StaticResource InkLo}" TextWrapping="Wrap"
+                           VerticalAlignment="Center"/>
+            </DockPanel>
             <!-- novas seções entram acima desta linha -->
         </StackPanel>
     </ScrollViewer>

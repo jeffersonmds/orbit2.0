@@ -64,6 +64,11 @@ public sealed partial class AjustesViewModel : TabViewModel
     private readonly Func<IEnumerable<TabViewModel>> _allTabs;
     private readonly Action _tabsChanged;
     private readonly Action _monitorChanged;
+    private readonly Func<System.Threading.Tasks.Task<UpdateStatus>> _checkUpdate;
+    private readonly Func<System.Threading.Tasks.Task> _updateNow;
+
+    [ObservableProperty] private string _versionText = "Verificando versão…";
+    [ObservableProperty] private bool _canUpdate;
 
     public override string Id => "ajustes";
     public override string Title => "Ajustes";
@@ -75,13 +80,16 @@ public sealed partial class AjustesViewModel : TabViewModel
     [ObservableProperty] private bool _alertasComoToast;
     [ObservableProperty] private bool _somClaude;
 
-    public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged, Action monitorChanged)
+    public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged, Action monitorChanged,
+        Func<System.Threading.Tasks.Task<UpdateStatus>> checkUpdate, Func<System.Threading.Tasks.Task> updateNow)
     {
         _settings = settings;
         _pomodoro = pomodoro;
         _allTabs = allTabs;
         _tabsChanged = tabsChanged;
         _monitorChanged = monitorChanged;
+        _checkUpdate = checkUpdate;
+        _updateNow = updateNow;
         Opcoes = new ObservableCollection<AccentOption>(new[] { SystemOption() }
             .Concat(Accent.Paleta.Select(p => new AccentOption(p.Nome, p.Hex, new SolidColorBrush(Accent.ParseHex(p.Hex)!.Value)))));
         // A amostra "Windows" acompanha a cor do sistema (antes ficava congelada na abertura).
@@ -147,7 +155,22 @@ public sealed partial class AjustesViewModel : TabViewModel
                      .OrderBy(t => Array.IndexOf(IslandViewModel.TabOrder, t.Id)))
             Abas.Add(new TabToggle(t.Id, t.Title, !_settings.HiddenTabs.Contains(t.Id), OnTabToggled));
         BuildMonitores();
+        _ = RefreshVersionAsync();
     }
+
+    private async System.Threading.Tasks.Task RefreshVersionAsync()
+    {
+        try
+        {
+            var s = await _checkUpdate();
+            VersionText = SelfUpdate.Describe(s);
+            CanUpdate = s.CanUpdate;
+        }
+        catch (Exception ex) { VersionText = "Não consegui verificar: " + ex.Message; }
+    }
+
+    [RelayCommand]
+    private System.Threading.Tasks.Task AtualizarAgora() => _updateNow();
 
     // Lida a cada abertura: monitores entram e saem. O salvo desconectado continua na lista
     // (marcado), pra mostrar que a ilha volta pra ele quando reconectar.

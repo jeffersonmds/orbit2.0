@@ -84,6 +84,8 @@ public partial class IslandWindow : Window
         };
         _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };
         _tray.SendClipboardToIPhone += () => _vm.SendClipboardToIPhone();
+        _tray.UpdateRequested += () => _ = _vm.UpdateNowAsync();
+        _vm.ExitForUpdate += () => { _exiting = true; Application.Current.Shutdown(); };
         _vm.Clips.PasteRequested += PasteIntoPrevious;
 #if DEBUG
         _tray.DebugPeek += () => _vm.RaisePeek(new Peek("Alerta de teste", "github.com/… · abrindo no navegador", "energia"));

@@ -35,4 +35,21 @@
     <None Include="Bridge\wwwroot\**\*" CopyToOutputDirectory="PreserveNewest"
           Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!-- Autoatualização (Services/SelfUpdate): o build grava de onde veio e de qual commit, pra o Orbit
+       instalado saber que está velho e se republicar a partir do código. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="RepoRoot" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))" />
+  </ItemGroup>
+  <Target Name="OrbitCommit" BeforeTargets="AddSourceRevisionToInformationalVersion">
+    <!-- "6ac9043" ou "6ac9043-dirty" (alterações não commitadas); sem git, fica sem commit -->
+    <Exec Command="git describe --always --dirty --abbrev=7" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          StandardOutputImportance="low" StandardErrorImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="SourceRevisionId" />
+      <Output TaskParameter="ExitCode" PropertyName="OrbitGitExit" />
+    </Exec>
+    <PropertyGroup Condition="'$(OrbitGitExit)' != '0'">
+      <SourceRevisionId></SourceRevisionId>
+    </PropertyGroup>
+  </Target>
 </Project>
