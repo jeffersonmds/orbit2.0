@@ -19,6 +19,10 @@ public sealed class BridgeHandlers
     public Func<string, Task> OpenUrl { get; init; } = _ => Task.CompletedTask;
     public Func<Task<string>> GetClipboard { get; init; } = () => Task.FromResult("");
     public Func<string, Task> SetClipboard { get; init; } = _ => Task.CompletedTask;
+    // Foto do iPhone pro clipboard do PC. false = não é imagem / clipboard ocupado.
+    public Func<byte[], Task<bool>> SetClipboardImage { get; init; } = _ => Task.FromResult(false);
+    // "Recebidos do PC": o que o dono do PC mandou pro iPhone. null = rotas /api/outbox somem.
+    public Outbox? Outbox { get; init; }
     // Texto da aba Notas (notes.txt).
     public Func<Task<string>> GetNotes { get; init; } = () => Task.FromResult("");
     public Func<string, Task> SetNotes { get; init; } = _ => Task.CompletedTask;

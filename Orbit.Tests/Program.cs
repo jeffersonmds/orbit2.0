@@ -75,6 +75,7 @@ public static class Program
         WebPushTests();
         RemoteScreenTests();
         MicTests();
+        OutboxTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -232,6 +233,92 @@ public static class Program
             catch { ok = false; }
             Check("tela: tíquete do controle é de uso único", !ok);
         }
+        server.StopAsync().GetAwaiter().GetResult();
+        Directory.Delete(dir, recursive: true);
+    }
+
+    // PC → iPhone (caixa de saída) e foto do iPhone → clipboard do PC.
+    private static void OutboxTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-out-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var src = Path.Combine(dir, "relatório final.pdf");
+        File.WriteAllText(src, "conteúdo do pdf");
+        var boxDir = Path.Combine(dir, "box");
+        var box = new Outbox(boxDir);
+        var t0 = new DateTime(2026, 10, 17, 10, 0, 0);
+        var a = box.AddFile(src, t0);
+        var srcLen = new FileInfo(src).Length;
+        Check("saída: arquivo copiado", a is { Name: "relatório final.pdf" } && a.Size == srcLen && File.Exists(box.PathOf(a.Id, t0)!));
+        File.Delete(src);
+        Check("saída: original apagado não quebra", File.ReadAllText(box.PathOf(a!.Id, t0)!) == "conteúdo do pdf");
+        var b = box.AddText("https://example.com/x", t0.AddMinutes(1));
+        Check("saída: texto", b is { Text: "https://example.com/x", File: null });
+        Check("saída: mais novo primeiro", box.List(t0.AddMinutes(2)).Select(i => i.Id).SequenceEqual(new[] { b!.Id, a.Id }));
+        Check("saída: nome seguro", box.AddFile(Path.Combine(dir, "nao-existe.bin"), t0) is null && box.AddText("   ", t0) is null);
+        Check("saída: sobrevive a reiniciar", new Outbox(boxDir).List(t0.AddMinutes(2)).Count == 2);
+        var stored = box.PathOf(a.Id, t0)!;
+        Check("saída: vence em 24 h e apaga o arquivo", box.List(t0.AddHours(24).AddMinutes(1)).Count == 1 && !File.Exists(stored));
+        Check("saída: remover", box.Remove(b.Id) && box.List(t0.AddMinutes(3)).Count == 0 && !box.Remove(b.Id));
+
+        Check("saída: aviso de 1 arquivo", IslandViewModel.OutboxAnnouncement(new[] { new OutboxItem("1", "foto.jpg", 2 * 1024 * 1024, "1.jpg", null, t0) })
+            == ("Arquivo do PC", "foto.jpg · 2 MB"));
+        Check("saída: aviso de vários", IslandViewModel.OutboxAnnouncement(new[] { new OutboxItem("1", "a.txt", 1, "1.txt", null, t0), new OutboxItem("2", "b.txt", 1, "2.txt", null, t0) })
+            == ("2 arquivos do PC", "a.txt, b.txt"));
+
+        var f1 = Path.Combine(dir, "um.txt");
+        File.WriteAllText(f1, "x");
+        Check("enviar para: só arquivos que existem", SendToIPhone.FilesFrom(new[] { "--send-iphone", f1, dir, Path.Combine(dir, "sumiu.txt"), f1 })
+            .SequenceEqual(new[] { f1 }));
+
+        Check("foto: EXIF 6 = 90°, 3 = 180°, 8 = 270°", PhotoDecoder.Rotation(6) == 90 && PhotoDecoder.Rotation(3) == 180 && PhotoDecoder.Rotation(8) == 270 && PhotoDecoder.Rotation(1) == 0);
+        byte[] png;
+        {
+            var bmp = System.Windows.Media.Imaging.BitmapSource.Create(4, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, new byte[4 * 2 * 4], 16);
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+            using var ms = new MemoryStream();
+            enc.Save(ms);
+            png = ms.ToArray();
+        }
+        var decoded = PhotoDecoder.Decode(png);
+        Check("foto: decodifica PNG sem EXIF", decoded.PixelWidth == 4 && decoded.PixelHeight == 2 && decoded.IsFrozen);
+        bool threw = false;
+        try { PhotoDecoder.Decode(new byte[] { 1, 2, 3 }); } catch { threw = true; }
+        Check("foto: lixo não vira imagem", threw);
+
+        // Rotas
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var token = tokens.Create("iPhone teste");
+        var box2 = new Outbox(Path.Combine(dir, "box2"));
+        var item = box2.AddFile(f1, DateTime.Now, "nome bonito.txt")!;
+        byte[]? clip = null;
+        var handlers = new BridgeHandlers
+        {
+            Outbox = box2,
+            SetClipboardImage = bytes => { clip = bytes; return Task.FromResult(bytes.Length > 3); },
+        };
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        using var anon = new HttpClient { BaseAddress = http.BaseAddress };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Check("saída: lista exige token", anon.GetAsync("/api/outbox").Result.StatusCode == HttpStatusCode.Unauthorized);
+        Check("saída: lista", http.GetStringAsync("/api/outbox").Result.Contains("nome bonito.txt"));
+        Check("saída: tíquete de item que não existe = 404", http.PostAsJsonAsync("/api/outbox/ticket", new { id = "zzz" }).Result.StatusCode == HttpStatusCode.NotFound);
+        var tk = http.PostAsJsonAsync("/api/outbox/ticket", new { id = item.Id }).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+        var down = anon.GetAsync($"/api/outbox/download?ticket={tk}").Result;
+        Check("saída: download por tíquete com o nome bonito", down.StatusCode == HttpStatusCode.OK && down.Content.ReadAsStringAsync().Result == "x"
+            && down.Content.Headers.ContentDisposition?.FileNameStar == "nome bonito.txt");
+        Check("saída: tíquete errado = 401", anon.GetAsync("/api/outbox/download?ticket=errado").Result.StatusCode == HttpStatusCode.Unauthorized);
+        Check("saída: apagar pelo iPhone", http.DeleteAsync($"/api/outbox/{item.Id}").Result.StatusCode == HttpStatusCode.NoContent
+            && box2.List(DateTime.Now).Count == 0);
+
+        using (var form = new MultipartFormDataContent { { new ByteArrayContent(png), "file", "foto.png" } })
+            Check("foto: vai pro clipboard", http.PostAsync("/api/clipboard/image", form).Result.StatusCode == HttpStatusCode.NoContent && clip!.Length == png.Length);
+        using (var form = new MultipartFormDataContent { { new ByteArrayContent(new byte[] { 1, 2 }), "file", "x.jpg" } })
+            Check("foto: não-imagem = 400", http.PostAsync("/api/clipboard/image", form).Result.StatusCode == HttpStatusCode.BadRequest);
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
     }

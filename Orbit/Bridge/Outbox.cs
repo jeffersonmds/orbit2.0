@@ -1,0 +1,130 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text.Json;
+using Serilog;
+
+namespace Orbit.Bridge;
+
+// Item mandado do PC pro iPhone. Arquivo: File = nome na pasta da caixa de saída. Texto: Text.
+public sealed record OutboxItem(string Id, string Name, long Size, string? File, string? Text, DateTime CreatedAt);
+
+// "Recebidos do PC" no iPhone: o que o usuário mandou do PC (Enviar para, arrastar pra ilha, aba
+// Clipboard). Arquivos são copiados pra pasta própria (mover/apagar o original não quebra o envio) e
+// tudo vence em 24 h. Só entra o que o dono do PC escolheu — o iPhone não pede arquivo nenhum aqui.
+public sealed class Outbox
+{
+    public static readonly string DefaultDir = Path.Combine(Orbit.Services.SettingsStore.Dir, "outbox");
+    public static readonly TimeSpan Lifetime = TimeSpan.FromHours(24);
+    public const long MaxFileBytes = 2L * 1024 * 1024 * 1024; // 2 GB por arquivo
+    public const int MaxTextChars = 100_000;
+
+    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+    private readonly string _dir;
+    private readonly string _index;
+    private readonly object _gate = new();
+    private readonly List<OutboxItem> _items;
+
+    public Outbox(string dir)
+    {
+        _dir = dir;
+        _index = Path.Combine(dir, "outbox.json");
+        _items = Load();
+    }
+
+    public IReadOnlyList<OutboxItem> List(DateTime now)
+    {
+        lock (_gate)
+        {
+            Expire(now);
+            return _items.OrderByDescending(i => i.CreatedAt).ToList();
+        }
+    }
+
+    // Caminho do arquivo de um item ainda válido, ou null.
+    public string? PathOf(string id, DateTime now)
+    {
+        lock (_gate)
+        {
+            Expire(now);
+            return _items.FirstOrDefault(i => i.Id == id)?.File is { } f ? Path.Combine(_dir, f) : null;
+        }
+    }
+
+    // Copia um arquivo do PC pra caixa de saída. null = não dá (pasta, sumiu, grande demais).
+    public OutboxItem? AddFile(string path, DateTime now, string? displayName = null)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists || info.Length > MaxFileBytes) return null;
+        var id = NewId();
+        var name = BridgeRules.SafeFileName(displayName ?? info.Name);
+        var stored = id + Path.GetExtension(name);
+        Directory.CreateDirectory(_dir);
+        System.IO.File.Copy(path, Path.Combine(_dir, stored));
+        return Add(new OutboxItem(id, name, info.Length, stored, null, now), now);
+    }
+
+    public OutboxItem? AddText(string text, DateTime now)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Length > MaxTextChars) return null;
+        return Add(new OutboxItem(NewId(), BridgeRules.Preview(text), text.Length, null, text, now), now);
+    }
+
+    public bool Remove(string id)
+    {
+        lock (_gate)
+        {
+            var item = _items.FirstOrDefault(i => i.Id == id);
+            if (item is null) return false;
+            _items.Remove(item);
+            DeleteFile(item);
+            Save();
+            return true;
+        }
+    }
+
+    private OutboxItem Add(OutboxItem item, DateTime now)
+    {
+        lock (_gate)
+        {
+            Expire(now);
+            _items.Add(item);
+            Save();
+        }
+        return item;
+    }
+
+    private void Expire(DateTime now)
+    {
+        var old = _items.Where(i => now - i.CreatedAt > Lifetime).ToList();
+        if (old.Count == 0) return;
+        foreach (var i in old) { _items.Remove(i); DeleteFile(i); }
+        Save();
+    }
+
+    private static string NewId() => Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
+
+    private void DeleteFile(OutboxItem i)
+    {
+        if (i.File is null) return;
+        try { System.IO.File.Delete(Path.Combine(_dir, i.File)); } catch (Exception ex) { Log.Warning(ex, "Caixa de saída: não apagou {Arquivo}", i.File); }
+    }
+
+    private List<OutboxItem> Load()
+    {
+        try { return System.IO.File.Exists(_index) ? JsonSerializer.Deserialize<List<OutboxItem>>(System.IO.File.ReadAllText(_index)) ?? new() : new(); }
+        catch { return new(); }
+    }
+
+    private void Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(_dir);
+            System.IO.File.WriteAllText(_index, JsonSerializer.Serialize(_items, WriteOptions));
+        }
+        catch (Exception ex) { Log.Warning(ex, "Caixa de saída: não salvou o índice"); }
+    }
+}

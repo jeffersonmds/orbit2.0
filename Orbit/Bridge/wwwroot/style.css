@@ -188,6 +188,17 @@ body.immersive { overflow: hidden; }
 #micGain::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%; background: var(--ink); }
 .mic-level { height: 6px; margin-top: 10px; border-radius: 3px; background: var(--bg); overflow: hidden; }
 .mic-level div { height: 100%; width: 0; background: #5ccf8a; transition: width .08s linear; }
+/* Foto pro clipboard: botões que são <label> de um input de arquivo escondido */
+.btnlike { flex: 1; display: grid; place-items: center; min-height: 44px; border-radius: 12px; background: var(--hover);
+  font-weight: 600; position: relative; overflow: hidden; }
+.btnlike.primary { background: var(--accent); color: #0b0b0c; }
+.btnlike input { position: absolute; inset: 0; opacity: 0; min-height: 0; }
+/* Recebidos do PC: ações à direita de cada linha */
+.inrow { display: flex; align-items: center; gap: 8px; }
+.inrow .frow { flex: 1; min-width: 0; }
+.inrow .act { flex: 0 0 auto; min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.inrow .act.primary { width: auto; margin: 0; }
+.inrow .del { flex: 0 0 auto; min-height: 36px; padding: 6px 10px; background: transparent; color: var(--ink-lo); }
 .hidden { display: none !important; }
 
 /* --- Páginas em tela cheia: cada página ocupa a altura e o conteúdo principal estica --- */

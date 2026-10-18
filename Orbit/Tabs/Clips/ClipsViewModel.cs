@@ -142,6 +142,15 @@ public sealed partial class ClipsViewModel : TabViewModel
         PasteRequested?.Invoke();
     }
 
+    // A ilha manda pro iPhone (caixa de saída + aviso). Imagem vai como arquivo, texto como texto.
+    public event Action<ClipItem>? SendToIPhoneRequested;
+
+    [RelayCommand]
+    private void SendToIPhone()
+    {
+        if (Selected is { } item) SendToIPhoneRequested?.Invoke(item);
+    }
+
     [RelayCommand]
     private void TogglePin()
     {

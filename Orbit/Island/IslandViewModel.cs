@@ -45,6 +45,8 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly ApiService _api = new();
     private readonly TokenStore _tokens = new(TokenStore.FilePath);
     private readonly WebPush _push = new(WebPush.KeyPath, WebPush.SubsPath);
+    private readonly Outbox _outbox = new(Outbox.DefaultDir);
+    private readonly System.Threading.CancellationTokenSource _sendToCts = new();
     private readonly ClaudeHookServer _claudeServer = new();
     private readonly List<TabViewModel> _allTabs = new();
 
@@ -103,6 +105,13 @@ public sealed partial class IslandViewModel : ObservableObject
         Clips = new ClipsViewModel(ClipboardStore.FilePath, ClipboardStore.ImagesDir,
             () => !settings.HiddenTabs.Contains("clipboard"));
         Register(Clips);
+        Clips.SendToIPhoneRequested += item =>
+        {
+            if (item.Kind == ClipKind.Image && item.ImagePath is { } img) SendFilesToIPhone(new[] { img }, $"imagem-{item.CopiedAt:yyyyMMdd-HHmmss}.png");
+            else if (item.Text is { } text) SendTextToIPhone(text);
+        };
+        // Explorer → Enviar para → "iPhone (Orbit)" chega por pipe (thread do pool).
+        SendToIPhone.Listen(files => Application.Current?.Dispatcher.BeginInvoke(() => SendFilesToIPhone(files)), _sendToCts.Token);
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
         // Ponte com o iPhone: desligada até o usuário ligar na aba (BridgeEnabled).
         IPhone = new IPhoneViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
@@ -134,6 +143,12 @@ public sealed partial class IslandViewModel : ObservableObject
             },
             GetClipboard = () => ui.InvokeAsync(() =>
                 System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "").Task,
+            SetClipboardImage = bytes => ui.InvokeAsync(() =>
+            {
+                try { return ClipboardReader.SetImage(PhotoDecoder.Decode(bytes)); }
+                catch (Exception ex) { Log.Warning(ex, "Foto do iPhone: não decodificou"); return false; }
+            }).Task,
+            Outbox = _outbox,
             SetClipboard = text => ui.InvokeAsync(() =>
             {
                 if (!ClipboardReader.SetText(text)) throw new InvalidOperationException("Clipboard ocupado");
@@ -269,6 +284,47 @@ public sealed partial class IslandViewModel : ObservableObject
     public static bool ShouldToast(bool fullscreen, bool preferToast) => fullscreen && preferToast;
 
     // Indicador de privacidade na pílula: tudo que o iPhone está usando agora.
+    // Caixa de saída pro iPhone: copia (fora da UI thread — pode ser arquivo grande), confirma na pílula
+    // e avisa o iPhone, cujo toque abre "Recebidos do PC". name: nome amigável (só com 1 arquivo).
+    public void SendFilesToIPhone(IReadOnlyList<string> files, string? name = null)
+    {
+        if (files.Count == 0) return;
+        if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte do iPhone", "Aba iPhone → Ponte ligada", "iphone")); return; }
+        _ = Task.Run(() =>
+        {
+            var added = files.Select(f =>
+            {
+                try { return _outbox.AddFile(f, DateTime.Now, files.Count == 1 ? name : null); }
+                catch (Exception ex) { Log.Warning(ex, "Mandar pro iPhone: não copiou {Arquivo}", f); return null; }
+            }).OfType<OutboxItem>().ToList();
+            Application.Current?.Dispatcher.BeginInvoke(() => AnnounceToIPhone(added, files.Count));
+        });
+    }
+
+    public void SendTextToIPhone(string text)
+    {
+        if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte do iPhone", "Aba iPhone → Ponte ligada", "iphone")); return; }
+        var item = _outbox.AddText(text, DateTime.Now);
+        AnnounceToIPhone(item is null ? new() : new() { item }, 1);
+    }
+
+    private void AnnounceToIPhone(List<OutboxItem> added, int asked)
+    {
+        if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "iphone")); return; }
+        var (title, body) = OutboxAnnouncement(added);
+        RaisePeek(new Peek("Mandado pro iPhone", body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
+        _ = _push.SendAsync(title, body, ValidTokenNames(), url: "./#recebidos");
+    }
+
+    public static (string Title, string Body) OutboxAnnouncement(IReadOnlyList<OutboxItem> added)
+    {
+        if (added.Count > 1) return ($"{added.Count} arquivos do PC", string.Join(", ", added.Select(i => i.Name)));
+        var i = added[0];
+        return i.Text is not null
+            ? ("Texto do PC", i.Name)
+            : ("Arquivo do PC", $"{i.Name} · {Orbit.Tabs.Stats.StatsViewModel.FormatBytes(i.Size)}");
+    }
+
     public static string? RemoteActivity(RemoteState s)
     {
         var screen = s.Controlling ? "iPhone controlando o PC" : s.Viewing ? "Tela no iPhone" : null;

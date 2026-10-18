@@ -77,12 +77,13 @@ public sealed class WebPush
 
     // Manda pra todas as inscrições de tokens ainda válidos (onlyToken: só as de um token, pro "Testar").
     // Endpoint que responde 404/410 morreu (app removido, permissão retirada): sai da lista.
-    public async Task SendAsync(string title, string body, IReadOnlyCollection<string> validTokens, string? onlyToken = null)
+    // url: página do PWA que o toque no aviso abre (ex.: "./#recebidos").
+    public async Task SendAsync(string title, string body, IReadOnlyCollection<string> validTokens, string? onlyToken = null, string? url = null)
     {
         List<PushSubscription> targets;
         lock (_gate) targets = _subs.Where(s => validTokens.Contains(s.TokenName) && (onlyToken is null || s.TokenName == onlyToken)).ToList();
         if (targets.Count == 0) return;
-        var payload = JsonSerializer.SerializeToUtf8Bytes(new { title, body });
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new { title, body, url });
         foreach (var sub in targets)
         {
             try

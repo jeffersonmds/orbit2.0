@@ -95,7 +95,8 @@ public sealed class BridgeServer : IAsyncDisposable
                     || ctx.Request.Path.Equals("/api/pcfiles/download", StringComparison.OrdinalIgnoreCase)
                     || ctx.Request.Path.Equals("/api/screen/stream", StringComparison.OrdinalIgnoreCase)
                     || ctx.Request.Path.Equals("/api/remote/input", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/mic/stream", StringComparison.OrdinalIgnoreCase));
+                    || ctx.Request.Path.Equals("/api/mic/stream", StringComparison.OrdinalIgnoreCase)
+                    || ctx.Request.Path.Equals("/api/outbox/download", StringComparison.OrdinalIgnoreCase));
             if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
@@ -176,6 +177,7 @@ public sealed class BridgeServer : IAsyncDisposable
         _remote = new RemoteSessions(h.RemoteChanged);
         RemoteScreen.Map(api, h, _remote);
         MicStream.Map(api, h, _remote);
+        OutboxRoutes.Map(api, h);
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }

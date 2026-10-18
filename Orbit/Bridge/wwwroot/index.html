@@ -54,6 +54,10 @@
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg></span>
         <b>Enviar</b><span>Fotos e arquivos pro PC</span>
       </a>
+      <a class="tile" href="#recebidos">
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span>
+        <b>Recebidos do PC</b><span id="tileInbox">Arquivos que o PC mandou</span>
+      </a>
       <a class="tile" href="#pcfiles">
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
         <b>Arquivos do PC</b><span>Ver e baixar</span>
@@ -106,6 +110,12 @@
     </section>
 
     <section class="page card" data-page="arquivos" data-title="Enviar arquivos">
+      <p class="crumb">Foto direto pro clipboard do PC (é só colar lá)</p>
+      <div class="row top clipphoto">
+        <label class="btnlike primary">Tirar foto<input id="photoCam" type="file" accept="image/*" capture="environment"></label>
+        <label class="btnlike">Da galeria<input id="photoLib" type="file" accept="image/*"></label>
+      </div>
+      <p class="crumb section-title">Arquivos pra pasta do PC</p>
       <label class="file drop">
         <input id="files" type="file" multiple>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
@@ -113,6 +123,12 @@
         <small>Vão pra pasta "Recebidos do iPhone" no PC</small>
       </label>
       <div class="progress hidden" id="progress"><div id="bar"></div></div>
+    </section>
+
+    <section class="page card" data-page="recebidos" data-title="Recebidos do PC">
+      <p class="crumb">O que você mandou do PC (Enviar para, arrastar pra ilha, aba Clipboard). Some em 24 h.</p>
+      <div class="flist" id="inList"></div>
+      <p class="muted hidden" id="inMsg"></p>
     </section>
 
     <section class="page card" data-page="pcfiles" data-title="Arquivos do PC">

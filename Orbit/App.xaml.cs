@@ -24,6 +24,14 @@ public partial class App : Application
             return;
         }
 
+        // Explorer → Enviar para → "iPhone (Orbit)": repassa os arquivos pro Orbit aberto e sai.
+        if (e.Args.Length > 0 && e.Args[0] == SendToIPhone.Arg)
+        {
+            SendToIPhone.SendToRunning(SendToIPhone.FilesFrom(e.Args));
+            Shutdown();
+            return;
+        }
+
         base.OnStartup(e);
 
         // Instância única ANTES do log: a 2ª instância não pode escrever no log da 1ª.

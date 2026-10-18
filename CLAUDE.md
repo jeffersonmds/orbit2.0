@@ -77,6 +77,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   **Microfone** (`Bridge/MicStream`, `Services/MicCapture`): permissão própria, independente da câmera;
   WebSocket por tíquete com PCM 16 bits mono ~24 kHz, Web Audio no iPhone. Na 1ª vez o Windows pede
   consentimento NA TELA DO PC e abrir trava até responder: `ConsentTimeout` avisa iPhone e ilha.
+  **PC → iPhone** (`Bridge/Outbox`): caixa de saída de 24 h (cópias em `outbox\`), alimentada por Explorer
+  → Enviar para (`Orbit.exe --send-iphone`, pipe `CurrentUserOnly`; atalho existe só com a ponte ligada),
+  arrastar pra pílula e o botão iPhone da aba Clipboard; push abre "Recebidos do PC". Foto do iPhone →
+  clipboard do PC (`/api/clipboard/image`, `PhotoDecoder` gira pelo EXIF).
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça

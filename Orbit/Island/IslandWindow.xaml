@@ -62,7 +62,9 @@
             Width="110" Height="10" CornerRadius="0,0,5,5" ClipToBounds="True"
             Background="{StaticResource IslandBg}"
             MouseEnter="OnPillEnter" MouseLeave="OnPillLeave"
-            MouseWheel="OnPillWheel" MouseLeftButtonUp="OnPillClick">
+            MouseWheel="OnPillWheel" MouseLeftButtonUp="OnPillClick"
+            AllowDrop="True" PreviewDragEnter="OnPillDragEnter" PreviewDragOver="OnPillDragOver"
+            PreviewDragLeave="OnPillDragLeave" PreviewDrop="OnPillDrop">
         <Grid>
             <!-- As camadas são mostradas pelo code-behind ao fim da animação. -->
             <TextBlock x:Name="ActivityLayer" Visibility="Collapsed"
@@ -87,6 +89,19 @@
                          SelectedItem="{Binding SelectedTab}" Margin="0,14,0,12"/>
                 <ContentControl Grid.Row="1" Content="{Binding SelectedTab}" Margin="20,0,20,20"/>
             </Grid>
+
+            <!-- Arrastando arquivo pra ilha: o painel inteiro vira alvo de "mandar pro iPhone" -->
+            <Border x:Name="DropHint" Visibility="Collapsed" Background="{StaticResource IslandBg}" Margin="10"
+                    CornerRadius="16" BorderThickness="2" BorderBrush="{DynamicResource AccentBrush}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="&#xE8EA;" FontFamily="{StaticResource IconFont}" FontSize="40" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AccentBrush}"/>
+                    <TextBlock Text="Solte pra mandar pro iPhone" FontSize="16" FontWeight="SemiBold" Margin="0,12,0,0"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Chega como aviso; lá você salva, compartilha ou abre" FontSize="12"
+                               Foreground="{StaticResource InkLo}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
         </Grid>
     </Border>
 </Window>

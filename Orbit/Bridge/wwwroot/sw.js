@@ -1,5 +1,5 @@
 // Rede primeiro (atualizações chegam), cache como plano B offline. /api e /health nunca em cache.
-const CACHE = 'orbit-v2';
+const CACHE = 'orbit-v3';
 const SHELL = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
@@ -24,12 +24,15 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'Orbit', { body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png' }));
+  e.waitUntil(self.registration.showNotification(d.title || 'Orbit', {
+    body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', data: { url: d.url || './' },
+  }));
 });
 
-// Tocar no aviso abre (ou traz pra frente) o app.
+// Tocar no aviso abre (ou traz pra frente) o app, na página que o aviso indica (ex.: Recebidos).
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
   e.waitUntil(self.clients.matchAll({ type: 'window' }).then(list =>
-    list.length ? list[0].focus() : self.clients.openWindow('./')));
+    list.length ? list[0].navigate(url).then(c => (c || list[0]).focus()) : self.clients.openWindow(url)));
 });

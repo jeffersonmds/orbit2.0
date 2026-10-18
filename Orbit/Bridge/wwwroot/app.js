@@ -779,6 +779,79 @@ $('#micGain').oninput = e => {
 // App em segundo plano: o iOS corta o áudio; solta o microfone do PC também (privacidade).
 document.addEventListener('visibilitychange', () => { if (document.hidden && mic.ws) micStop(); });
 
+// --- Foto direto pro clipboard do PC ---
+async function photoToClipboard(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  const form = new FormData();
+  form.append('file', f, f.name || 'foto.jpg');
+  const r = await fetch('/api/clipboard/image', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+  if (r.status === 401) { showPair(true); throw new Error('Token inválido — pareie de novo'); }
+  if (!r.ok) throw new Error(r.status === 413 ? 'Foto grande demais (máx. 40 MB)' : 'O PC não aceitou a foto');
+}
+['#photoCam', '#photoLib'].forEach(id => $(id).onchange = e => run(() => photoToClipboard(e.target), 'Foto no clipboard do PC'));
+
+// --- Recebidos do PC ---
+// O PC manda (Enviar para, arrastar pra ilha, aba Clipboard) e avisa por push; aqui o iPhone
+// decide o destino: Compartilhar abre o menu do iOS (Arquivos, Fotos, AirDrop, apps).
+const SHARE_MAX = 150 * 1024 * 1024; // acima disso o iOS não segura o arquivo na memória: baixa
+const inSay = msg => { $('#inMsg').textContent = msg || ''; $('#inMsg').classList.toggle('hidden', !msg); };
+
+async function inTicketUrl(id) {
+  const { ticket } = await api('/outbox/ticket', { method: 'POST', json: { id } });
+  return `/api/outbox/download?ticket=${encodeURIComponent(ticket)}`;
+}
+
+async function inShare(item) {
+  const blob = await (await fetch(await inTicketUrl(item.id))).blob();
+  const file = new File([blob], item.name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); } catch (e) { if (e.name !== 'AbortError') throw e; }
+  } else {
+    location.href = URL.createObjectURL(blob);
+  }
+}
+
+async function inLoad() {
+  if (!token) return;
+  try {
+    const items = await api('/outbox');
+    $('#tileInbox').textContent = items.length ? `${items.length} esperando` : 'Arquivos que o PC mandou';
+    $('#inList').replaceChildren(...items.map(item => {
+      const row = document.createElement('div');
+      row.className = 'inrow';
+      const isLink = item.text && /^https?:\/\/\S+$/i.test(item.text.trim());
+      const info = item.file
+        ? pfRow(pfKind(item.name), item.name, `${pfSize(item.size)} · ${pfDate(item.created)}`, () => {})
+        : pfRow(isLink ? 'link' : 'doc', item.name, `Texto · ${pfDate(item.created)}`, () => {});
+      const act = document.createElement('button');
+      act.className = 'act primary';
+      if (item.file && item.size <= SHARE_MAX) {
+        act.textContent = 'Compartilhar';
+        act.onclick = () => run(() => inShare(item));
+      } else if (item.file) {
+        act.textContent = 'Baixar';
+        act.onclick = () => run(async () => { location.href = await inTicketUrl(item.id); });
+      } else if (isLink) {
+        act.textContent = 'Abrir';
+        act.onclick = () => window.open(item.text.trim(), '_blank');
+      } else {
+        act.textContent = 'Copiar';
+        act.onclick = () => run(() => navigator.clipboard.writeText(item.text), 'Copiado no iPhone');
+      }
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '✕';
+      del.setAttribute('aria-label', 'Tirar da lista');
+      del.onclick = () => run(async () => { await api(`/outbox/${encodeURIComponent(item.id)}`, { method: 'DELETE' }); inLoad(); });
+      row.append(info, act, del);
+      return row;
+    }));
+    inSay(items.length ? '' : 'Nada por aqui. No PC: botão direito no arquivo → Enviar para → iPhone (Orbit), ou arraste pra ilha.');
+  } catch (e) { inSay(e.message); }
+}
+
 // --- Páginas ---
 // Uma página por feature, escolhida pelo #hash; hash vazio/desconhecido = início (atalhos).
 let page = '';
@@ -796,6 +869,7 @@ function route() {
   if (page !== 'tela' && scr.live) scrStop();         // saiu da tela: encerra vídeo e controle
   if (page === 'tela' && !scr.loaded) scrLoad();
   if (page === 'camera' && !mic.ws) micLoad();
+  if (page === 'recebidos') inLoad();
   if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
   if (page === 'pcfiles' && token) pfLoad();
   if (page === 'link') renderLinks();
@@ -809,6 +883,7 @@ function refresh() {
   if (!token) return;
   if (page === '' || page === 'midia') refreshMedia();
   if (page === '' || page === 'pc') refreshStats();
+  if (page === '') inLoad();
   if (page === 'camera' && !camLoaded) camLoadDevices();
 }
 let loop;

@@ -312,6 +312,41 @@ public partial class IslandWindow : Window
         else if (_vm.Mode != IslandMode.Expandida) ExpandFocused();
     }
 
+    // Arquivo arrastado pra pílula: expande (vira alvo grande) e, ao soltar, manda pro iPhone.
+    // Preview*: nenhum campo do painel engole o arquivo. DragLeave dispara a cada filho cruzado,
+    // então só agenda o recolher; o próximo DragEnter cancela.
+    private void OnPillDragEnter(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+        _leave.Stop();
+        DropHint.Visibility = Visibility.Visible;
+        if (_vm.Mode != IslandMode.Expandida) _vm.Expand();
+    }
+
+    private void OnPillDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void OnPillDragLeave(object sender, DragEventArgs e)
+    {
+        DropHint.Visibility = Visibility.Collapsed;
+        _leave.Start();
+    }
+
+    private void OnPillDrop(object sender, DragEventArgs e)
+    {
+        DropHint.Visibility = Visibility.Collapsed;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
+        e.Handled = true;
+        _vm.Collapse();
+        _vm.SendFilesToIPhone(SendToIPhone.FilesFrom(paths));
+    }
+
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape) _vm.Collapse();
