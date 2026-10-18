@@ -1,5 +1,5 @@
 // Rede primeiro (atualizações chegam), cache como plano B offline. /api e /health nunca em cache.
-const CACHE = 'orbit-v3';
+const CACHE = 'orbit-v4';
 const SHELL = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
@@ -30,9 +30,11 @@ self.addEventListener('push', e => {
 });
 
 // Tocar no aviso abre (ou traz pra frente) o app, na página que o aviso indica (ex.: Recebidos).
+// Link de outro site (o PC mandou um link): abre no Safari, não dentro do app (ficaria sem voltar).
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || './';
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.location.href);
+  if (url.origin !== self.location.origin) { e.waitUntil(self.clients.openWindow(url.href)); return; }
   e.waitUntil(self.clients.matchAll({ type: 'window' }).then(list =>
-    list.length ? list[0].navigate(url).then(c => (c || list[0]).focus()) : self.clients.openWindow(url)));
+    list.length ? list[0].navigate(url.href).then(c => (c || list[0]).focus()) : self.clients.openWindow(url.href)));
 });

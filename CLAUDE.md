@@ -90,7 +90,8 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   de Ajustes; recursos `AccentBrush`/`AccentSoftBrush` — sempre `DynamicResource`.
 - **Settings:** `%AppData%\Orbit2\settings.json`; `Load()` nunca lança, `Save()` engole I/O.
   Logs Serilog em `%AppData%\Orbit2\logs\`.
-- Hotkey global: Ctrl+Alt+O — a mesma do 1.0 (o 2.0 o substitui; com o 1.0 aberto o registro
+- Hotkeys globais: Ctrl+Alt+I manda o clipboard pro iPhone (arquivos do Explorer vão como os originais;
+  conteúdo privado nunca sai). Ctrl+Alt+O — a mesma do 1.0 (o 2.0 o substitui; com o 1.0 aberto o registro
   falha e vai pro log). Ignorada com a ilha Oculta (tela cheia) ou escondida pela bandeja.
 - Ligar "Iniciar com o Windows" apaga a entrada `Run\Orbit` do 1.0.
 - Itens "Debug: …" da bandeja (alerta/atividade de teste) só existem em build Debug.

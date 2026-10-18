@@ -301,6 +301,52 @@ public sealed partial class IslandViewModel : ObservableObject
         });
     }
 
+    public enum ClipToIPhone { Files, Image, Text, Private, Empty }
+
+    // O que mandar do clipboard: arquivos copiados no Explorer vão como os originais; senha copiada
+    // de gerenciador (privado) nunca sai do PC.
+    public static ClipToIPhone DecideClip(string[]? files, bool isPrivate, bool hasImage, string? text) =>
+        isPrivate ? ClipToIPhone.Private
+        : files is { Length: > 0 } ? ClipToIPhone.Files
+        : hasImage ? ClipToIPhone.Image
+        : !string.IsNullOrWhiteSpace(text) ? ClipToIPhone.Text
+        : ClipToIPhone.Empty;
+
+    // Ctrl+Alt+I / bandeja: manda o que estiver no clipboard agora.
+    public void SendClipboardToIPhone()
+    {
+        string[]? files = null;
+        try { if (System.Windows.Clipboard.ContainsFileDropList()) files = SendToIPhone.FilesFrom(System.Windows.Clipboard.GetFileDropList().Cast<string>()); }
+        catch (Exception ex) { Log.Warning(ex, "Mandar clipboard: não leu os arquivos"); }
+        var snap = files is { Length: > 0 } ? null : ClipboardReader.Read();
+        switch (DecideClip(files, snap?.IsPrivate == true, snap?.Image is not null, snap?.Text))
+        {
+            case ClipToIPhone.Files:
+                SendFilesToIPhone(files!);
+                break;
+            case ClipToIPhone.Image:
+                var png = Path.Combine(Path.GetTempPath(), $"orbit-clip-{Guid.NewGuid():N}.png");
+                try
+                {
+                    var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(snap!.Image!));
+                    using (var fs = File.Create(png)) enc.Save(fs);
+                    SendFilesToIPhone(new[] { png }, $"imagem-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+                }
+                catch (Exception ex) { Log.Warning(ex, "Mandar clipboard: não salvou a imagem"); }
+                break;
+            case ClipToIPhone.Text:
+                SendTextToIPhone(snap!.Text!);
+                break;
+            case ClipToIPhone.Private:
+                RaisePeek(new Peek("Não mandei pro iPhone", "Conteúdo privado (senha?) fica só no PC", "clipboard"));
+                break;
+            default:
+                RaisePeek(new Peek("Nada pra mandar", "Selecione algo e aperte Ctrl+Alt+I", "clipboard"));
+                break;
+        }
+    }
+
     public void SendTextToIPhone(string text)
     {
         if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte do iPhone", "Aba iPhone → Ponte ligada", "iphone")); return; }
@@ -313,17 +359,24 @@ public sealed partial class IslandViewModel : ObservableObject
         if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "iphone")); return; }
         var (title, body) = OutboxAnnouncement(added);
         RaisePeek(new Peek("Mandado pro iPhone", body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
-        _ = _push.SendAsync(title, body, ValidTokenNames(), url: "./#recebidos");
+        _ = _push.SendAsync(title, body, ValidTokenNames(), url: OutboxPushUrl(added));
     }
 
     public static (string Title, string Body) OutboxAnnouncement(IReadOnlyList<OutboxItem> added)
     {
         if (added.Count > 1) return ($"{added.Count} arquivos do PC", string.Join(", ", added.Select(i => i.Name)));
         var i = added[0];
-        return i.Text is not null
-            ? ("Texto do PC", i.Name)
-            : ("Arquivo do PC", $"{i.Name} · {Orbit.Tabs.Stats.StatsViewModel.FormatBytes(i.Size)}");
+        if (i.Text is { } t)
+            return IsLink(t) ? ("Link do PC", t.Trim()) : ("Texto do PC", t.Length > 160 ? t[..160].TrimEnd() + "…" : t);
+        return ("Arquivo do PC", $"{i.Name} · {Orbit.Tabs.Stats.StatsViewModel.FormatBytes(i.Size)}");
     }
+
+    // Link sozinho: tocar no aviso abre o próprio link no iPhone. O resto abre "Recebidos do PC"
+    // (texto precisa de um toque na página pra ir pro clipboard — regra do iOS).
+    public static string OutboxPushUrl(IReadOnlyList<OutboxItem> added) =>
+        added is [{ Text: { } t }] && IsLink(t) ? t.Trim() : "./#recebidos";
+
+    private static bool IsLink(string t) => ClipHistory.ClassifyText(t) == ClipKind.Link;
 
     public static string? RemoteActivity(RemoteState s)
     {

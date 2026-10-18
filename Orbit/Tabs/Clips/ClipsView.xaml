@@ -143,7 +143,7 @@
                         <Button Style="{StaticResource SmallButton}" Content="iPhone" ToolTip="Mandar pro iPhone"
                                 Command="{Binding SendToIPhoneCommand}"/>
                     </StackPanel>
-                    <TextBlock Text="Enter cola · Ctrl+P fixa · Del remove · duplo clique cola" FontSize="10.5"
+                    <TextBlock Text="Enter cola · Ctrl+P fixa · Del remove · Ctrl+Alt+I manda a seleção pro iPhone" FontSize="10.5"
                                Foreground="{StaticResource InkLo}" Margin="0,8,0,0"/>
                 </StackPanel>
                 <Grid DataContext="{Binding Selected}">

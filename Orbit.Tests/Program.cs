@@ -266,6 +266,18 @@ public static class Program
         Check("saída: aviso de vários", IslandViewModel.OutboxAnnouncement(new[] { new OutboxItem("1", "a.txt", 1, "1.txt", null, t0), new OutboxItem("2", "b.txt", 1, "2.txt", null, t0) })
             == ("2 arquivos do PC", "a.txt, b.txt"));
 
+        Check("clip→iPhone: privado nunca sai", IslandViewModel.DecideClip(new[] { "a" }, true, true, "senha") == IslandViewModel.ClipToIPhone.Private);
+        Check("clip→iPhone: arquivos do Explorer primeiro", IslandViewModel.DecideClip(new[] { "a" }, false, true, "x") == IslandViewModel.ClipToIPhone.Files);
+        Check("clip→iPhone: imagem, depois texto, depois vazio", IslandViewModel.DecideClip(null, false, true, "x") == IslandViewModel.ClipToIPhone.Image
+            && IslandViewModel.DecideClip(Array.Empty<string>(), false, false, "oi") == IslandViewModel.ClipToIPhone.Text
+            && IslandViewModel.DecideClip(null, false, false, "  ") == IslandViewModel.ClipToIPhone.Empty);
+        var link = new OutboxItem("1", "x", 1, null, "https://example.com/a", t0);
+        var txt = new OutboxItem("2", "x", 1, null, new string('a', 200), t0);
+        Check("clip→iPhone: link abre direto no iPhone", IslandViewModel.OutboxPushUrl(new[] { link }) == "https://example.com/a"
+            && IslandViewModel.OutboxAnnouncement(new[] { link }) == ("Link do PC", "https://example.com/a"));
+        Check("clip→iPhone: texto abre Recebidos, aviso resumido", IslandViewModel.OutboxPushUrl(new[] { txt }) == "./#recebidos"
+            && IslandViewModel.OutboxAnnouncement(new[] { txt }).Body.Length == 161);
+
         var f1 = Path.Combine(dir, "um.txt");
         File.WriteAllText(f1, "x");
         Check("enviar para: só arquivos que existem", SendToIPhone.FilesFrom(new[] { "--send-iphone", f1, dir, Path.Combine(dir, "sumiu.txt"), f1 })
@@ -789,6 +801,8 @@ public static class Program
         var seq = Input.CtrlVSequence();
         Check("colar: sequência Ctrl↓ V↓ V↑ Ctrl↑", seq.Length == 4
             && seq[0] == (0x11, false) && seq[1] == (0x56, false) && seq[2] == (0x56, true) && seq[3] == (0x11, true));
+        Check("copiar seleção: sequência Ctrl↓ C↓ C↑ Ctrl↑ (sem Alt)", Input.CtrlCSequence().SequenceEqual(
+            new (ushort, bool)[] { (0x11, false), (0x43, false), (0x43, true), (0x11, true) }));
 
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);

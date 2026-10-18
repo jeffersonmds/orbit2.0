@@ -21,7 +21,7 @@ public partial class IslandWindow : Window
     private readonly DispatcherTimer _leave = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _peek = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(2) };
-    private GlobalHotKey? _hotKey;
+    private GlobalHotKey? _hotKey, _sendHotKey;
     private FullscreenWatcher? _fullscreen;
     private ClipboardWatcher? _clipboard;
     private bool _userHidden;
@@ -83,6 +83,7 @@ public partial class IslandWindow : Window
             Activate();
         };
         _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };
+        _tray.SendClipboardToIPhone += () => _vm.SendClipboardToIPhone();
         _vm.Clips.PasteRequested += PasteIntoPrevious;
 #if DEBUG
         _tray.DebugPeek += () => _vm.RaisePeek(new Peek("Alerta de teste", "github.com/… · abrindo no navegador", "energia"));
@@ -126,6 +127,15 @@ public partial class IslandWindow : Window
             else ExpandFocused();
         };
 
+        // Ctrl+Alt+I: copia a seleção do app em foco e manda pro iPhone, sem abrir a ilha
+        // (sem seleção, vai o que já estava no clipboard).
+        _sendHotKey = new GlobalHotKey(hwnd, GlobalHotKey.VK_I);
+        _sendHotKey.Pressed += async () =>
+        {
+            await Input.CopySelectionAsync((ushort)GlobalHotKey.VK_I);
+            _vm.SendClipboardToIPhone();
+        };
+
         _fullscreen = new FullscreenWatcher(hwnd);
         _fullscreen.Changed += on => _vm.SetFullscreen(on);
 
@@ -153,6 +163,7 @@ public partial class IslandWindow : Window
             _tray.Dispose(); // primeiro: se os outros lançarem, o ícone não fica fantasma
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: vaza se não soltar
             _hotKey?.Dispose();
+            _sendHotKey?.Dispose();
             _fullscreen?.Dispose();
             _clipboard?.Dispose();
             if (_foregroundHookHandle != IntPtr.Zero) UnhookWinEvent(_foregroundHookHandle);
