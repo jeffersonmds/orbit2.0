@@ -182,6 +182,25 @@ public static class RemoteScreen
         api.MapPost("/remote/ticket", (RemoteTicketRequest req) =>
             Find(req.Screen) is { } screen ? Results.Ok(new { ticket = input.Issue(screen.Id, DateTime.Now) }) : Results.NotFound());
 
+        // Teclado remoto (ditado): mesmo canal da tela, mas só texto e teclas — mouse é descartado.
+        var keyboard = new OneShotTickets<bool>();
+        api.MapPost("/keyboard/ticket", () => Results.Ok(new { ticket = keyboard.Issue(true, DateTime.Now) }));
+        api.MapGet("/keyboard/input", async (HttpContext ctx, string? ticket) =>
+        {
+            if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
+            if (!keyboard.TryClaim(ticket, DateTime.Now, out _)) { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
+            using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+            var session = sessions.BeginInput(ctx.RequestAborted);
+            try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly); }
+            catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
+            finally
+            {
+                sessions.End(session);
+                if (ws.State == WebSocketState.Open)
+                    try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "fim", CancellationToken.None); } catch { }
+            }
+        });
+
         api.MapGet("/remote/input", async (HttpContext ctx, string? ticket) =>
         {
             if (!ctx.WebSockets.IsWebSocketRequest)
@@ -196,7 +215,7 @@ public static class RemoteScreen
             }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             var session = sessions.BeginInput(ctx.RequestAborted);
-            try { await ReceiveLoop(ws, screen, h, session.Token); }
+            try { await ReceiveLoop(ws, screen.Bounds, h, session.Token, _ => true); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
             finally
             {
@@ -207,7 +226,10 @@ public static class RemoteScreen
         });
     }
 
-    private static async Task ReceiveLoop(WebSocket ws, ScreenInfo screen, BridgeHandlers h, CancellationToken ct)
+    public static bool KeyboardOnly(RemoteCommand c) => c.Kind is RemoteKind.Text or RemoteKind.Key;
+
+    private static async Task ReceiveLoop(WebSocket ws, System.Drawing.Rectangle bounds, BridgeHandlers h, CancellationToken ct,
+        Func<RemoteCommand, bool> allow)
     {
         var buf = new byte[8192];
         var window = Stopwatch.StartNew();
@@ -224,8 +246,8 @@ public static class RemoteScreen
             }
             if (window.ElapsedMilliseconds >= 1000) { window.Restart(); inWindow = 0; }
             if (++inWindow > MaxMessagesPerSecond) continue;
-            if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, res.Count)) is { } cmd)
-                h.RemoteInput(cmd, screen.Bounds);
+            if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, res.Count)) is { } cmd && allow(cmd))
+                h.RemoteInput(cmd, bounds);
         }
     }
 }

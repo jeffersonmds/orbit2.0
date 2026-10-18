@@ -206,6 +206,7 @@ public sealed partial class IslandViewModel : ObservableObject
             Push = _push,
             ScreenEnabled = () => _settings.BridgeScreenEnabled,
             ControlEnabled = () => _settings.BridgeControlEnabled,
+            KeyboardEnabled = () => _settings.BridgeKeyboardEnabled,
             Screens = ScreenCapture.Screens,
             CaptureScreen = ScreenCapture.Capture,
             RemoteInput = Orbit.Services.RemoteInput.Execute,

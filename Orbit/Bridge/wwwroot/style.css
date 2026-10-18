@@ -199,6 +199,8 @@ body.immersive { overflow: hidden; }
 .inrow .act { flex: 0 0 auto; min-height: 36px; padding: 6px 12px; font-size: 14px; }
 .inrow .act.primary { width: auto; margin: 0; }
 .inrow .del { flex: 0 0 auto; min-height: 36px; padding: 6px 10px; background: transparent; color: var(--ink-lo); }
+.kb-opt { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--ink-lo); font-size: 14px; }
+.kb-opt input { width: 20px; height: 20px; min-height: 0; margin: 0; }
 .hidden { display: none !important; }
 
 /* --- Páginas em tela cheia: cada página ocupa a altura e o conteúdo principal estica --- */

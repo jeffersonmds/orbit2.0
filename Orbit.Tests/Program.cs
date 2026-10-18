@@ -76,6 +76,7 @@ public static class Program
         RemoteScreenTests();
         MicTests();
         OutboxTests();
+        KeyboardTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -233,6 +234,52 @@ public static class Program
             catch { ok = false; }
             Check("tela: tíquete do controle é de uso único", !ok);
         }
+        server.StopAsync().GetAwaiter().GetResult();
+        Directory.Delete(dir, recursive: true);
+    }
+
+    // Teclado remoto: permissão própria e o canal só deixa passar texto e teclas (mouse é descartado).
+    private static void KeyboardTests()
+    {
+        Check("teclado: filtro só texto e tecla", RemoteScreen.KeyboardOnly(new RemoteCommand(RemoteKind.Text, Text: "a"))
+            && RemoteScreen.KeyboardOnly(new RemoteCommand(RemoteKind.Key, Vk: 0x0D))
+            && !RemoteScreen.KeyboardOnly(new RemoteCommand(RemoteKind.Abs, 0.5, 0.5))
+            && !RemoteScreen.KeyboardOnly(new RemoteCommand(RemoteKind.Click)));
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-kbd-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var token = tokens.Create("iPhone teste");
+        bool on = false;
+        var got = new System.Collections.Concurrent.ConcurrentQueue<RemoteCommand>();
+        var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
+        var handlers = new BridgeHandlers
+        {
+            KeyboardEnabled = () => on,
+            RemoteInput = (c, _) => got.Enqueue(c),
+            RemoteChanged = st => states.Enqueue(st),
+        };
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Check("teclado: desligado = 403", http.PostAsync("/api/keyboard/ticket", null).Result.StatusCode == HttpStatusCode.Forbidden);
+        on = true;
+        var tk = http.PostAsync("/api/keyboard/ticket", null).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+        using (var ws = new System.Net.WebSockets.ClientWebSocket())
+        {
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/keyboard/input?ticket={tk}"), System.Threading.CancellationToken.None).Wait();
+            foreach (var m in new[] { "{\"t\":\"text\",\"s\":\"olá do iPhone\"}", "{\"t\":\"abs\",\"x\":0.1,\"y\":0.1}",
+                         "{\"t\":\"click\"}", "{\"t\":\"key\",\"k\":\"enter\"}" })
+                ws.SendAsync(System.Text.Encoding.UTF8.GetBytes(m), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
+            for (int i = 0; i < 50 && got.Count < 2; i++) System.Threading.Thread.Sleep(20);
+            System.Threading.Thread.Sleep(100);
+            var arr = got.ToArray();
+            Check("teclado: texto e tecla passam, mouse é descartado", arr.Length == 2 && arr[0].Text == "olá do iPhone" && arr[1].Kind == RemoteKind.Key);
+            Check("teclado: conta como controle na pílula", states.Any(st => st.Controlling));
+        }
+        Check("teclado: tíquete de uso único", !TryConnect($"ws://127.0.0.1:{server.Port}/api/keyboard/input?ticket={tk}"));
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
     }

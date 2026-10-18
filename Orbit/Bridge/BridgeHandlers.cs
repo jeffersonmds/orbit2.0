@@ -50,6 +50,8 @@ public sealed class BridgeHandlers
     // ilha; os testes injetam fakes (nenhum teste mexe no mouse de verdade).
     public Func<bool> ScreenEnabled { get; init; } = () => false;
     public Func<bool> ControlEnabled { get; init; } = () => false;
+    // Teclado remoto (ditado do iPhone → app em foco no PC): só texto e teclas, permissão própria.
+    public Func<bool> KeyboardEnabled { get; init; } = () => false;
     public Func<IReadOnlyList<ScreenInfo>> Screens { get; init; } = () => Array.Empty<ScreenInfo>();
     public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
     public Action<RemoteCommand, System.Drawing.Rectangle> RemoteInput { get; init; } = (_, _) => { };

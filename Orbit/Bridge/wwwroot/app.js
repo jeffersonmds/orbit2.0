@@ -852,6 +852,77 @@ async function inLoad() {
   } catch (e) { inSay(e.message); }
 }
 
+// --- Teclado do PC (escrever/ditar no iPhone → app em foco no PC) ---
+// Compor e mandar: o ditado do iOS corrige palavras enquanto você fala, então nada vai letra a letra.
+// "Digitar" manda o texto como teclas; "Colar" põe no clipboard do PC e dá Ctrl+V (texto longo,
+// editores de código com autocompletar). O WebSocket só fica aberto com a página aberta.
+const kb = { ws: null, connecting: null, ctrl: false };
+const kbSay = msg => { $('#kbMsg').textContent = msg || ''; $('#kbMsg').classList.toggle('hidden', !msg); };
+
+function kbConnect() {
+  if (kb.ws && kb.ws.readyState === 1) return Promise.resolve(kb.ws);
+  if (kb.connecting) return kb.connecting;
+  kb.connecting = (async () => {
+    const { ticket } = await api('/keyboard/ticket', { method: 'POST' });
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/api/keyboard/input?ticket=${encodeURIComponent(ticket)}`);
+    await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = () => fail(new Error('Não conectou ao PC')); });
+    ws.onclose = () => { if (kb.ws === ws) kb.ws = null; };
+    kb.ws = ws;
+    return ws;
+  })().finally(() => { kb.connecting = null; });
+  return kb.connecting;
+}
+
+function kbClose() { if (kb.ws) { kb.ws.close(); kb.ws = null; } }
+
+async function kbSend(o) {
+  try { (await kbConnect()).send(JSON.stringify(o)); }
+  catch (e) {
+    if (/403/.test(e.message)) { kbSay('Ligue "Teclado" na aba iPhone do PC.'); throw new Error('Teclado desligado no PC'); }
+    throw e;
+  }
+  return true;
+}
+
+// Quebra de linha vira Enter de verdade; pedaços de até 400 caracteres sem partir emoji ao meio.
+async function kbTypeText(text) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  for (let l = 0; l < lines.length; l++) {
+    const chars = Array.from(lines[l]);
+    for (let i = 0; i < chars.length; i += 400)
+      if (!(await kbSend({ t: 'text', s: chars.slice(i, i + 400).join('') }))) return false;
+    if (l < lines.length - 1 && !(await kbSend({ t: 'key', k: 'enter' }))) return false;
+  }
+  return true;
+}
+
+async function kbAfter() {
+  if ($('#kbEnter').checked) await kbSend({ t: 'key', k: 'enter' });
+  $('#kbText').value = '';
+  kbSay('');
+}
+
+$('#kbType').onclick = () => run(async () => {
+  const text = $('#kbText').value;
+  if (!text) throw new Error('Escreva ou dite algo primeiro');
+  if (await kbTypeText(text)) await kbAfter();
+}, 'Digitado no PC');
+
+$('#kbPaste').onclick = () => run(async () => {
+  const text = $('#kbText').value;
+  if (!text) throw new Error('Escreva ou dite algo primeiro');
+  await api('/clipboard', { method: 'PUT', json: { text } });
+  if (await kbSend({ t: 'key', k: 'v', mods: ['ctrl'] })) await kbAfter();
+}, 'Colado no PC');
+
+$('#kbCtrl').onclick = () => { kb.ctrl = !kb.ctrl; $('#kbCtrl').classList.toggle('on', kb.ctrl); };
+document.querySelectorAll('[data-kkey]').forEach(b => b.onclick = () => run(async () => {
+  await kbSend({ t: 'key', k: b.dataset.kkey, mods: kb.ctrl ? ['ctrl'] : [] });
+  if (kb.ctrl) { kb.ctrl = false; $('#kbCtrl').classList.remove('on'); }
+}));
+document.addEventListener('visibilitychange', () => { if (document.hidden) kbClose(); });
+
 // --- Páginas ---
 // Uma página por feature, escolhida pelo #hash; hash vazio/desconhecido = início (atalhos).
 let page = '';
@@ -870,6 +941,7 @@ function route() {
   if (page === 'tela' && !scr.loaded) scrLoad();
   if (page === 'camera' && !mic.ws) micLoad();
   if (page === 'recebidos') inLoad();
+  if (page !== 'teclado') kbClose(); // fora da página, o PC não fica aceitando teclas
   if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
   if (page === 'pcfiles' && token) pfLoad();
   if (page === 'link') renderLinks();

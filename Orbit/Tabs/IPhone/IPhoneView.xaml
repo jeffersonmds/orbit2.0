@@ -28,6 +28,8 @@
                               Content="Controle" ToolTip="Permite o iPhone usar mouse e teclado (precisa de Tela)"/>
                     <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding MicEnabled}"
                               Content="Microfone" ToolTip="Permite o iPhone ouvir o microfone do PC"/>
+                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding KeyboardEnabled}"
+                              Content="Teclado" ToolTip="Permite o iPhone digitar (e ditar) no app em foco do PC"/>
                 </WrapPanel>
                 <!-- Sessão de tela remota ativa: quem está no PC vê e pode derrubar -->
                 <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="10" Padding="10,6" Margin="0,0,0,10"

@@ -46,6 +46,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [ObservableProperty] private bool _screenEnabled;
     [ObservableProperty] private bool _controlEnabled;
     [ObservableProperty] private bool _micEnabled;
+    [ObservableProperty] private bool _keyboardEnabled;
     [ObservableProperty] private bool _remoteActive;
     [ObservableProperty] private string _remoteText = "";
     [ObservableProperty] private BitmapSource? _qrImage;
@@ -90,6 +91,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         ScreenEnabled = settings.BridgeScreenEnabled;
         ControlEnabled = settings.BridgeControlEnabled;
         MicEnabled = settings.BridgeMicEnabled;
+        KeyboardEnabled = settings.BridgeKeyboardEnabled;
         _syncing = false;
         _audit.Written += _ => Application.Current?.Dispatcher.BeginInvoke(RefreshActivity);
     }
@@ -133,6 +135,14 @@ public sealed partial class IPhoneViewModel : TabViewModel
     {
         if (_syncing) return;
         _settings.BridgeControlEnabled = value;
+        SettingsStore.Save(_settings);
+        if (!value) Server.StopRemote();
+    }
+
+    partial void OnKeyboardEnabledChanged(bool value)
+    {
+        if (_syncing) return;
+        _settings.BridgeKeyboardEnabled = value;
         SettingsStore.Save(_settings);
         if (!value) Server.StopRemote();
     }

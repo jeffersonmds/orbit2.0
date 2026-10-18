@@ -81,6 +81,8 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   → Enviar para (`Orbit.exe --send-iphone`, pipe `CurrentUserOnly`; atalho existe só com a ponte ligada),
   arrastar pra pílula e o botão iPhone da aba Clipboard; push abre "Recebidos do PC". Foto do iPhone →
   clipboard do PC (`/api/clipboard/image`, `PhotoDecoder` gira pelo EXIF).
+  **Teclado remoto** (`/api/keyboard/*`): permissão própria; mesmo canal da tela com filtro
+  `RemoteScreen.KeyboardOnly` (só texto/teclas); o PWA compõe e manda (ditado do iOS reescreve palavras).
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça

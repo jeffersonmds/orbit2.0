@@ -96,7 +96,8 @@ public sealed class BridgeServer : IAsyncDisposable
                     || ctx.Request.Path.Equals("/api/screen/stream", StringComparison.OrdinalIgnoreCase)
                     || ctx.Request.Path.Equals("/api/remote/input", StringComparison.OrdinalIgnoreCase)
                     || ctx.Request.Path.Equals("/api/mic/stream", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/outbox/download", StringComparison.OrdinalIgnoreCase));
+                    || ctx.Request.Path.Equals("/api/outbox/download", StringComparison.OrdinalIgnoreCase)
+                    || ctx.Request.Path.Equals("/api/keyboard/input", StringComparison.OrdinalIgnoreCase));
             if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
@@ -168,6 +169,8 @@ public sealed class BridgeServer : IAsyncDisposable
             if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/remote") && !(h.ScreenEnabled() && h.ControlEnabled()))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/mic") && !h.MicEnabled())
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/keyboard") && !h.KeyboardEnabled())
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             return await next(ctx);
         });
