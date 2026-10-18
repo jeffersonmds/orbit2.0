@@ -74,6 +74,7 @@ public static class Program
         PcFilesTests();
         WebPushTests();
         RemoteScreenTests();
+        MicTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -149,8 +150,13 @@ public static class Program
         var t2 = tk.Issue("y", DateTime.Now);
         Check("tela: tíquete vencido", !tk.TryClaim(t2, DateTime.Now.AddSeconds(31), out _));
 
-        Check("tela: texto da pílula", IslandViewModel.RemoteActivity(true, false) == "Tela no iPhone"
-            && IslandViewModel.RemoteActivity(true, true) == "iPhone controlando o PC" && IslandViewModel.RemoteActivity(false, false) is null);
+        Check("tela: texto da pílula", IslandViewModel.RemoteActivity(new RemoteState(true, false, false)) == "Tela no iPhone"
+            && IslandViewModel.RemoteActivity(new RemoteState(true, true, false)) == "iPhone controlando o PC"
+            && IslandViewModel.RemoteActivity(new RemoteState(false, false, false)) is null);
+        Check("mic: texto da pílula", IslandViewModel.RemoteActivity(new RemoteState(false, false, true)) == "Microfone no iPhone"
+            && IslandViewModel.RemoteActivity(new RemoteState(true, false, true)) == "Tela no iPhone · microfone");
+        Check("mic: texto da aba iPhone", Orbit.Tabs.IPhone.IPhoneViewModel.IPhoneRemoteText(new RemoteState(true, true, true))
+            == "vendo e controlando a tela e ouvindo o microfone");
 
         // Rotas
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-tela-" + Guid.NewGuid().ToString("N"));
@@ -161,7 +167,7 @@ public static class Program
         var fakeScreen = new ScreenInfo("DISPLAY1", "1 · 640×480", new System.Drawing.Rectangle(0, 0, 640, 480));
         var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 0xFF, 0xD9 };
         var received = new System.Collections.Concurrent.ConcurrentQueue<RemoteCommand>();
-        var states = new System.Collections.Concurrent.ConcurrentQueue<(bool, bool)>();
+        var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
         var handlers = new BridgeHandlers
         {
             ScreenEnabled = () => screenOn,
@@ -169,7 +175,7 @@ public static class Program
             Screens = () => new[] { fakeScreen },
             CaptureScreen = (_, _) => jpeg,
             RemoteInput = (c, _) => received.Enqueue(c),
-            RemoteChanged = (v, c) => states.Enqueue((v, c)),
+            RemoteChanged = st => states.Enqueue(st),
         };
         var server = new BridgeServer();
         server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
@@ -195,7 +201,7 @@ public static class Program
             Check("tela: stream MJPEG com tíquete (sem token)", resp.StatusCode == HttpStatusCode.OK
                 && resp.Content.Headers.ContentType?.MediaType == "multipart/x-mixed-replace" && head.Contains("Content-Type: image/jpeg"));
             System.Threading.Thread.Sleep(200);
-            Check("tela: sessão de vídeo avisa a ilha", states.Contains((true, false)));
+            Check("tela: sessão de vídeo avisa a ilha", states.Contains(new RemoteState(true, false, false)));
         }
         Check("tela: tíquete do stream é de uso único", anon.GetAsync($"/api/screen/stream?ticket={vt}").Result.StatusCode == HttpStatusCode.Unauthorized);
 
@@ -211,13 +217,13 @@ public static class Program
             var got = received.ToArray();
             Check("tela: WebSocket entrega os comandos válidos e ignora lixo", got.Length == 3 && got[0].Kind == RemoteKind.Abs
                 && got[1].Kind == RemoteKind.Click && got[2].Text == "oi");
-            Check("tela: controle avisa a ilha", states.Any(s => s.Item2));
+            Check("tela: controle avisa a ilha", states.Any(st => st.Controlling));
             server.StopRemote(); // o "Encerrar" da aba iPhone
             for (int i = 0; i < 50 && ws.State == System.Net.WebSockets.WebSocketState.Open; i++)
             {
                 try { ws.ReceiveAsync(new byte[16], new System.Threading.CancellationTokenSource(100).Token).Wait(); } catch { }
             }
-            Check("tela: Encerrar derruba o controle", ws.State != System.Net.WebSockets.WebSocketState.Open && states.Last() == (false, false));
+            Check("tela: Encerrar derruba o controle", ws.State != System.Net.WebSockets.WebSocketState.Open && states.Last() == new RemoteState(false, false, false));
         }
         using (var ws2 = new System.Net.WebSockets.ClientWebSocket())
         {
@@ -228,6 +234,113 @@ public static class Program
         }
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
+    }
+
+    // Microfone: conversão pra PCM mono 16 bits e o WebSocket com um microfone falso (nenhum teste abre o de verdade).
+    private static void MicTests()
+    {
+        Check("mic: fator 48k → 2, 44,1k → 2, 16k → 1", MicCapture.Factor(48000) == 2 && MicCapture.Factor(44100) == 2 && MicCapture.Factor(16000) == 1);
+        // float estéreo: (0,5 ; 0,5) e (−0,5 ; −0,5)
+        var f = new byte[16];
+        BitConverter.GetBytes(0.5f).CopyTo(f, 0); BitConverter.GetBytes(0.5f).CopyTo(f, 4);
+        BitConverter.GetBytes(-0.5f).CopyTo(f, 8); BitConverter.GetBytes(-0.5f).CopyTo(f, 12);
+        var m = MicCapture.ToMonoPcm16(f, 2, true, 1);
+        Check("mic: float estéreo → mono 16 bits", m.Length == 4 && BitConverter.ToInt16(m, 0) == 16383 && BitConverter.ToInt16(m, 2) == -16383);
+        var avg = MicCapture.ToMonoPcm16(f, 2, true, 2);
+        Check("mic: reduzir faz média (0,5 e −0,5 → 0)", avg.Length == 2 && BitConverter.ToInt16(avg, 0) == 0);
+        var pcm = new byte[4];
+        BitConverter.GetBytes((short)-16384).CopyTo(pcm, 0); BitConverter.GetBytes((short)8192).CopyTo(pcm, 2);
+        var back = MicCapture.ToMonoPcm16(pcm, 1, false, 1);
+        Check("mic: PCM 16 mono preservado", Math.Abs(BitConverter.ToInt16(back, 0) - -16384) <= 1 && Math.Abs(BitConverter.ToInt16(back, 2) - 8192) <= 1);
+        Check("mic: limita no máximo", BitConverter.ToInt16(MicCapture.ToMonoPcm16(BitConverter.GetBytes(4f), 1, true, 1), 0) == short.MaxValue);
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-mic-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var token = tokens.Create("iPhone teste");
+        bool micOn = false, stopped = false;
+        Action<byte[]>? feed = null;
+        var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
+        var handlers = new BridgeHandlers
+        {
+            MicEnabled = () => micOn,
+            MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
+            OpenMic = (_, onPcm) => { feed = onPcm; return (24000, new Disposer(() => stopped = true)); },
+            RemoteChanged = st => states.Enqueue(st),
+        };
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Check("mic: desligado = 403", http.GetAsync("/api/mic/devices").Result.StatusCode == HttpStatusCode.Forbidden);
+        micOn = true;
+        Check("mic: lista", http.GetStringAsync("/api/mic/devices").Result.Contains("Microfone teste"));
+        Check("mic: dispositivo desconhecido = 404", http.PostAsJsonAsync("/api/mic/open", new { deviceId = "nao-existe" }).Result.StatusCode == HttpStatusCode.NotFound);
+        var tk = http.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1", name = "Microfone teste" }).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+        using (var ws = new System.Net.WebSockets.ClientWebSocket())
+        {
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/mic/stream?ticket={tk}"), System.Threading.CancellationToken.None).Wait();
+            var buf = new byte[1024];
+            var first = ws.ReceiveAsync(buf, System.Threading.CancellationToken.None).Result;
+            Check("mic: 1ª mensagem diz a taxa", first.MessageType == System.Net.WebSockets.WebSocketMessageType.Text
+                && System.Text.Encoding.UTF8.GetString(buf, 0, first.Count) == "{\"rate\":24000}");
+            feed!(new byte[] { 1, 2, 3, 4 });
+            var audio = ws.ReceiveAsync(buf, new System.Threading.CancellationTokenSource(3000).Token).Result;
+            Check("mic: PCM chega em mensagem binária", audio.MessageType == System.Net.WebSockets.WebSocketMessageType.Binary
+                && audio.Count == 4 && buf[0] == 1 && buf[3] == 4);
+            Check("mic: ouvir avisa a ilha", states.Any(st => st.Listening));
+            http.PostAsync("/api/mic/close", null).Result.Dispose();
+            for (int i = 0; i < 50 && !stopped; i++) System.Threading.Thread.Sleep(20);
+            System.Threading.Thread.Sleep(50);
+            Check("mic: parar solta o microfone", stopped && states.Last() == new RemoteState(false, false, false));
+        }
+        Check("mic: tíquete de uso único", !TryConnect($"ws://127.0.0.1:{server.Port}/api/mic/stream?ticket={tk}"));
+        server.StopAsync().GetAwaiter().GetResult();
+
+        // Consentimento do Windows pendente: abrir fica parado; o iPhone recebe o motivo e, quando
+        // autorizarem depois, o microfone é solto na hora (ninguém está ouvindo).
+        var gate = new System.Threading.ManualResetEventSlim(false);
+        bool lateStopped = false;
+        var events = new System.Collections.Concurrent.ConcurrentQueue<BridgeEvent>();
+        var waiting = new BridgeHandlers
+        {
+            MicEnabled = () => true,
+            MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
+            OpenMic = (_, _) => { gate.Wait(); return (24000, new Disposer(() => lateStopped = true)); },
+            Notify = e => events.Enqueue(e),
+        };
+        var oldTimeout = MicStream.ConsentTimeout;
+        MicStream.ConsentTimeout = TimeSpan.FromMilliseconds(300);
+        var server2 = new BridgeServer();
+        server2.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a2.jsonl")), waiting).GetAwaiter().GetResult();
+        using (var http2 = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server2.Port}") })
+        {
+            http2.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var tk2 = http2.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1" }).Result
+                .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+            using var ws = new System.Net.WebSockets.ClientWebSocket();
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server2.Port}/api/mic/stream?ticket={tk2}"), System.Threading.CancellationToken.None).Wait();
+            var r = ws.ReceiveAsync(new byte[64], new System.Threading.CancellationTokenSource(5000).Token).Result;
+            Check("mic: consentimento pendente avisa o iPhone", r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close
+                && ws.CloseStatusDescription == MicStream.ConsentReason);
+            Check("mic: e avisa quem está no PC", events.Any(e => e.Title.Contains("Autorize")));
+            gate.Set(); // "autorizaram" depois
+            for (int i = 0; i < 50 && !lateStopped; i++) System.Threading.Thread.Sleep(20);
+            Check("mic: autorizado tarde = solto na hora", lateStopped);
+        }
+        MicStream.ConsentTimeout = oldTimeout;
+        server2.StopAsync().GetAwaiter().GetResult();
+        Directory.Delete(dir, recursive: true);
+    }
+
+    private sealed class Disposer(Action onDispose) : IDisposable { public void Dispose() => onDispose(); }
+
+    private static bool TryConnect(string url)
+    {
+        using var ws = new System.Net.WebSockets.ClientWebSocket();
+        try { ws.ConnectAsync(new Uri(url), System.Threading.CancellationToken.None).Wait(); return true; }
+        catch { return false; }
     }
 
     // Web Push: o teste faz o papel do iPhone — decifra o payload (RFC 8291) com a chave privada do

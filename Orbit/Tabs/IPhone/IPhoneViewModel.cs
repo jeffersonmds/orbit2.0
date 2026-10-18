@@ -45,6 +45,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [ObservableProperty] private bool _pcFilesEnabled;
     [ObservableProperty] private bool _screenEnabled;
     [ObservableProperty] private bool _controlEnabled;
+    [ObservableProperty] private bool _micEnabled;
     [ObservableProperty] private bool _remoteActive;
     [ObservableProperty] private string _remoteText = "";
     [ObservableProperty] private BitmapSource? _qrImage;
@@ -88,6 +89,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         PcFilesEnabled = settings.BridgePcFilesEnabled;
         ScreenEnabled = settings.BridgeScreenEnabled;
         ControlEnabled = settings.BridgeControlEnabled;
+        MicEnabled = settings.BridgeMicEnabled;
         _syncing = false;
         _audit.Written += _ => Application.Current?.Dispatcher.BeginInvoke(RefreshActivity);
     }
@@ -135,11 +137,28 @@ public sealed partial class IPhoneViewModel : TabViewModel
         if (!value) Server.StopRemote();
     }
 
-    // Chamado pela ilha quando a sessão de tela remota muda (já na UI thread).
-    public void SetRemote(bool viewing, bool controlling)
+    partial void OnMicEnabledChanged(bool value)
     {
-        RemoteActive = viewing || controlling;
-        RemoteText = controlling ? "O iPhone está vendo e controlando a tela" : "O iPhone está vendo a tela";
+        if (_syncing) return;
+        _settings.BridgeMicEnabled = value;
+        SettingsStore.Save(_settings);
+        if (!value) Server.StopRemote();
+    }
+
+    // Chamado pela ilha quando tela/controle/microfone mudam (já na UI thread).
+    public void SetRemote(RemoteState s)
+    {
+        RemoteActive = s.Viewing || s.Controlling || s.Listening;
+        RemoteText = "O iPhone está " + IPhoneRemoteText(s);
+    }
+
+    public static string IPhoneRemoteText(RemoteState s)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if (s.Controlling) parts.Add("vendo e controlando a tela");
+        else if (s.Viewing) parts.Add("vendo a tela");
+        if (s.Listening) parts.Add("ouvindo o microfone");
+        return string.Join(" e ", parts);
     }
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]

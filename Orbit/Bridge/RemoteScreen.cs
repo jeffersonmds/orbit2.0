@@ -16,6 +16,8 @@ using Serilog;
 namespace Orbit.Bridge;
 
 public sealed record ScreenOpenRequest(string? Screen, string? Quality);
+// O que o iPhone está fazendo agora — vira o indicador de privacidade na pílula.
+public sealed record RemoteState(bool Viewing, bool Controlling, bool Listening);
 public sealed record RemoteTicketRequest(string? Screen);
 
 // Tíquete de uso único (30 s pra conectar) com um valor junto. Vários em aberto (vídeo + controle).
@@ -50,18 +52,19 @@ public sealed class OneShotTickets<T>
     }
 }
 
-// Uma sessão de vídeo e uma de controle por vez (uma nova derruba a anterior). Avisa a ilha a cada
-// mudança pra pílula mostrar o indicador; StopAll é o "Encerrar" da aba iPhone.
+// Uma sessão de cada tipo por vez — vídeo da tela, controle, microfone (uma nova derruba a anterior).
+// Avisa a ilha a cada mudança pra pílula mostrar o indicador; StopAll é o "Encerrar" da aba iPhone.
 public sealed class RemoteSessions
 {
     private readonly object _gate = new();
-    private readonly Action<bool, bool> _changed;
-    private CancellationTokenSource? _video, _input;
+    private readonly Action<RemoteState> _changed;
+    private CancellationTokenSource? _video, _input, _audio;
 
-    public RemoteSessions(Action<bool, bool> changed) => _changed = changed;
+    public RemoteSessions(Action<RemoteState> changed) => _changed = changed;
 
     public CancellationTokenSource BeginVideo(CancellationToken aborted) => Begin(ref _video, aborted);
     public CancellationTokenSource BeginInput(CancellationToken aborted) => Begin(ref _input, aborted);
+    public CancellationTokenSource BeginAudio(CancellationToken aborted) => Begin(ref _audio, aborted);
 
     private CancellationTokenSource Begin(ref CancellationTokenSource? slot, CancellationToken aborted)
     {
@@ -81,6 +84,7 @@ public sealed class RemoteSessions
         {
             if (_video == s) _video = null;
             if (_input == s) _input = null;
+            if (_audio == s) _audio = null;
         }
         s.Dispose();
         Notify();
@@ -92,20 +96,26 @@ public sealed class RemoteSessions
         lock (_gate) _video?.Cancel();
     }
 
+    public void StopAudio()
+    {
+        lock (_gate) _audio?.Cancel();
+    }
+
     public void StopAll()
     {
         lock (_gate)
         {
             _video?.Cancel();
             _input?.Cancel();
+            _audio?.Cancel();
         }
     }
 
     private void Notify()
     {
-        bool v, i;
-        lock (_gate) (v, i) = (_video is not null, _input is not null);
-        try { _changed(v, i); } catch (Exception ex) { Log.Warning(ex, "Tela remota: falha ao avisar a ilha"); }
+        RemoteState state;
+        lock (_gate) state = new(_video is not null, _input is not null, _audio is not null);
+        try { _changed(state); } catch (Exception ex) { Log.Warning(ex, "Tela remota: falha ao avisar a ilha"); }
     }
 }
 

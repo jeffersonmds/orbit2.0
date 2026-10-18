@@ -692,6 +692,93 @@ $('#scrInput').addEventListener('beforeinput', e => {
   }
 });
 
+// --- Microfone (independente da câmera) ---
+// PCM 16 bits mono pelo WebSocket, tocado com Web Audio num buffer curto (~150 ms) que se
+// re-sincroniza se atrasar. No iPhone a Web Audio obedece a chave de silêncio: audioSession
+// 'playback' (iOS 17+) faz tocar como mídia, igual a um vídeo.
+const mic = { ws: null, ctx: null, gain: null, next: 0, rate: 24000 };
+const micSay = msg => { $('#micMsg').textContent = msg || ''; $('#micMsg').classList.toggle('hidden', !msg); };
+
+async function micLoad() {
+  if (!token) return;
+  try {
+    const list = await api('/mic/devices');
+    $('#micDevice').replaceChildren(...list.map(d => Object.assign(document.createElement('option'), { value: d.id, textContent: d.name })));
+    micSay(list.length ? '' : 'Nenhum microfone no PC.');
+  } catch (e) { micSay(/403/.test(e.message) ? 'Ligue "Microfone" na aba iPhone do PC.' : e.message); }
+}
+
+function micUi(on) {
+  $('#micToggle').textContent = on ? 'Parar de ouvir' : 'Ouvir';
+  $('#tileCam').textContent = on ? 'Ouvindo agora' : 'Ver e ouvir';
+  if (!on) $('#micLevel').style.width = '0';
+}
+
+function micPlay(buf) {
+  const pcm = new Int16Array(buf), f = new Float32Array(pcm.length);
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i++) { f[i] = pcm[i] / 32768; sum += f[i] * f[i]; }
+  $('#micLevel').style.width = Math.min(100, Math.sqrt(sum / (pcm.length || 1)) * 400 * mic.gain.gain.value) + '%';
+  if (!pcm.length) return;
+  const b = mic.ctx.createBuffer(1, f.length, mic.rate);
+  b.copyToChannel(f, 0);
+  const src = mic.ctx.createBufferSource();
+  src.buffer = b;
+  src.connect(mic.gain);
+  const now = mic.ctx.currentTime;
+  if (mic.next < now + 0.03 || mic.next > now + 0.8) mic.next = now + 0.15; // começo, engasgo ou atraso acumulado
+  src.start(mic.next);
+  mic.next += b.duration;
+}
+
+function micStart() {
+  // o AudioContext tem de nascer/destravar dentro do toque (iOS), antes de qualquer await
+  if (!mic.ctx) {
+    mic.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    mic.gain = mic.ctx.createGain();
+    mic.gain.gain.value = +$('#micGain').value;
+    mic.gain.connect(mic.ctx.destination);
+  }
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  mic.ctx.resume();
+  const friendly = fn => async () => {
+    try { await fn(); }
+    catch (e) { if (/403/.test(e.message)) { micSay('Ligue "Microfone" na aba iPhone do PC.'); return; } throw e; }
+  };
+  run(friendly(async () => {
+    const sel = $('#micDevice');
+    const { ticket } = await api('/mic/open', { method: 'POST', json: { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent } });
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/api/mic/stream?ticket=${encodeURIComponent(ticket)}`);
+    ws.binaryType = 'arraybuffer';
+    ws.onmessage = e => { if (typeof e.data === 'string') mic.rate = JSON.parse(e.data).rate; else micPlay(e.data); };
+    ws.onclose = e => {
+      if (e.reason === 'autorize no PC') micSay('Autorize o microfone na tela do PC (aviso do Windows) e toque Ouvir de novo.');
+      else if (e.code === 1011) micSay('O microfone do PC não abriu (em uso por outro programa?).');
+      if (mic.ws === ws) { mic.ws = null; micUi(false); }
+    };
+    mic.ws = ws;
+    mic.next = 0;
+    micSay('');
+    micUi(true);
+  }));
+}
+
+function micStop() {
+  if (token) fetch('/api/mic/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+  if (mic.ws) { mic.ws.close(); mic.ws = null; }
+  micUi(false);
+}
+
+$('#micToggle').onclick = () => mic.ws ? micStop() : micStart();
+$('#micDevice').onchange = () => { if (mic.ws) { micStop(); micStart(); } };
+$('#micGain').oninput = e => {
+  $('#micGainVal').textContent = `${String(+e.target.value).replace('.', ',')}×`;
+  if (mic.gain) mic.gain.gain.value = +e.target.value;
+};
+// App em segundo plano: o iOS corta o áudio; solta o microfone do PC também (privacidade).
+document.addEventListener('visibilitychange', () => { if (document.hidden && mic.ws) micStop(); });
+
 // --- Páginas ---
 // Uma página por feature, escolhida pelo #hash; hash vazio/desconhecido = início (atalhos).
 let page = '';
@@ -708,6 +795,7 @@ function route() {
   if (page !== 'camera' && camStreaming) camStop(); // saiu da câmera: solta e apaga o LED
   if (page !== 'tela' && scr.live) scrStop();         // saiu da tela: encerra vídeo e controle
   if (page === 'tela' && !scr.loaded) scrLoad();
+  if (page === 'camera' && !mic.ws) micLoad();
   if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
   if (page === 'pcfiles' && token) pfLoad();
   if (page === 'link') renderLinks();

@@ -6,7 +6,8 @@ namespace Orbit.Island;
 public enum IslandMode { Repouso, Atividade, Alerta, Expandida, Oculta }
 
 // Valor maior = prioridade maior na pílula.
-// Maior valor vence na pílula. TelaRemota é indicador de privacidade: nunca fica atrás de nada.
+// Maior valor vence na pílula. TelaRemota (tela, controle e microfone pelo iPhone) é indicador de
+// privacidade: nunca fica atrás de nada.
 public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2, TelaRemota = 3 }
 
 // Evento pontual que a pílula mostra por alguns segundos. TabId = aba aberta ao clicar.

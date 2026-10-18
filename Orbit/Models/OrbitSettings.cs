@@ -53,6 +53,9 @@ public sealed class OrbitSettings
     public bool BridgeScreenEnabled { get; set; }
     public bool BridgeControlEnabled { get; set; }
 
+    // Microfone do PC no iPhone (ouvir com ou sem a câmera). Desligado por padrão.
+    public bool BridgeMicEnabled { get; set; }
+
     // Monitor da ilha (Screen.DeviceName, ex.: \\.\DISPLAY2). null = sempre o principal;
     // desconectado = principal até ele voltar.
     public string? IslandMonitor { get; set; }

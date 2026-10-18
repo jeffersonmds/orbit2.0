@@ -60,7 +60,7 @@
       </a>
       <a class="tile" href="#camera">
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>
-        <b>Câmera</b><span>Ao vivo e foto</span>
+        <b>Câmera e microfone</b><span id="tileCam">Ver e ouvir</span>
       </a>
       <a class="tile" href="#tela">
         <span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10 9l4 2-4 2z"/></svg></span>
@@ -145,7 +145,7 @@
       </div>
     </section>
 
-    <section class="page card" id="cam-card" data-page="camera" data-title="Câmera">
+    <section class="page card" id="cam-card" data-page="camera" data-title="Câmera e microfone">
       <div class="row top">
         <select id="camDevice" aria-label="Câmera"></select>
         <select id="camQuality" aria-label="Qualidade">
@@ -163,6 +163,18 @@
       </div>
       <button class="primary" id="camToggle">Ver câmera</button>
       <p class="muted hidden" id="camMsg"></p>
+
+      <!-- Microfone: independente da câmera (dá pra só ouvir) -->
+      <p class="crumb section-title">Microfone</p>
+      <select id="micDevice" class="mic-select" aria-label="Microfone"></select>
+      <div class="vol mic-vol">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5a1 1 0 0 0 1 1h3l4.4 3.6A1 1 0 0 0 14 18.3V5.7a1 1 0 0 0-1.6-.8L8 8.5H5a1 1 0 0 0-1 1z"/></svg>
+        <input id="micGain" type="range" min="1" max="6" step="0.5" value="2" aria-label="Volume do microfone">
+        <span id="micGainVal">2×</span>
+      </div>
+      <div class="mic-level"><div id="micLevel"></div></div>
+      <button class="primary" id="micToggle">Ouvir</button>
+      <p class="muted hidden" id="micMsg"></p>
     </section>
 
     <section class="page" data-page="tela" data-title="Tela do PC">

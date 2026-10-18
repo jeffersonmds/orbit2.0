@@ -26,6 +26,8 @@
                               Content="Tela" ToolTip="Permite o iPhone ver a tela do PC ao vivo"/>
                     <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding ControlEnabled}" IsEnabled="{Binding ScreenEnabled}"
                               Content="Controle" ToolTip="Permite o iPhone usar mouse e teclado (precisa de Tela)"/>
+                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding MicEnabled}"
+                              Content="Microfone" ToolTip="Permite o iPhone ouvir o microfone do PC"/>
                 </WrapPanel>
                 <!-- Sessão de tela remota ativa: quem está no PC vê e pode derrubar -->
                 <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="10" Padding="10,6" Margin="0,0,0,10"

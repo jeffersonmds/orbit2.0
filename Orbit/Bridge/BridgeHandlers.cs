@@ -49,7 +49,13 @@ public sealed class BridgeHandlers
     public Func<IReadOnlyList<ScreenInfo>> Screens { get; init; } = () => Array.Empty<ScreenInfo>();
     public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
     public Action<RemoteCommand, System.Drawing.Rectangle> RemoteInput { get; init; } = (_, _) => { };
-    // (vendo, controlando) — pro indicador na pílula. Chamado de thread do Kestrel.
-    public Action<bool, bool> RemoteChanged { get; init; } = (_, _) => { };
+    // Microfone (permissão própria). OpenMic devolve a taxa do PCM e quem para a captura.
+    public Func<bool> MicEnabled { get; init; } = () => false;
+    public Func<IReadOnlyList<MicDevice>> MicDevices { get; init; } = () => Array.Empty<MicDevice>();
+    public Func<string?, Action<byte[]>, (int Rate, IDisposable Stop)> OpenMic { get; init; } =
+        (_, _) => throw new InvalidOperationException("Sem microfone");
+
+    // Vendo/controlando/ouvindo — pro indicador na pílula. Chamado de thread do Kestrel.
+    public Action<RemoteState> RemoteChanged { get; init; } = _ => { };
     public Func<IReadOnlyCollection<string>> ValidTokens { get; init; } = () => Array.Empty<string>();
 }

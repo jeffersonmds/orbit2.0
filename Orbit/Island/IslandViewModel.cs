@@ -194,10 +194,13 @@ public sealed partial class IslandViewModel : ObservableObject
             Screens = ScreenCapture.Screens,
             CaptureScreen = ScreenCapture.Capture,
             RemoteInput = Orbit.Services.RemoteInput.Execute,
-            RemoteChanged = (viewing, controlling) => ui.BeginInvoke(() =>
+            MicEnabled = () => _settings.BridgeMicEnabled,
+            MicDevices = MicCapture.Devices,
+            OpenMic = MicCapture.Open,
+            RemoteChanged = state => ui.BeginInvoke(() =>
             {
-                SetActivity(ActivityKind.TelaRemota, RemoteActivity(viewing, controlling));
-                IPhone.SetRemote(viewing, controlling);
+                SetActivity(ActivityKind.TelaRemota, RemoteActivity(state));
+                IPhone.SetRemote(state);
             }),
             ValidTokens = ValidTokenNames,
             Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone", e.OpenPath), false)),
@@ -265,8 +268,18 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public static bool ShouldToast(bool fullscreen, bool preferToast) => fullscreen && preferToast;
 
-    public static string? RemoteActivity(bool viewing, bool controlling) =>
-        controlling ? "iPhone controlando o PC" : viewing ? "Tela no iPhone" : null;
+    // Indicador de privacidade na pílula: tudo que o iPhone está usando agora.
+    public static string? RemoteActivity(RemoteState s)
+    {
+        var screen = s.Controlling ? "iPhone controlando o PC" : s.Viewing ? "Tela no iPhone" : null;
+        return (screen, s.Listening) switch
+        {
+            (null, false) => null,
+            (null, true) => "Microfone no iPhone",
+            (_, false) => screen,
+            _ => screen + " · microfone",
+        };
+    }
 
     private IReadOnlyCollection<string> ValidTokenNames() => _tokens.List().Select(t => t.Name).ToHashSet();
 

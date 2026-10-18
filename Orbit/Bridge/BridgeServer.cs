@@ -43,7 +43,7 @@ public sealed class BridgeServer : IAsyncDisposable
 
     private RemoteSessions? _remote;
 
-    // "Encerrar" da aba iPhone: derruba vídeo e controle da tela remota.
+    // "Encerrar" da aba iPhone: derruba tela, controle e microfone.
     public void StopRemote() => _remote?.StopAll();
 
     // port 0 = porta efêmera (testes).
@@ -94,7 +94,8 @@ public sealed class BridgeServer : IAsyncDisposable
                 && (ctx.Request.Path.Equals("/api/camera/stream", StringComparison.OrdinalIgnoreCase)
                     || ctx.Request.Path.Equals("/api/pcfiles/download", StringComparison.OrdinalIgnoreCase)
                     || ctx.Request.Path.Equals("/api/screen/stream", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/remote/input", StringComparison.OrdinalIgnoreCase));
+                    || ctx.Request.Path.Equals("/api/remote/input", StringComparison.OrdinalIgnoreCase)
+                    || ctx.Request.Path.Equals("/api/mic/stream", StringComparison.OrdinalIgnoreCase));
             if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
                 var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
@@ -165,6 +166,8 @@ public sealed class BridgeServer : IAsyncDisposable
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/remote") && !(h.ScreenEnabled() && h.ControlEnabled()))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/mic") && !h.MicEnabled())
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             return await next(ctx);
         });
         MapApi(api, h, camera, tickets);
@@ -172,6 +175,7 @@ public sealed class BridgeServer : IAsyncDisposable
         if (h.Push is { } push) MapPush(api, h, push);
         _remote = new RemoteSessions(h.RemoteChanged);
         RemoteScreen.Map(api, h, _remote);
+        MicStream.Map(api, h, _remote);
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }

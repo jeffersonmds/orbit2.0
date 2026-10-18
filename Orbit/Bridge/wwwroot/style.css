@@ -179,6 +179,15 @@ body.immersive { overflow: hidden; }
 .scr-input { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 /* atalho que sobra sozinho na última linha da grade ocupa a linha toda */
 .tiles .tile:last-of-type:nth-of-type(odd) { grid-column: 1 / -1; min-height: 0; }
+/* Microfone (página da câmera) */
+.mic-select { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid #2a2a2e; border-radius: 12px;
+  padding: 12px; font: inherit; min-height: 44px; }
+.mic-vol { margin-top: 12px; }
+#micGain { -webkit-appearance: none; appearance: none; flex: 1; height: 28px; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; }
+#micGain::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #2a2a2e; }
+#micGain::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%; background: var(--ink); }
+.mic-level { height: 6px; margin-top: 10px; border-radius: 3px; background: var(--bg); overflow: hidden; }
+.mic-level div { height: 100%; width: 0; background: #5ccf8a; transition: width .08s linear; }
 .hidden { display: none !important; }
 
 /* --- Páginas em tela cheia: cada página ocupa a altura e o conteúdo principal estica --- */

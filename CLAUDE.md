@@ -74,6 +74,9 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   `2026-10-17-tela-remota-design.md`): permissões Tela e Controle; vídeo MJPEG e WebSocket de entrada
   por tíquete; `RemoteInput.Parse` recusa o que não conhece; sessão ativa = atividade `TelaRemota`
   (prioridade máxima) na pílula + "Encerrar" na aba iPhone. Testes nunca executam `SendInput`.
+  **Microfone** (`Bridge/MicStream`, `Services/MicCapture`): permissão própria, independente da câmera;
+  WebSocket por tíquete com PCM 16 bits mono ~24 kHz, Web Audio no iPhone. Na 1ª vez o Windows pede
+  consentimento NA TELA DO PC e abrir trava até responder: `ConsentTimeout` avisa iPhone e ilha.
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça
