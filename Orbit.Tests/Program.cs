@@ -78,6 +78,7 @@ public static class Program
         OutboxTests();
         KeyboardTests();
         SelfUpdateTests();
+        IslandExtrasTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -237,6 +238,65 @@ public static class Program
         }
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
+    }
+
+    // Barrinhas da música, câmera/microfone em uso e conta-gotas.
+    private static void IslandExtrasTests()
+    {
+        var silencio = AudioMeter.Bars(0, 1.0);
+        Check("barras: silêncio deixa só o tracinho", silencio.Length == 4 && silencio.All(h => Math.Abs(h - 0.15) < 1e-9));
+        var alto = AudioMeter.Bars(1, 1.0);
+        Check("barras: som alto sobe e fica em 0..1", alto.All(h => h >= 0.15 && h <= 1) && alto.Max() > 0.6);
+        Check("barras: cada barra numa altura", alto.Distinct().Count() > 1);
+
+        var m = new IslandMachine();
+        Check("pílula: sem atividade", m.CurrentActivity is null);
+        m.SetActivity(ActivityKind.Midia, "música");
+        m.SetActivity(ActivityKind.CameraMic, "Discord · microfone");
+        Check("pílula: câmera/microfone passa na frente da música", m.CurrentActivity == ActivityKind.CameraMic && m.ActivityText == "Discord · microfone");
+        m.SetActivity(ActivityKind.TelaRemota, "Tela no iPhone");
+        Check("pílula: sessão do iPhone continua no topo", m.CurrentActivity == ActivityKind.TelaRemota);
+
+        var t = new DateTime(2026, 10, 18, 20, 0, 0).ToFileTime();
+        var raw = new[]
+        {
+            ("webcam", @"C:\Apps\Teams.exe", t, 0L),
+            ("microphone", @"C:\Apps\Teams.exe", t, 0L),
+            ("webcam", @"C:\Apps\Velho.exe", t, t + 1),          // já terminou
+            ("webcam", @"C:\Orbit\Orbit.exe", t, 0L),             // o próprio Orbit
+            ("webcam", "Microsoft.WindowsCamera_8wekyb3d8bbwe", t, 0L),
+        };
+        var ativos = CameraMicWatcher.Active(raw, @"C:\Orbit\Orbit.exe");
+        Check("câmera/mic: só o que está em uso, sem o Orbit", ativos.Count == 2 && ativos.Any(u => u.App == "Teams" && u.Camera && u.Mic)
+            && ativos.Any(u => u.App == "WindowsCamera" && u.Camera && !u.Mic));
+        var juntos = CameraMicWatcher.Merge(new[] { new CameraMicUse("Discord", true, false, new DateTime(2026, 1, 1, 10, 0, 0)) },
+            new[] { new CameraMicUse("Discord", false, true, new DateTime(2026, 1, 1, 9, 0, 0)) });
+        Check("câmera/mic: mesmo app vira uma linha com os dois", juntos.Count == 1 && juntos[0].Camera && juntos[0].Mic
+            && juntos[0].Since == new DateTime(2026, 1, 1, 9, 0, 0));
+        Check("câmera/mic: nome de pacote da loja", CameraMicWatcher.FriendlyName("SpotifyAB.SpotifyMusic_zpdnekdrzrea0") == "SpotifyMusic");
+        Check("câmera/mic: exe sumido usa o nome do arquivo", CameraMicWatcher.FriendlyName(@"C:\nao\existe\Discord.exe") == "Discord");
+        var now = new DateTime(2026, 10, 18, 20, 12, 30);
+        Check("câmera/mic: texto de um app com tempo", CameraMicWatcher.Describe(new[] { new CameraMicUse("Teams", true, true, now.AddMinutes(-12)) }, now)
+            == "Teams · câmera e microfone · 12 min");
+        Check("câmera/mic: texto de vários", CameraMicWatcher.Describe(new[]
+            {
+                new CameraMicUse("Discord", false, true, now), new CameraMicUse("Brave", false, true, now),
+            }, now) == "Microfone: Discord, Brave");
+        Check("câmera/mic: nada em uso some da pílula", CameraMicWatcher.Describe(Array.Empty<CameraMicUse>(), now) is null);
+        Check("câmera/mic: desenho da pílula com tempo", CameraMicWatcher.Display(new[] { new CameraMicUse("Zoom Meetings", false, true, now.AddMinutes(-12)) }, now)
+            == new CameraMicDisplay("Zoom Meetings", false, true, "12 min"));
+        Check("câmera/mic: desenho junta apps, ícones e passa de 1 h", CameraMicWatcher.Display(new[]
+            {
+                new CameraMicUse("Teams", true, false, now.AddMinutes(-75)), new CameraMicUse("Discord", false, true, now),
+            }, now) == new CameraMicDisplay("Teams, Discord", true, true, "1 h 15"));
+        Check("câmera/mic: recém-começado diz agora", CameraMicWatcher.Display(new[] { new CameraMicUse("X", false, true, now) }, now)!.Time == "agora");
+
+        Check("conta-gotas: hex", Orbit.Island.FrozenScreen.Hex(System.Windows.Media.Color.FromRgb(30, 144, 255)) == "#1E90FF");
+        var area = new System.Drawing.Rectangle(-3840, 0, 6400, 2274);
+        Check("desenho: copia só o monitor (à esquerda)", Orbit.Island.DrawWindow.CropTo(new System.Drawing.Rectangle(-3840, 114, 3840, 2160), area)
+            == new System.Drawing.Rectangle(0, 114, 3840, 2160));
+        Check("desenho: copia só o monitor (principal)", Orbit.Island.DrawWindow.CropTo(new System.Drawing.Rectangle(0, 0, 2560, 1600), area)
+            == new System.Drawing.Rectangle(3840, 0, 2560, 1600));
     }
 
     // Autoatualização: versão gravada no build, situação em relação ao código e o script de troca.

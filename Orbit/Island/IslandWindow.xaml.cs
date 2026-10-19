@@ -21,7 +21,14 @@ public partial class IslandWindow : Window
     private readonly DispatcherTimer _leave = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _peek = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(2) };
-    private GlobalHotKey? _hotKey, _sendHotKey;
+    private GlobalHotKey? _hotKey, _sendHotKey, _colorHotKey, _drawHotKey;
+    private Window? _overlay; // conta-gotas ou desenho aberto (um por vez)
+
+    // Barrinhas da música: 20 quadros/s, e só enquanto aparecem (contrato de leveza).
+    private readonly AudioMeter _meter = new();
+    private readonly DispatcherTimer _bars = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private readonly System.Diagnostics.Stopwatch _barsClock = System.Diagnostics.Stopwatch.StartNew();
+    private double _barsLevel;
     private FullscreenWatcher? _fullscreen;
     private ClipboardWatcher? _clipboard;
     private bool _userHidden;
@@ -47,6 +54,7 @@ public partial class IslandWindow : Window
         _hover.Tick += (_, _) => { _hover.Stop(); _vm.Expand(); };
         _leave.Tick += (_, _) => { _leave.Stop(); _vm.Collapse(); };
         _peek.Tick += (_, _) => { _peek.Stop(); _vm.PeekExpired(); };
+        _bars.Tick += (_, _) => UpdateBars();
         // Parada, a ilha quase não aloca, então o GC nunca roda sozinho e o que as abas carregaram
         // (views, capas, contadores, JSON) fica retido. Uma coleta agressiva após recolher devolve
         // isso ao Windows (~100 MB → de volta perto do repouso). Custo: alguns ms, uma vez.
@@ -59,6 +67,8 @@ public partial class IslandWindow : Window
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(IslandViewModel.Mode)) OnModeChanged();
+            else if (e.PropertyName == nameof(IslandViewModel.ShowAudioBars)) OnAudioBarsChanged();
+            else if (e.PropertyName == nameof(IslandViewModel.ShowCameraMic)) OnCameraMicChanged();
             // Próximo alerta da fila: o modo continua Alerta, então reinicia o timer aqui.
             else if (e.PropertyName == nameof(IslandViewModel.Peek) && _vm.Mode == IslandMode.Alerta && !_userHidden)
             {
@@ -138,6 +148,28 @@ public partial class IslandWindow : Window
             _vm.SendClipboardToIPhone();
         };
 
+        // Ctrl+Alt+C conta-gotas, Ctrl+Alt+D desenhar: tela congelada por cima de tudo.
+        _colorHotKey = new GlobalHotKey(hwnd, GlobalHotKey.VK_C);
+        _colorHotKey.Pressed += () => OpenOverlay(() =>
+        {
+            var w = new ColorPickerWindow();
+            w.Closed += (_, _) =>
+            {
+                if (w.Picked is not { } c) return;
+                var hex = FrozenScreen.Hex(c);
+                Orbit.Services.ClipboardReader.SetText(hex);
+                _vm.RaisePeek(new Peek($"Cor copiada · {hex}", $"RGB {c.R}, {c.G}, {c.B}", "clipboard"));
+            };
+            return w;
+        });
+        _drawHotKey = new GlobalHotKey(hwnd, GlobalHotKey.VK_D);
+        _drawHotKey.Pressed += () => OpenOverlay(() =>
+        {
+            var w = new DrawWindow();
+            w.SendToIPhone += png => _vm.SendFilesToIPhone(new[] { png }, $"desenho-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+            return w;
+        });
+
         _fullscreen = new FullscreenWatcher(hwnd);
         _fullscreen.Changed += on => _vm.SetFullscreen(on);
 
@@ -166,6 +198,10 @@ public partial class IslandWindow : Window
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: vaza se não soltar
             _hotKey?.Dispose();
             _sendHotKey?.Dispose();
+            _colorHotKey?.Dispose();
+            _drawHotKey?.Dispose();
+            _bars.Stop();
+            _meter.Dispose();
             _fullscreen?.Dispose();
             _clipboard?.Dispose();
             if (_foregroundHookHandle != IntPtr.Zero) UnhookWinEvent(_foregroundHookHandle);
@@ -244,6 +280,61 @@ public partial class IslandWindow : Window
     {
         _vm.Expand();
         Activate();
+    }
+
+    // Abre o conta-gotas/desenho (um por vez). A ilha recolhe antes da foto da tela, pra não sair nela.
+    private async void OpenOverlay(Func<Window> create)
+    {
+        // Atalho de novo com o conta-gotas/desenho aberto = fechar (saída garantida: o atalho é global,
+        // funciona mesmo se a janela perder o foco do teclado).
+        if (_overlay is not null) { _overlay.Close(); return; }
+        bool wasOpen = _vm.Mode == IslandMode.Expandida;
+        _vm.Collapse();
+        if (wasOpen) await System.Threading.Tasks.Task.Delay(400); // espera a animação de recolher
+        try
+        {
+            _overlay = create();
+            _overlay.Closed += (_, _) =>
+            {
+                _overlay = null;
+                // a foto da área de trabalho (dezenas de MB) só volta pro Windows com uma coleta
+                Dispatcher.BeginInvoke(() => GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true),
+                    DispatcherPriority.ApplicationIdle);
+            };
+            _overlay.Show();
+        }
+        catch (Exception ex)
+        {
+            _overlay = null;
+            Log.Warning(ex, "Não abriu o conta-gotas/desenho");
+        }
+    }
+
+    // Bolinha do indicador pulsa devagar (como no iPhone); a animação só roda com ele visível.
+    private void OnCameraMicChanged()
+    {
+        if (_vm.ShowCameraMic)
+            CameraMicDot.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0.35, TimeSpan.FromSeconds(1.1))
+            { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+        else
+            CameraMicDot.BeginAnimation(OpacityProperty, null);
+    }
+
+    private void OnAudioBarsChanged()
+    {
+        bool on = _vm.ShowAudioBars;
+        AudioBars.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (on) _bars.Start(); else _bars.Stop();
+    }
+
+    // Sobe rápido e desce devagar (como um VU), depois distribui nas barras com fases diferentes.
+    private void UpdateBars()
+    {
+        var peak = _meter.Peak();
+        _barsLevel = peak > _barsLevel ? peak : _barsLevel * 0.82 + peak * 0.18;
+        var heights = AudioMeter.Bars(_barsLevel, _barsClock.Elapsed.TotalSeconds, AudioBars.Children.Count);
+        for (int i = 0; i < heights.Length; i++)
+            ((FrameworkElement)AudioBars.Children[i]).Height = 2 + heights[i] * 12;
     }
 
     private void UpdateVisibility() =>

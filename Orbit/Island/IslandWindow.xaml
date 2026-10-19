@@ -67,10 +67,46 @@
             PreviewDragLeave="OnPillDragLeave" PreviewDrop="OnPillDrop">
         <Grid>
             <!-- As camadas são mostradas pelo code-behind ao fim da animação. -->
-            <TextBlock x:Name="ActivityLayer" Visibility="Collapsed"
-                       Text="{Binding ActivityText}" FontSize="12" FontWeight="SemiBold"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" Margin="14,0"/>
+            <Grid x:Name="ActivityLayer" Visibility="Collapsed">
+                <TextBlock Text="{Binding ActivityText}" FontSize="12" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Margin="14,0,38,0"
+                           Visibility="{Binding ShowCameraMic, Converter={StaticResource NotBoolToVis}}"/>
+                <!-- Câmera/microfone em uso: as bolinhas do iPhone (verde = câmera, laranja = microfone) -->
+                <DockPanel Margin="14,0" LastChildFill="True"
+                           Visibility="{Binding ShowCameraMic, Converter={StaticResource BoolToVis}}">
+                    <Ellipse x:Name="CameraMicDot" DockPanel.Dock="Left" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,9,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="#FF9F0A"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CameraMicView.Camera}" Value="True">
+                                        <Setter Property="Fill" Value="#30D158"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding CameraMicView.Time}" FontSize="11" Foreground="{StaticResource InkLo}"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBlock DockPanel.Dock="Right" Text="&#xE714;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="#30D158"
+                               VerticalAlignment="Center" Margin="6,0,0,0"
+                               Visibility="{Binding CameraMicView.Camera, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock DockPanel.Dock="Right" Text="&#xE720;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="#FF9F0A"
+                               VerticalAlignment="Center" Margin="6,0,0,0"
+                               Visibility="{Binding CameraMicView.Mic, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="{Binding CameraMicView.App}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <!-- Barrinhas no ritmo da música (só com a mídia como atividade da vez) -->
+                <StackPanel x:Name="AudioBars" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Margin="0,0,14,0" Visibility="Collapsed">
+                    <Rectangle Width="3" Height="4" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" Fill="{DynamicResource AccentBrush}"/>
+                    <Rectangle Width="3" Height="4" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" Fill="{DynamicResource AccentBrush}"/>
+                    <Rectangle Width="3" Height="4" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" Fill="{DynamicResource AccentBrush}"/>
+                    <Rectangle Width="3" Height="4" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" Fill="{DynamicResource AccentBrush}"/>
+                </StackPanel>
+            </Grid>
 
             <StackPanel x:Name="PeekLayer" Visibility="Collapsed" Margin="18,0" VerticalAlignment="Center">
                 <TextBlock FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis">

@@ -45,7 +45,11 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **Serviços de fundo** (rodam com a ilha recolhida, por evento) alimentam a pílula via
   `IslandViewModel.SetActivity`: `NowPlayingViewModel` (SMTC), `PomodoroViewModel` (timer só
   rodando) e `ClaudeHookServer` (pipe `Orbit2ClaudeHooks`, distinto do 1.0; o Claude Code chama
-  `Orbit.exe --claude-hook`). Prioridade na pílula: Claude aguardando > Pomodoro > mídia.
+  `Orbit.exe --claude-hook`). Prioridade na pílula (`ActivityKind`, maior vence): tela remota do iPhone >
+  câmera/microfone em uso > atualização > Claude aguardando > Pomodoro > mídia.
+  `CameraMicWatcher`: microfone pelas sessões de captura do serviço de áudio (qualquer app); câmera pelo
+  registro ConsentStore (nesta máquina só anota apps assinados). Mídia tocando mostra barrinhas (`AudioMeter`,
+  timer só com elas visíveis).
 - **Clipboard** (`Tabs/Clips/`, namespace `Orbit.Tabs.Clips` — nunca `...Clipboard`, que esconderia
   `System.Windows.Clipboard`): `ClipboardWatcher` (WM_CLIPBOARDUPDATE) chama
   `ClipsViewModel.CaptureAsync`; histórico em `clipboard.json` + `clipboard-img\` (chave de texto =
@@ -92,6 +96,9 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   de Ajustes; recursos `AccentBrush`/`AccentSoftBrush` — sempre `DynamicResource`.
 - **Settings:** `%AppData%\Orbit2\settings.json`; `Load()` nunca lança, `Save()` engole I/O.
   Logs Serilog em `%AppData%\Orbit2\logs\`.
+- **Tela congelada** (`Island/FrozenScreen`): foto de todos os monitores numa janela por cima de tudo, base do
+  conta-gotas (Ctrl+Alt+C) e do desenho (Ctrl+Alt+D). Regras que custaram um travamento: a janela some e fecha
+  ANTES de entregar imagem (clipboard pode demorar); copiar/enviar só o monitor do desenho; o mesmo atalho fecha.
 - Hotkeys globais: Ctrl+Alt+I manda o clipboard pro iPhone (arquivos do Explorer vão como os originais;
   conteúdo privado nunca sai). Ctrl+Alt+O — a mesma do 1.0 (o 2.0 o substitui; com o 1.0 aberto o registro
   falha e vai pro log). Ignorada com a ilha Oculta (tela cheia) ou escondida pela bandeja.

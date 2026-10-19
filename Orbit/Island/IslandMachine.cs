@@ -8,7 +8,8 @@ public enum IslandMode { Repouso, Atividade, Alerta, Expandida, Oculta }
 // Valor maior = prioridade maior na pílula.
 // Maior valor vence na pílula. TelaRemota (tela, controle e microfone pelo iPhone) é indicador de
 // privacidade: nunca fica atrás de nada.
-public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2, Atualizacao = 3, TelaRemota = 4 }
+// CameraMic: algum app do PC usando câmera/microfone (indicador de privacidade, logo abaixo do iPhone).
+public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2, Atualizacao = 3, CameraMic = 4, TelaRemota = 5 }
 
 // Evento pontual que a pílula mostra por alguns segundos. TabId = aba aberta ao clicar.
 // Classe (não record): dois alertas iguais seguidos são eventos distintos — igualdade por referência.
@@ -47,6 +48,10 @@ public sealed class IslandMachine
 
     public string? ActivityText =>
         _activities.Count == 0 ? null : _activities.MaxBy(kv => kv.Key).Value;
+
+    // Qual atividade está na pílula agora (a de maior prioridade), ou null.
+    public ActivityKind? CurrentActivity =>
+        _activities.Count == 0 ? null : _activities.MaxBy(kv => kv.Key).Key;
 
     public void Expand()
     {

@@ -5,14 +5,14 @@ using Serilog;
 
 namespace Orbit.Services;
 
-// Registra um Ctrl+Alt+<tecla> global e dispara Pressed. Usos: Ctrl+Alt+O (abrir a ilha) e
-// Ctrl+Alt+I (mandar o clipboard pro iPhone).
+// Registra um Ctrl+Alt+<tecla> global e dispara Pressed. Usos: Ctrl+Alt+O (abrir a ilha),
+// Ctrl+Alt+I (mandar a seleção pro iPhone), Ctrl+Alt+C (conta-gotas) e Ctrl+Alt+D (desenhar na tela).
 // ponytail: atalhos fixos; viram configuração em Ajustes se alguém precisar trocar.
 public sealed class GlobalHotKey : IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
     private const uint MOD_ALT = 0x0001, MOD_CONTROL = 0x0002, MOD_NOREPEAT = 0x4000;
-    public const uint VK_O = 0x4F, VK_I = 0x49;
+    public const uint VK_O = 0x4F, VK_I = 0x49, VK_C = 0x43, VK_D = 0x44;
 
     private readonly IntPtr _hwnd;
     private readonly int _id;

@@ -46,6 +46,10 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly TokenStore _tokens = new(TokenStore.FilePath);
     private readonly WebPush _push = new(WebPush.KeyPath, WebPush.SubsPath);
     private readonly Outbox _outbox = new(Outbox.DefaultDir);
+    private readonly CameraMicWatcher _cameraMic = new();
+    private IReadOnlyList<CameraMicUse> _cameraMicUses = Array.Empty<CameraMicUse>();
+    // só pra atualizar o "· 12 min" enquanto algo está em uso
+    private readonly System.Windows.Threading.DispatcherTimer _cameraMicClock = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly System.Threading.CancellationTokenSource _sendToCts = new();
     private readonly ClaudeHookServer _claudeServer = new();
     private readonly List<TabViewModel> _allTabs = new();
@@ -58,6 +62,11 @@ public sealed partial class IslandViewModel : ObservableObject
     [ObservableProperty] private IslandMode _mode = IslandMode.Repouso;
     [ObservableProperty] private string _activityText = "";
     [ObservableProperty] private Peek? _peek;
+    // Barrinhas no ritmo do som: só com a pílula em Atividade e a música como atividade da vez.
+    [ObservableProperty] private bool _showAudioBars;
+    // Câmera/microfone em uso: a pílula troca o texto pelo desenho próprio (bolinha, nome, ícones, tempo).
+    [ObservableProperty] private bool _showCameraMic;
+    [ObservableProperty] private CameraMicDisplay? _cameraMicView;
 
     // Monitor da ilha (Ajustes). A janela escuta MonitorChanged e se reposiciona.
     public string? MonitorDevice => _settings.IslandMonitor;
@@ -125,6 +134,15 @@ public sealed partial class IslandViewModel : ObservableObject
         _ = IPhone.StartIfEnabledAsync();
         Register(Notas);
         _ = AnnounceUpdateAsync();
+        // Quem está usando câmera/microfone: o watcher avisa (thread própria) e a pílula mostra.
+        _cameraMicClock.Tick += (_, _) => ShowCameraMicActivity();
+        _cameraMic.Changed += uses => Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            _cameraMicUses = uses;
+            if (uses.Count > 0) _cameraMicClock.Start(); else _cameraMicClock.Stop();
+            ShowCameraMicActivity();
+        });
+        _cameraMic.Start();
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
@@ -385,6 +403,12 @@ public sealed partial class IslandViewModel : ObservableObject
 
     private static bool IsLink(string t) => ClipHistory.ClassifyText(t) == ClipKind.Link;
 
+    private void ShowCameraMicActivity()
+    {
+        CameraMicView = CameraMicWatcher.Display(_cameraMicUses, DateTime.Now);
+        SetActivity(ActivityKind.CameraMic, CameraMicWatcher.Describe(_cameraMicUses, DateTime.Now));
+    }
+
     // Ao abrir: resultado da última troca (se foi agora) ou "tem versão nova no código".
     private async Task AnnounceUpdateAsync()
     {
@@ -475,6 +499,8 @@ public sealed partial class IslandViewModel : ObservableObject
         var before = Mode;
         ActivityText = _machine.ActivityText ?? "";
         Peek = _machine.CurrentPeek;
+        ShowAudioBars = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Midia;
+        ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);
         if (before == IslandMode.Expandida && Mode != IslandMode.Expandida) SafeSetActive(SelectedTab, false);
