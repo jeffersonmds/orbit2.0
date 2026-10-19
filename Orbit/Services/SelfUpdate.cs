@@ -75,16 +75,20 @@ public static class SelfUpdate
         var leaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(install));
         return $$"""
             $ErrorActionPreference = 'Stop'
+            # Fora da pasta do Orbit: diretório atual dentro dela impede renomeá-la ("em uso").
+            Set-Location -LiteralPath $env:TEMP; [Environment]::CurrentDirectory = $env:TEMP  # o 2º muda a pasta do processo pro Windows
             $install = {{Q(install)}}; $staging = {{Q(staging)}}; $log = {{Q(log)}}; $leaf = {{Q(leaf)}}
             $exe = Join-Path $install 'Orbit.exe'; $new = "$install.new"; $old = "$install.old"
             function L($m) { Add-Content -Encoding UTF8 $log ("{0:yyyy-MM-dd HH:mm:ss} $m" -f (Get-Date)) }
+            # Antivírus examinando os arquivos novos segura a pasta por instantes: tenta por até 10 s.
+            function Retry([scriptblock]$a) { for ($i = 0; $i -lt 20; $i++) { try { & $a; return } catch { Start-Sleep -Milliseconds 500 } }; & $a }
             try {
               Wait-Process -Id {{pid}} -Timeout 30 -ErrorAction SilentlyContinue
               Remove-Item $new, $old -Recurse -Force -ErrorAction SilentlyContinue
               Copy-Item $staging $new -Recurse
               Get-ChildItem $install -Filter 'unins*' | Copy-Item -Destination $new   # desinstalador do Inno
-              Rename-Item $install "$leaf.old"
-              Rename-Item $new $leaf
+              Retry { Rename-Item $install "$leaf.old" }
+              Retry { Rename-Item $new $leaf }
               $p = Start-Process $exe -PassThru
               Start-Sleep 8
               if ($p.HasExited) { throw "a versão nova fechou sozinha (código $($p.ExitCode))" }
@@ -92,7 +96,8 @@ public static class SelfUpdate
               L 'atualizado'
             } catch {
               L "falhou: $_ — voltando pra versão anterior"
-              if (Test-Path $old) { Remove-Item $install -Recurse -Force -ErrorAction SilentlyContinue; Rename-Item $old $leaf }
+              if (Test-Path $old) { Remove-Item $install -Recurse -Force -ErrorAction SilentlyContinue; Retry { Rename-Item $old $leaf } }
+              Remove-Item $new -Recurse -Force -ErrorAction SilentlyContinue
               Start-Process $exe
             }
             """;
@@ -106,7 +111,7 @@ public static class SelfUpdate
         var script = Path.Combine(LocalDir, "trocar.ps1");
         File.WriteAllText(script, SwapScript(Environment.ProcessId, install, staging, Path.Combine(LocalDir, "update.log")), new System.Text.UTF8Encoding(true));
         Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{script}\"")
-        { UseShellExecute = false, CreateNoWindow = true });
+        { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = LocalDir }); // nunca a pasta do Orbit
         Log.Information("Autoatualização: troca agendada de {Pasta}", install);
     }
 
