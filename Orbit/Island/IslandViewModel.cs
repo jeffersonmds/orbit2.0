@@ -47,6 +47,11 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly WebPush _push = new(WebPush.KeyPath, WebPush.SubsPath);
     private readonly Outbox _outbox = new(Outbox.DefaultDir);
     private readonly CameraMicWatcher _cameraMic = new();
+    private readonly SystemSignals _signals = new();
+    private readonly ScreenshotWatcher _screenshots = new();
+    private readonly RainAlert _rain = new();
+    private readonly System.Windows.Threading.DispatcherTimer _rainTimer = new() { Interval = TimeSpan.FromMinutes(20) };
+    private LocationResult? _rainLocation;
     private IReadOnlyList<CameraMicUse> _cameraMicUses = Array.Empty<CameraMicUse>();
     // só pra atualizar o "· 12 min" enquanto algo está em uso
     private readonly System.Windows.Threading.DispatcherTimer _cameraMicClock = new() { Interval = TimeSpan.FromSeconds(30) };
@@ -75,6 +80,10 @@ public sealed partial class IslandViewModel : ObservableObject
     // Autoatualização: a janela fecha o app (sem perguntar) quando o script de troca já foi disparado.
     public event Action? ExitForUpdate;
     private bool _updating;
+    private ClaudeViewModel _claude = null!;
+
+    // A janela avisa toda troca de primeiro plano (pid do dono): sessões do Claude ali contam como vistas.
+    public void OnForegroundProcess(int pid) => _claude.OnForeground(pid);
 
     public IslandViewModel(OrbitSettings settings)
     {
@@ -102,7 +111,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new StatsViewModel());
         Register(new MercadoViewModel(_api, settings));
         Register(new NoticiasViewModel(_api, settings));
-        var claude = new ClaudeViewModel();
+        var claude = _claude = new ClaudeViewModel();
         Register(claude);
         claude.PropertyChanged += (_, e) =>
         {
@@ -143,6 +152,21 @@ public sealed partial class IslandViewModel : ObservableObject
             ShowCameraMicActivity();
         });
         _cameraMic.Start();
+        // Eventos do sistema: alerta curto na pílula (não vai pro iPhone nem vira toast em tela cheia).
+        _signals.Raised += sig => Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_settings.SystemSignalsEnabled) RaisePeek(SignalPeek(sig));
+        });
+        _signals.Start();
+        _screenshots.Captured += path => Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_settings.ScreenshotOfferEnabled) RaisePeek(ScreenshotPeek(path, _settings.BridgeEnabled));
+        });
+        _screenshots.Start();
+        // "Vai chover": a cada 20 min (1ª checagem 1 min depois de abrir, pra não disputar o começo).
+        _rainTimer.Tick += async (_, _) => { _rainTimer.Interval = TimeSpan.FromMinutes(20); await CheckRainAsync(); };
+        _rainTimer.Interval = TimeSpan.FromMinutes(1);
+        _rainTimer.Start();
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
@@ -455,6 +479,36 @@ public sealed partial class IslandViewModel : ObservableObject
             SetActivity(ActivityKind.Atualizacao, null);
         }
     }
+
+    private async Task CheckRainAsync()
+    {
+        if (!_settings.RainAlertEnabled) return;
+        _rainLocation ??= await _api.GetLocationAsync();
+        if (_rainLocation is null || await _api.GetRainAsync(_rainLocation.Lat, _rainLocation.Lon) is not { } f) return;
+        if (_rain.Next(f) is { } minutes)
+            Notify(new Peek(RainAlert.Text(minutes), _rainLocation.City, "hoje"), false); // Notify: vai pro iPhone também
+    }
+
+    // Print novo: 6 s com "iPhone" (se a ponte estiver ligada) e "Abrir". Print seguido substitui o anterior.
+    public Peek ScreenshotPeek(string path, bool bridge)
+    {
+        var actions = new List<PeekAction>();
+        if (bridge) actions.Add(new PeekAction("iPhone", () => SendFilesToIPhone(new[] { path })));
+        actions.Add(new PeekAction("Abrir", () =>
+        {
+            try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
+            catch (Exception ex) { Log.Warning(ex, "Não abri o print"); }
+        }));
+        return new Peek("Print salvo", Path.GetFileName(path), null) { Key = "print", Duration = TimeSpan.FromSeconds(6), Actions = actions };
+    }
+
+    // Volume some rápido (1,5 s); os outros ficam 2,5 s. A mesma chave substitui o alerta anterior.
+    public static Peek SignalPeek(SystemSignal s) => new(s.Title, s.Detail, null)
+    {
+        Key = "sinal:" + s.Kind,
+        Duration = TimeSpan.FromSeconds(s.Kind == SignalKind.Volume ? 1.5 : 2.5),
+        Level = s.Level,
+    };
 
     public static string? RemoteActivity(RemoteState s)
     {

@@ -36,6 +36,58 @@ public sealed partial class ControlesViewModel : TabViewModel
     [ObservableProperty] private bool _showMixer;
     [ObservableProperty] private string? _mixerStatus;
 
+    // Compartilhar o Wi-Fi por QR (painel por cima dos controles).
+    [ObservableProperty] private bool _showWifiQr;
+    [ObservableProperty] private System.Windows.Media.Imaging.BitmapSource? _wifiQr;
+    [ObservableProperty] private string _wifiQrTitle = "";
+    [ObservableProperty] private string _wifiQrPassword = "";
+    private string? _wifiPassword;
+    private bool _wifiPasswordShown;
+
+    [RelayCommand]
+    private async System.Threading.Tasks.Task ShareWifi()
+    {
+        ShowWifiQr = true;
+        WifiQr = null;
+        WifiQrTitle = "Lendo a rede…";
+        WifiQrPassword = "";
+        var info = await System.Threading.Tasks.Task.Run(WifiShare.Current); // netsh fora da UI thread
+        if (info is null) { WifiQrTitle = "Sem Wi-Fi conectado"; return; }
+        try
+        {
+            var png = Orbit.Bridge.Qr.RenderPng(WifiShare.QrPayload(info));
+            var bmp = new System.Windows.Media.Imaging.BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bmp.StreamSource = new System.IO.MemoryStream(png);
+            bmp.EndInit();
+            bmp.Freeze();
+            WifiQr = bmp;
+        }
+        catch (Exception ex) { Serilog.Log.Warning(ex, "QR do Wi-Fi falhou"); }
+        WifiQrTitle = info.Ssid;
+        _wifiPassword = info.Password;
+        _wifiPasswordShown = false;
+        WifiQrPassword = info.Open ? "Rede aberta (sem senha)" : "Senha: ••••••••  (toque pra ver)";
+    }
+
+    [RelayCommand]
+    private void ToggleWifiPassword()
+    {
+        if (_wifiPassword is null) return;
+        _wifiPasswordShown = !_wifiPasswordShown;
+        WifiQrPassword = _wifiPasswordShown ? $"Senha: {_wifiPassword}" : "Senha: ••••••••  (toque pra ver)";
+    }
+
+    [RelayCommand]
+    private void CloseWifiQr()
+    {
+        ShowWifiQr = false;
+        WifiQr = null;
+        _wifiPassword = null; // não guarda a senha à toa
+        WifiQrPassword = "";
+    }
+
     public ObservableCollection<AudioMixer.Output> Outputs { get; } = new();
     public ObservableCollection<MixerAppViewModel> Apps { get; } = new();
 

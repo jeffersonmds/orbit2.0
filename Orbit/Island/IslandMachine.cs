@@ -27,7 +27,19 @@ public sealed class Peek
     public string? Detail { get; }
     public string? TabId { get; }
     public string? OpenPath { get; } // se houver, o clique abre isto no Explorer em vez da aba
+
+    // Eventos do sistema (volume, carregador…): Key igual SUBSTITUI o alerta da vez em vez de enfileirar
+    // (girar o volume não pode virar 30 alertas); Duration curta; Level desenha uma barra 0..1.
+    public string? Key { get; init; }
+    public System.TimeSpan? Duration { get; init; }
+    public double? Level { get; init; }
+    public bool HasLevel => Level is not null;
+    // Botões no próprio alerta (ex.: print → "iPhone" / "Abrir"); clicar executa e fecha o alerta.
+    public System.Collections.Generic.IReadOnlyList<PeekAction> Actions { get; init; } = System.Array.Empty<PeekAction>();
+    public bool HasActions => Actions.Count > 0;
 }
+
+public sealed record PeekAction(string Label, System.Action Run);
 
 // Lógica pura dos estados da ilha (sem WPF) — testada no harness.
 public sealed class IslandMachine
@@ -88,6 +100,11 @@ public sealed class IslandMachine
 
     public void RaisePeek(Peek peek)
     {
+        if (peek.Key is { } key)
+        {
+            _pending.RemoveAll(p => p.Key == key); // só o mais novo de cada tipo interessa
+            if (CurrentPeek?.Key == key) { CurrentPeek = peek; return; }
+        }
         _pending.Add(peek);
         if (!Fullscreen) ShowNextPeek();
     }

@@ -70,6 +70,28 @@ public class ApiService
         }
     }
 
+    // Chuva agora e nas próximas 2 h, de 15 em 15 min (Open-Meteo minutely_15), pro aviso "vai chover".
+    public async Task<RainForecast?> GetRainAsync(double lat, double lon)
+    {
+        var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat.ToString(CultureInfo.InvariantCulture)}" +
+                  $"&longitude={lon.ToString(CultureInfo.InvariantCulture)}" +
+                  "&current=precipitation&minutely_15=precipitation&forecast_minutely_15=8&timezone=auto";
+        try
+        {
+            using var doc = JsonDocument.Parse(await Http.GetStringAsync(url));
+            var root = doc.RootElement;
+            var now = root.GetProperty("current").GetProperty("precipitation").GetDouble();
+            var next = root.GetProperty("minutely_15").GetProperty("precipitation").EnumerateArray()
+                .Select(v => v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0).ToArray();
+            return new RainForecast(now, next);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Falha ao obter previsão de chuva");
+            return null;
+        }
+    }
+
     // Série de preços 24h pra sparkline (CoinGecko market_chart).
     public async Task<double[]?> GetSparklineAsync(string coinId)
     {
@@ -238,6 +260,8 @@ public class ApiService
 
 public record LocationResult(double Lat, double Lon, string City);
 public record WeatherResult(double Temp, double FeelsLike, int Code, int Humidity, double WindKmh);
+// NowMm = chuva agora (mm); Next15 = mm em cada bloco de 15 min a partir de agora.
+public record RainForecast(double NowMm, double[] Next15);
 public record ForecastResult(
     System.DateTime Date, int Code, double Max, double Min,
     System.DateTime Sunrise, System.DateTime Sunset, int PrecipProb);

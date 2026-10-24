@@ -73,6 +73,7 @@ public partial class IslandWindow : Window
             else if (e.PropertyName == nameof(IslandViewModel.Peek) && _vm.Mode == IslandMode.Alerta && !_userHidden)
             {
                 _peek.Stop();
+                _peek.Interval = _vm.Peek?.Duration ?? DefaultPeek;
                 _peek.Start();
             }
         };
@@ -125,7 +126,12 @@ public partial class IslandWindow : Window
         if (fg != hwnd) _prevFg = fg;
         _foregroundHook = (_, _, window, _, _, _, _) =>
         {
-            if (window != IntPtr.Zero && window != hwnd) _prevFg = window;
+            if (window != IntPtr.Zero && window != hwnd)
+            {
+                _prevFg = window;
+                GetWindowThreadProcessId(window, out var pid);
+                _vm.OnForegroundProcess((int)pid);
+            }
         };
         _foregroundHookHandle = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
             _foregroundHook, 0, 0, WINEVENT_OUTOFCONTEXT);
@@ -263,7 +269,7 @@ public partial class IslandWindow : Window
         // senão desativar a janela por Esc/clique fora perderia o valor digitado.
         if (mode != IslandMode.Expandida && FocusManager.GetFocusedElement(this) is TextBox tb)
             tb.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
-        if (mode == IslandMode.Alerta && !_userHidden) _peek.Start();
+        if (mode == IslandMode.Alerta && !_userHidden) { _peek.Interval = _vm.Peek?.Duration ?? DefaultPeek; _peek.Start(); }
         else _peek.Stop();
         UpdateVisibility();
         // Devolve o teclado pra quem estava digitando antes da hotkey/clique.
@@ -410,6 +416,19 @@ public partial class IslandWindow : Window
         _vm.Expand();
     }
 
+    private static readonly TimeSpan DefaultPeek = TimeSpan.FromSeconds(4);
+
+    // Botão de ação dentro do alerta: executa e fecha o alerta (sem abrir a aba).
+    private void OnPeekAction(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is FrameworkElement { Tag: PeekAction action })
+        {
+            _vm.PeekExpired();
+            try { action.Run(); } catch (Exception ex) { Log.Warning(ex, "Ação do alerta falhou"); }
+        }
+    }
+
     private void OnPillClick(object sender, MouseButtonEventArgs e)
     {
         if (_vm.Mode == IslandMode.Alerta) { _vm.OpenPeekTab(); Activate(); }
@@ -462,6 +481,7 @@ public partial class IslandWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 
     private const uint EVENT_SYSTEM_FOREGROUND = 0x0003, WINEVENT_OUTOFCONTEXT = 0x0000;
     private delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);

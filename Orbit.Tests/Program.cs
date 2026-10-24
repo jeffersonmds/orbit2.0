@@ -79,6 +79,7 @@ public static class Program
         KeyboardTests();
         SelfUpdateTests();
         IslandExtrasTests();
+        SystemSignalsTests();
         PwaTests();
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
@@ -238,6 +239,57 @@ public static class Program
         }
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
+    }
+
+    // Eventos do sistema na pílula: alerta com chave substitui o anterior (girar o volume não enfileira).
+    private static void SystemSignalsTests()
+    {
+        var m = new IslandMachine();
+        m.RaisePeek(new Peek("Volume · 40%", null, null) { Key = "sinal:Volume" });
+        m.RaisePeek(new Peek("Volume · 45%", null, null) { Key = "sinal:Volume" });
+        m.RaisePeek(new Peek("Volume · 50%", null, null) { Key = "sinal:Volume" });
+        Check("sinais: volume substitui em vez de enfileirar", m.CurrentPeek?.Title == "Volume · 50%");
+        m.PeekDone();
+        Check("sinais: nada sobra na fila", m.CurrentPeek is null);
+        m.RaisePeek(new Peek("Claude · orbit2.0", null, "claude"));
+        m.RaisePeek(new Peek("Volume · 60%", null, null) { Key = "sinal:Volume" });
+        m.RaisePeek(new Peek("Volume · 70%", null, null) { Key = "sinal:Volume" });
+        Check("sinais: alerta comum não é atropelado", m.CurrentPeek?.Title == "Claude · orbit2.0");
+        m.PeekDone();
+        Check("sinais: na fila fica só o volume mais novo", m.CurrentPeek?.Title == "Volume · 70%");
+
+        Check("sinais: texto do volume", SystemSignals.VolumeSignal(0.643f, false) is { Title: "Volume · 64%", Level: > 0.64 and < 0.65 });
+        Check("sinais: mudo", SystemSignals.VolumeSignal(0.5f, true) is { Title: "Sem som", Level: 0 });
+        Check("sinais: carregando", SystemSignals.PowerSignal(64, true, null) is { Title: "Carregando · 64%", Detail: null });
+        Check("sinais: na bateria com tempo", SystemSignals.PowerSignal(80, false, 3 * 3600) is { Title: "Na bateria · 80%" } p && p.Detail!.EndsWith("restantes"));
+        var peek = IslandViewModel.SignalPeek(new SystemSignal(SignalKind.Volume, "Volume · 10%", null, 0.1));
+        Check("sinais: volume some em 1,5 s com barra", peek.Duration == TimeSpan.FromSeconds(1.5) && peek.HasLevel && peek.Key == "sinal:Volume");
+        Check("sinais: carregador fica 2,5 s", IslandViewModel.SignalPeek(new SystemSignal(SignalKind.Power, "x", null)).Duration == TimeSpan.FromSeconds(2.5));
+
+        var netsh = "\r\nHá 1 interface no sistema:\r\n\r\n    Nome                   : Wi-Fi\r\n    Estado                 : conectado\r\n"
+            + "    SSID                   : Casa 5G\r\n    BSSID                  : aa:bb:cc:dd:ee:ff\r\n    Tipo de rede           : Infraestrutura\r\n";
+        Check("sinais: nome do Wi-Fi (netsh em português)", SystemSignals.ParseSsid(netsh) == "Casa 5G");
+        Check("sinais: sem Wi-Fi", SystemSignals.ParseSsid("Não há nenhuma interface sem fio no sistema.") is null);
+
+        // Wi-Fi por QR
+        var perfil = "    Autenticação           : WPA3-Personal\r\n    Cifra                  : CCMP\r\n    Conteúdo da Chave      : s3nh@;forte\r\n";
+        var wifi = WifiShare.Parse("Casa 5G", perfil);
+        Check("wifi: lê a senha do netsh", wifi is { Ssid: "Casa 5G", Password: "s3nh@;forte", Open: false });
+        Check("wifi: QR escapa ; : , \\ \"", WifiShare.QrPayload(new WifiInfo("A;B:C", "x,y\\z\"", false)) == "WIFI:T:WPA;S:A\\;B\\:C;P:x\\,y\\\\z\\\";;");
+        Check("wifi: rede aberta sem senha", WifiShare.QrPayload(WifiShare.Parse("Cafe", "    Autenticação : Aberta\r\n")) == "WIFI:T:nopass;S:Cafe;;");
+        Check("wifi: netsh em inglês", WifiShare.Parse("Home", "    Authentication : WPA2-Personal\r\n    Key Content : abc12345\r\n").Password == "abc12345");
+
+        // Chuva: um aviso por chuva
+        var chuva = new RainAlert();
+        Check("chuva: tempo firme não avisa", chuva.Next(new RainForecast(0, new[] { 0.0, 0, 0, 0, 0, 0, 0, 0 })) is null);
+        Check("chuva: chuva em 30 min avisa", chuva.Next(new RainForecast(0, new[] { 0.0, 0, 0.6, 1.2, 0, 0, 0, 0 })) == 30);
+        Check("chuva: não repete na mesma chuva", chuva.Next(new RainForecast(0, new[] { 0.0, 0.5, 1, 0, 0, 0, 0, 0 })) is null
+            && chuva.Next(new RainForecast(2.0, new[] { 1.0, 0, 0, 0, 0, 0, 0, 0 })) is null);
+        Check("chuva: depois de firmar, avisa de novo", chuva.Next(new RainForecast(0, new[] { 0.0, 0, 0, 0, 0, 0, 0, 0 })) is null
+            && chuva.Next(new RainForecast(0, new[] { 0.3, 0, 0, 0, 0, 0, 0, 0 })) == 15);
+        Check("chuva: garoa abaixo de 0,1 mm não conta", new RainAlert().Next(new RainForecast(0, new[] { 0.05, 0.05, 0, 0, 0, 0, 0, 0 })) is null);
+        Check("chuva: chuva depois de 1 h ainda não avisa", new RainAlert().Next(new RainForecast(0, new[] { 0.0, 0, 0, 0, 1, 1, 0, 0 })) is null);
+        Check("chuva: textos", RainAlert.Text(15) == "Chuva chegando em instantes" && RainAlert.Text(45) == "Chuva em ~45 min");
     }
 
     // Barrinhas da música, câmera/microfone em uso e conta-gotas.
@@ -993,6 +1045,25 @@ public static class Program
 
     private static void ClaudeTests()
     {
+        // "Visto" ao focar a janela da sessão: sai da pílula; aviso novo volta.
+        {
+            var ss = new Dictionary<string, ClaudeSessionInfo>();
+            ClaudeSessionReducer.Apply(ss, new ClaudeHookEvent("SessionStart", "s1", @"C:\repos\orbit2.0", null, 4242));
+            ClaudeSessionReducer.Apply(ss, new ClaudeHookEvent("Stop", "s1", @"C:\repos\orbit2.0", null)); // sem host: mantém o da sessão
+            Check("claude: guarda a janela da sessão", ss["s1"].HostPid == 4242 && ss["s1"].State == ClaudeSessionState.WaitingInput);
+            Check("claude: aguardando aparece na pílula", ClaudeViewModel.BuildActivity(ss.Values) == "Claude · orbit2.0 — Aguardando você");
+            Check("claude: focar outra janela não muda nada", !ClaudeSessionReducer.MarkSeen(ss, 999));
+            Check("claude: focar a janela da sessão tira da pílula", ClaudeSessionReducer.MarkSeen(ss, 4242) && ss["s1"].Seen
+                && ClaudeViewModel.BuildActivity(ss.Values) is null);
+            ClaudeSessionReducer.Apply(ss, new ClaudeHookEvent("Notification", "s1", @"C:\repos\orbit2.0", "Permissão pra rodar"));
+            Check("claude: aviso novo volta pra pílula", !ss["s1"].Seen && ClaudeViewModel.BuildActivity(ss.Values) == "Claude · orbit2.0 — Permissão pra rodar");
+            Check("claude: host vem do JSON do hook", ClaudeHookEvent.Parse("{\"hook_event_name\":\"Stop\",\"session_id\":\"x\",\"orbit_host_pid\":77}").HostPid == 77
+                && ClaudeHookEvent.Parse("{\"hook_event_name\":\"Stop\",\"session_id\":\"x\"}").HostPid is null);
+            // hook(10) ← claude(20) ← shell(30) ← terminal(40, tem janela)
+            var parents = new Dictionary<int, int> { [10] = 20, [20] = 30, [30] = 40, [40] = 1 };
+            Check("claude: sobe até o terminal com janela", ClaudeHookClient.FirstWithWindow(10, parents, pid => pid == 40) == 40);
+            Check("claude: sem janela na cadeia = sem host", ClaudeHookClient.FirstWithWindow(10, parents, _ => false) is null);
+        }
         // Parse (portado)
         var start = ClaudeHookEvent.Parse("{\"hook_event_name\":\"SessionStart\",\"session_id\":\"s1\",\"cwd\":\"C:\\\\repos\\\\orbit2.0\"}");
         Check("claude: parse evento/sessão/cwd", start.HookEventName == "SessionStart" && start.SessionId == "s1" && start.Cwd == @"C:\repos\orbit2.0");

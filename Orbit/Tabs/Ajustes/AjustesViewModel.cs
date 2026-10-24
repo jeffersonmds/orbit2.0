@@ -78,6 +78,9 @@ public sealed partial class AjustesViewModel : TabViewModel
     public ObservableCollection<MonitorOption> Monitores { get; } = new();
 
     [ObservableProperty] private bool _alertasComoToast;
+    [ObservableProperty] private bool _eventosDoSistema;
+    [ObservableProperty] private bool _ofertaDePrint;
+    [ObservableProperty] private bool _avisoDeChuva;
     [ObservableProperty] private bool _somClaude;
 
     public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged, Action monitorChanged,
@@ -95,6 +98,9 @@ public sealed partial class AjustesViewModel : TabViewModel
         // A amostra "Windows" acompanha a cor do sistema (antes ficava congelada na abertura).
         Accent.Changed += () => Opcoes[0] = SystemOption();
         AlertasComoToast = settings.AlertsAsToastInFullscreen;
+        EventosDoSistema = settings.SystemSignalsEnabled;
+        OfertaDePrint = settings.ScreenshotOfferEnabled;
+        AvisoDeChuva = settings.RainAlertEnabled;
         FocoTexto = settings.PomodoroFocusMinutes.ToString();
         PausaTexto = settings.PomodoroShortBreakMinutes.ToString();
         PausaLongaTexto = settings.PomodoroLongBreakMinutes.ToString();
@@ -215,6 +221,27 @@ public sealed partial class AjustesViewModel : TabViewModel
     {
         if (_settings.ClaudeSoundEnabled == value) return;
         _settings.ClaudeSoundEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    partial void OnAvisoDeChuvaChanged(bool value)
+    {
+        if (_settings.RainAlertEnabled == value) return;
+        _settings.RainAlertEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    partial void OnOfertaDePrintChanged(bool value)
+    {
+        if (_settings.ScreenshotOfferEnabled == value) return;
+        _settings.ScreenshotOfferEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    partial void OnEventosDoSistemaChanged(bool value)
+    {
+        if (_settings.SystemSignalsEnabled == value) return;
+        _settings.SystemSignalsEnabled = value;
         SettingsStore.Save(_settings);
     }
 

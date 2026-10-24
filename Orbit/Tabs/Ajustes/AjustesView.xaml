@@ -57,6 +57,10 @@
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AlertasComoToast}"
                           Content="Em tela cheia, virar notificação do Windows"/>
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding SomClaude}" Content="Som nos alertas do Claude"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding EventosDoSistema}"
+                          Content="Volume, carregador, som, Caps Lock e internet na pílula"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDePrint}" Content="Print novo: oferecer mandar pro iPhone"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AvisoDeChuva}" Content="Avisar quando for chover"/>
             </WrapPanel>
             <TextBlock Text="Pomodoro (minutos)" Style="{StaticResource Label}"/>
             <WrapPanel Margin="0,0,0,10">

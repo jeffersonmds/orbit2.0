@@ -30,6 +30,15 @@ public sealed class OrbitSettings
     // Em tela cheia, alerta vira toast do Windows em vez de esperar na fila.
     public bool AlertsAsToastInFullscreen { get; set; }
 
+    // Volume, carregador, saída de som, Caps Lock e internet animando na pílula.
+    public bool SystemSignalsEnabled { get; set; } = true;
+
+    // Print novo (pasta Capturas de tela): a pílula oferece mandar pro iPhone.
+    public bool ScreenshotOfferEnabled { get; set; } = true;
+
+    // Aviso de chuva chegando (ilha + iPhone), pela previsão de 15 em 15 min.
+    public bool RainAlertEnabled { get; set; } = true;
+
     // Pomodoro (defaults = clássico).
     public int PomodoroFocusMinutes { get; set; } = 25;
     public int PomodoroShortBreakMinutes { get; set; } = 5;

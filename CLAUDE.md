@@ -88,7 +88,13 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   **Teclado remoto** (`/api/keyboard/*`): permissão própria; mesmo canal da tela com filtro
   `RemoteScreen.KeyboardOnly` (só texto/teclas); o PWA compõe e manda (ditado do iOS reescreve palavras).
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
-  em tela cheia se `AlertsAsToastInFullscreen`.
+  em tela cheia se `AlertsAsToastInFullscreen`. Exceção: eventos do sistema (`SystemSignals`: volume, saída de
+  som, carregador, Caps Lock, internet) e a oferta de print (`ScreenshotWatcher`) vão direto por `RaisePeek`
+  — não podem virar push no iPhone nem toast em tela cheia. `Peek.Key` igual substitui o alerta da vez
+  (girar o volume não enfileira); `Duration`, `Level` (barra) e `Actions` (botões no alerta) são opcionais.
+  Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
+- **Claude "visto"**: o hook acrescenta `orbit_host_pid` (1º processo pai com janela: terminal/VS Code); focar
+  essa janela tira a sessão da pílula (continua na aba); aviso novo volta. Já olhando = nem alerta.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça
   `SettingsStore.Load()` dentro de aba — o próximo `Save` de outra aba sobrescreveria.
 - **Tela cheia:** `FullscreenWatcher` (appbar + `ABN_FULLSCREENAPP`) esconde a ilha.
