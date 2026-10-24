@@ -26,12 +26,25 @@ public sealed partial class ClaudeViewModel : TabViewModel
     // Stop/Notification de uma sessão conhecida.
     public event Action<ClaudeSessionInfo>? Attention;
 
+    // pid do processo dono da janela em primeiro plano (a ilha informa a cada troca de foco).
+    public int ForegroundPid { get; set; }
+
     public void HandleHookEvent(ClaudeHookEvent evt)
     {
         ClaudeSessionReducer.Apply(_sessions, evt);
+        // já está olhando o terminal dessa sessão: nem aviso nem pílula (seria ruído)
+        bool looking = evt.HostPid is not null && evt.HostPid == ForegroundPid;
+        if (looking) ClaudeSessionReducer.MarkSeen(_sessions, ForegroundPid);
         Publish();
-        if (ClaudeSessionReducer.ShouldNotify(evt.HookEventName) && _sessions.TryGetValue(evt.SessionId, out var info))
+        if (!looking && ClaudeSessionReducer.ShouldNotify(evt.HookEventName) && _sessions.TryGetValue(evt.SessionId, out var info))
             Attention?.Invoke(info);
+    }
+
+    // Você trouxe uma janela pro primeiro plano: se é a de uma sessão aguardando, ela sai da pílula.
+    public void OnForeground(int pid)
+    {
+        ForegroundPid = pid;
+        if (ClaudeSessionReducer.MarkSeen(_sessions, pid)) Publish();
     }
 
     // Terminal fechado / Claude caiu não manda SessionEnd: o ✕ tira a sessão (e a pílula).
@@ -63,11 +76,11 @@ public sealed partial class ClaudeViewModel : TabViewModel
         HooksActive = ClaudeHookInstaller.IsInstalled(exe);
     }
 
-    // Pílula: só quando alguma sessão espera por você. Sessão rodando não ocupa a pílula
-    // (senão esconderia mídia/Pomodoro o tempo todo).
+    // Pílula: só quando alguma sessão espera por você e você ainda não olhou. Sessão rodando não
+    // ocupa a pílula (senão esconderia mídia/Pomodoro o tempo todo).
     public static string? BuildActivity(IEnumerable<ClaudeSessionInfo> sessions)
     {
-        var waiting = sessions.Where(s => s.State != ClaudeSessionState.Running).ToList();
+        var waiting = sessions.Where(s => s.State != ClaudeSessionState.Running && !s.Seen).ToList();
         return waiting.Count switch
         {
             0 => null,
