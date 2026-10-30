@@ -1045,6 +1045,73 @@ public static class Program
 
     private static void ClaudeTests()
     {
+        Check("hover: cursor parado não abre", !Orbit.Island.IslandGeometry.CursorMoved(0, 0));
+        Check("hover: tremida de 1 px não abre", !Orbit.Island.IslandGeometry.CursorMoved(1, 1));
+        Check("hover: mexer o mouse abre", Orbit.Island.IslandGeometry.CursorMoved(2, 0));
+
+        // Cota: JSON da status line, ritmo e avisos.
+        {
+            var ev = ClaudeHookEvent.Parse("{\"session_id\":\"s1\",\"context_window\":{\"used_percentage\":34},\"rate_limits\":{\"five_hour\":{\"used_percentage\":23.5,\"resets_at\":1738425600}}}");
+            Check("cota: JSON sem hook_event_name é status line", ev.HookEventName == ClaudeHookEvent.StatusLine && ev.Usage?.ContextPct == 34
+                && ev.Usage.FiveHour?.UsedPct == 23.5 && ev.Usage.FiveHour.ResetsAt.ToUnixTimeSeconds() == 1738425600 && ev.Usage.SevenDay is null);
+            var cedo = ClaudeHookEvent.Parse("{\"session_id\":\"s1\",\"context_window\":{\"used_percentage\":null}}").Usage!;
+            Check("cota: início de sessão sem dados não quebra", cedo.FiveHour is null && cedo.ContextPct is null);
+            Check("cota: hook comum não traz cota", ClaudeHookEvent.Parse("{\"hook_event_name\":\"Stop\",\"session_id\":\"x\"}").Usage is null);
+            Check("cota: janela omitida mantém a anterior", cedo.Merge(ev.Usage)!.FiveHour?.UsedPct == 23.5);
+
+            var ss = new Dictionary<string, ClaudeSessionInfo>();
+            ClaudeSessionReducer.Apply(ss, new ClaudeHookEvent("SessionStart", "s1", @"C:\x", null));
+            ClaudeSessionReducer.Apply(ss, new ClaudeHookEvent("Stop", "s1", @"C:\x", null));
+            ClaudeSessionReducer.MarkSeen(ss, 0);
+            ClaudeSessionReducer.Apply(ss, ev);
+            Check("cota: contexto vai pra sessão sem mudar o estado", ss["s1"].ContextText == "Contexto 34%" && ss["s1"].State == ClaudeSessionState.WaitingInput);
+            ClaudeSessionReducer.Apply(ss, ClaudeHookEvent.Parse("{\"session_id\":\"s1\"}"));
+            Check("cota: sem número novo mantém o contexto", ss["s1"].ContextPct == 34);
+
+            var now = new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
+            var five = ClaudeUsageMath.FiveHours;
+            Check("ritmo: no começo não opina", ClaudeUsageMath.Describe(new ClaudeWindow(40, now.AddMinutes(295)), five, now) == "reseta em 4h 55m");
+            Check("ritmo: dentro da tolerância", ClaudeUsageMath.Describe(new ClaudeWindow(52, now.AddMinutes(150)), five, now) == "reseta em 2h 30m · no ritmo");
+            Check("ritmo: abaixo", ClaudeUsageMath.Describe(new ClaudeWindow(20, now.AddMinutes(150)), five, now) == "reseta em 2h 30m · 30 pts abaixo do ritmo");
+            Check("ritmo: projeta o limite", ClaudeUsageMath.Describe(new ClaudeWindow(75, now.AddMinutes(150)), five, now) == "reseta em 2h 30m · limite em 50m");
+            Check("ritmo: no limite", ClaudeUsageMath.Describe(new ClaudeWindow(100, now.AddMinutes(10)), five, now) == "no limite · reseta em 10m");
+            var vencida = new ClaudeWindow(98, now.AddMinutes(-1));
+            Check("ritmo: janela vencida zera", ClaudeUsageMath.Row("5 horas", vencida, five, now).Percent == 0
+                && ClaudeUsageMath.Describe(vencida, five, now) == "janela reiniciada");
+            Check("ritmo: span em dias", ClaudeUsageMath.Span(TimeSpan.FromHours(33)) == "1d 9h");
+
+            Check("limite: abaixo de 97 não avisa", ClaudeUsageMath.Crossing(0, 96.9) == (0, false));
+            Check("limite: cruzou 97 avisa", ClaudeUsageMath.Crossing(0, 97) == (1, true));
+            Check("limite: continuar perto não repete", ClaudeUsageMath.Crossing(1, 98) == (1, false));
+            Check("limite: chegar a 100 avisa de novo", ClaudeUsageMath.Crossing(1, 100) == (2, true));
+            Check("limite: janela nova rearma", ClaudeUsageMath.Crossing(2, 1) == (0, false));
+
+            const string exe = @"C:\Apps\Orbit.exe";
+            var cfg = new System.Text.Json.Nodes.JsonObject
+            {
+                ["statusLine"] = new System.Text.Json.Nodes.JsonObject { ["type"] = "command", ["command"] = "powershell -File \"C:\\a b\\sl.ps1\"", ["padding"] = 2 },
+            };
+            ClaudeHookInstaller.WrapStatusLine(cfg, exe);
+            string wrapped = cfg["statusLine"]!["command"]!.GetValue<string>();
+            Check("status line: instala preservando opções", ClaudeHookInstaller.HasStatusLine(cfg, exe) && cfg["statusLine"]!["padding"]!.GetValue<int>() == 2);
+            Check("status line: anterior vai no comando", ClaudeHookInstaller.DecodePrevious(wrapped.Split(' ')[^1]) == "powershell -File \"C:\\a b\\sl.ps1\"");
+            ClaudeHookInstaller.WrapStatusLine(cfg, exe);
+            Check("status line: instalar de novo não embrulha duas vezes", cfg["statusLine"]!["command"]!.GetValue<string>() == wrapped);
+            ClaudeHookInstaller.WrapStatusLine(cfg, @"D:\novo\Orbit.exe");
+            Check("status line: outro caminho mantém a original", ClaudeHookInstaller.HasStatusLine(cfg, @"D:\novo\Orbit.exe")
+                && ClaudeHookInstaller.DecodePrevious(cfg["statusLine"]!["command"]!.GetValue<string>().Split(' ')[^1]).StartsWith("powershell"));
+            ClaudeHookInstaller.UnwrapStatusLine(cfg);
+            Check("status line: desligar restaura", cfg["statusLine"]!["command"]!.GetValue<string>() == "powershell -File \"C:\\a b\\sl.ps1\"");
+            ClaudeHookInstaller.UnwrapStatusLine(cfg);
+            Check("status line: desligar sem ser nosso não mexe", cfg["statusLine"]!["command"]!.GetValue<string>().StartsWith("powershell"));
+            var vazio = new System.Text.Json.Nodes.JsonObject();
+            ClaudeHookInstaller.WrapStatusLine(vazio, exe);
+            Check("status line: sem anterior", vazio["statusLine"]!["command"]!.GetValue<string>() == "\"C:\\Apps\\Orbit.exe\" --claude-status");
+            ClaudeHookInstaller.UnwrapStatusLine(vazio);
+            Check("status line: sem anterior, desligar remove", vazio["statusLine"] is null);
+            Check("status line: base64 inválido não quebra", ClaudeHookInstaller.DecodePrevious("%%%") == "");
+        }
+
         // "Visto" ao focar a janela da sessão: sai da pílula; aviso novo volta.
         {
             var ss = new Dictionary<string, ClaudeSessionInfo>();

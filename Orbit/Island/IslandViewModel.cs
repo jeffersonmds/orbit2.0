@@ -120,6 +120,7 @@ public sealed partial class IslandViewModel : ObservableObject
         };
         claude.Attention += info =>
             Notify(new Peek($"Claude · {info.ProjectName}", info.StatusText, "claude"), _settings.ClaudeSoundEnabled);
+        claude.LimitReached += (title, detail) => Notify(new Peek(title, detail, "claude"), _settings.ClaudeSoundEnabled);
         // O servidor roda em background: volta pra UI thread antes de mexer na aba.
         // ponytail: sem Dispose — o pipe morre com o processo.
         _claudeServer.HookReceived += evt => Application.Current?.Dispatcher.BeginInvoke(() => claude.HandleHookEvent(evt));

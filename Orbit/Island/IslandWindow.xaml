@@ -61,7 +61,7 @@
     <Border x:Name="Pill" HorizontalAlignment="Center" VerticalAlignment="Top"
             Width="110" Height="10" CornerRadius="0,0,5,5" ClipToBounds="True"
             Background="{StaticResource IslandBg}"
-            MouseEnter="OnPillEnter" MouseLeave="OnPillLeave"
+            MouseEnter="OnPillEnter" MouseMove="OnPillMove" MouseLeave="OnPillLeave"
             MouseWheel="OnPillWheel" MouseLeftButtonUp="OnPillClick"
             AllowDrop="True" PreviewDragEnter="OnPillDragEnter" PreviewDragOver="OnPillDragOver"
             PreviewDragLeave="OnPillDragLeave" PreviewDrop="OnPillDrop">

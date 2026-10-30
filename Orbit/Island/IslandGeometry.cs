@@ -10,6 +10,9 @@ public static class IslandGeometry
     public const double WindowWidth = 760;
     public const double WindowHeight = 400;
 
+    // Tremida de 1 px não conta como o usuário mover o mouse até a pílula.
+    public static bool CursorMoved(double dx, double dy) => dx * dx + dy * dy >= 4;
+
     public static IslandSize SizeFor(IslandMode mode) => mode switch
     {
         IslandMode.Atividade => new IslandSize(320, 30),

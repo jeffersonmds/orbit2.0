@@ -95,6 +95,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
 - **Claude "visto"**: o hook acrescenta `orbit_host_pid` (1º processo pai com janela: terminal/VS Code); focar
   essa janela tira a sessão da pílula (continua na aba); aviso novo volta. Já olhando = nem alerta.
+- **Cota do Claude** (`Services/ClaudeUsage`): vem da status line do Claude Code (`Orbit.exe --claude-status`, mesmo
+  pipe dos hooks; JSON sem `hook_event_name`), nunca do token OAuth nem de endpoint não documentado. O slot de status
+  line é único: o comando anterior vai em base64 no nosso, é executado junto e volta ao desligar pelo ✕ da aba.
+  Sem timer de fundo: só atualiza com sessão ativa; aviso a 97% e 100% via `Notify`, um por cruzamento.
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça
   `SettingsStore.Load()` dentro de aba — o próximo `Save` de outra aba sobrescreveria.
 - **Tela cheia:** `FullscreenWatcher` (appbar + `ABN_FULLSCREENAPP`) esconde a ilha.

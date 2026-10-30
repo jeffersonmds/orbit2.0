@@ -17,7 +17,8 @@ public partial class IslandWindow : Window
 {
     private readonly IslandViewModel _vm;
     private readonly TrayIcon _tray;
-    private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    private Point? _hoverFrom;
     private readonly DispatcherTimer _leave = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _peek = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(2) };
@@ -399,11 +400,21 @@ public partial class IslandWindow : Window
     private void OnPillEnter(object sender, MouseEventArgs e)
     {
         _leave.Stop();
-        if (_vm.Mode is IslandMode.Repouso or IslandMode.Atividade) _hover.Start();
+        _hoverFrom = e.GetPosition(this);
+    }
+
+    // A pílula cresce por conta própria (alerta, atividade) e o WPF avisa MouseEnter/MouseMove mesmo com
+    // o cursor parado: só abre por hover se o mouse se mexeu de verdade.
+    private void OnPillMove(object sender, MouseEventArgs e)
+    {
+        if (_hoverFrom is not { } from || _hover.IsEnabled || _vm.Mode is not (IslandMode.Repouso or IslandMode.Atividade)) return;
+        var at = e.GetPosition(this);
+        if (IslandGeometry.CursorMoved(at.X - from.X, at.Y - from.Y)) _hover.Start();
     }
 
     private void OnPillLeave(object sender, MouseEventArgs e)
     {
+        _hoverFrom = null;
         _hover.Stop();
         // Digitando num campo: só recolhe por Esc/clique fora/hotkey, não pela saída do mouse.
         if (_vm.Mode == IslandMode.Expandida && Keyboard.FocusedElement is not TextBox) _leave.Start();

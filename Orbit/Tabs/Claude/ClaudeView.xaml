@@ -15,6 +15,55 @@
             </DockPanel>
         </Border>
 
+        <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10"
+                Visibility="{Binding StatusLineActive, Converter={StaticResource NotBoolToVis}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Ativar"
+                        Command="{Binding InstallStatusLineCommand}" VerticalAlignment="Center"/>
+                <StackPanel>
+                    <TextBlock Text="Cota do plano desligada" FontSize="13" FontWeight="SemiBold"/>
+                    <TextBlock Text="Lê a status line do Claude Code, sem usar seu token. A status line atual continua aparecendo."
+                               FontSize="11" Foreground="{StaticResource InkLo}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10"
+                Visibility="{Binding StatusLineActive, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" VerticalAlignment="Center"
+                            ToolTip="Desligar a cota e restaurar a status line anterior"
+                            Command="{Binding RemoveStatusLineCommand}"/>
+                    <TextBlock Text="{Binding UsageAge}" DockPanel.Dock="Right" FontSize="11" Margin="0,0,8,0"
+                               Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Cota do plano" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding UsageRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,6,0,0">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Label}" FontSize="12" Width="60"/>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Percent, StringFormat={}{0}%}" FontSize="12"
+                                               Width="38" TextAlignment="Right"/>
+                                    <Border Height="4" CornerRadius="2" Background="#22FFFFFF" VerticalAlignment="Center" ClipToBounds="True">
+                                        <Border Background="{DynamicResource AccentBrush}" CornerRadius="2">
+                                            <Border.RenderTransform>
+                                                <ScaleTransform ScaleX="{Binding Fraction}"/>
+                                            </Border.RenderTransform>
+                                        </Border>
+                                    </Border>
+                                </DockPanel>
+                                <TextBlock Text="{Binding Detail}" FontSize="11" Margin="60,1,0,0"
+                                           Foreground="{StaticResource InkLo}" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
         <Grid>
             <TextBlock Text="Nenhuma sessão do Claude Code aberta" FontSize="13" Foreground="{StaticResource InkLo}"
                        HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -42,6 +91,8 @@
                                             Command="{Binding DataContext.DismissCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding}"/>
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding ShortSessionId}" FontSize="11" Margin="0,0,8,0"
+                                               Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding ContextText}" FontSize="11" Margin="0,0,10,0"
                                                Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
                                     <StackPanel>
                                         <TextBlock Text="{Binding ProjectName}" FontSize="13" FontWeight="SemiBold"/>
