@@ -15,27 +15,10 @@
             </DockPanel>
         </Border>
 
-        <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10"
-                Visibility="{Binding StatusLineActive, Converter={StaticResource NotBoolToVis}}">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Ativar"
-                        Command="{Binding InstallStatusLineCommand}" VerticalAlignment="Center"/>
-                <StackPanel>
-                    <TextBlock Text="Cota do plano desligada" FontSize="13" FontWeight="SemiBold"/>
-                    <TextBlock Text="Lê a status line do Claude Code, sem usar seu token. A status line atual continua aparecendo."
-                               FontSize="11" Foreground="{StaticResource InkLo}" TextWrapping="Wrap"/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
-
-        <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10"
-                Visibility="{Binding StatusLineActive, Converter={StaticResource BoolToVis}}">
+        <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
             <StackPanel>
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" VerticalAlignment="Center"
-                            ToolTip="Desligar a cota e restaurar a status line anterior"
-                            Command="{Binding RemoveStatusLineCommand}"/>
-                    <TextBlock Text="{Binding UsageAge}" DockPanel.Dock="Right" FontSize="11" Margin="0,0,8,0"
+                    <TextBlock Text="{Binding UsageAge}" DockPanel.Dock="Right" FontSize="11"
                                Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
                     <TextBlock Text="Cota do plano" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </DockPanel>

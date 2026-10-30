@@ -11,9 +11,9 @@ public enum ClaudeSessionState { Running, WaitingInput, NeedsAttention }
 // HostPid: processo com janela onde o Claude roda (Windows Terminal, VS Code…). Seen: você já focou
 // essa janela depois do último aviso — sai da pílula (continua na aba), como abrir o app no iPhone.
 public sealed record ClaudeSessionInfo(string SessionId, string ProjectName, ClaudeSessionState State, string? Message,
-    int? HostPid = null, bool Seen = false, double? ContextPct = null)
+    int? HostPid = null, bool Seen = false, long? ContextTokens = null)
 {
-    public string? ContextText => ContextPct is { } pct ? $"Contexto {pct:0}%" : null;
+    public string? ContextText => ContextTokens is { } tokens ? $"{tokens / 1000.0:0}k de contexto" : null;
 
     // Mostrado sempre no tile pra diferenciar sessões do mesmo projeto sem precisar do session_id inteiro.
     public string ShortSessionId => SessionId.Length <= 6 ? SessionId : SessionId[..6];
@@ -28,22 +28,19 @@ public sealed record ClaudeSessionInfo(string SessionId, string ProjectName, Cla
 }
 
 public sealed record ClaudeHookEvent(string HookEventName, string SessionId, string Cwd, string? Message, int? HostPid = null,
-    ClaudeUsage? Usage = null)
+    string? TranscriptPath = null)
 {
-    // O JSON da status line usa o mesmo pipe e é o único sem hook_event_name.
-    public const string StatusLine = "StatusLine";
-
     public static ClaudeHookEvent Parse(string json)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        string eventName = root.TryGetProperty("hook_event_name", out var e) ? e.GetString() ?? "" : StatusLine;
+        string eventName = root.TryGetProperty("hook_event_name", out var e) ? e.GetString() ?? "" : "";
         string sessionId = root.TryGetProperty("session_id", out var s) ? s.GetString() ?? "" : "";
         string cwd = root.TryGetProperty("cwd", out var c) ? c.GetString() ?? "" : "";
         string? message = root.TryGetProperty("message", out var m) ? m.GetString() : null;
         int? host = root.TryGetProperty(ClaudeHookClient.HostPidField, out var h) && h.TryGetInt32(out var hp) ? hp : null;
-        var usage = eventName == StatusLine ? ClaudeUsage.Parse(root) : null;
-        return new ClaudeHookEvent(eventName, sessionId, cwd, message, host, usage);
+        string? transcript = root.TryGetProperty("transcript_path", out var t) ? t.GetString() : null;
+        return new ClaudeHookEvent(eventName, sessionId, cwd, message, host, transcript);
     }
 }
 
@@ -79,7 +76,6 @@ public static class ClaudeSessionReducer
             // aviso novo: volta pra pílula até você focar a janela de novo
             "Stop" => current with { State = ClaudeSessionState.WaitingInput, Message = null, HostPid = host, Seen = false },
             "Notification" => current with { State = ClaudeSessionState.NeedsAttention, Message = evt.Message, HostPid = host, Seen = false },
-            ClaudeHookEvent.StatusLine => current with { ContextPct = evt.Usage?.ContextPct ?? current.ContextPct },
             _ => current with { HostPid = host },
         };
     }

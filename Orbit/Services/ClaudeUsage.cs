@@ -1,41 +1,72 @@
 using System;
+using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 
 namespace Orbit.Services;
 
-// Cota do plano e contexto da sessão, vindos do JSON da status line do Claude Code (sem token nem rede).
-// Só chega com sessão ativa: entre uma resposta e outra o valor é o último recebido.
+// Cota do plano, como o `claude` oficial informa (ver ClaudeUsageClient).
 public sealed record ClaudeWindow(double UsedPct, DateTimeOffset ResetsAt);
 
-public sealed record ClaudeUsage(ClaudeWindow? FiveHour, ClaudeWindow? SevenDay, double? ContextPct)
+public sealed record ClaudeUsage(ClaudeWindow? FiveHour, ClaudeWindow? SevenDay, ClaudeWindow? Opus, ClaudeWindow? Sonnet)
 {
-    public static ClaudeUsage Parse(JsonElement root)
+    // Uma linha do stdout do CLI; null se não é a resposta do pedido ou o plano não tem cota.
+    public static ClaudeUsage? ParseResponse(string line, string requestId)
     {
-        ClaudeWindow? five = null, week = null;
-        if (root.TryGetProperty("rate_limits", out var limits) && limits.ValueKind == JsonValueKind.Object)
+        try
         {
-            five = Window(limits, "five_hour");
-            week = Window(limits, "seven_day");
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            if (!IsString(root, "type", "control_response") || !root.TryGetProperty("response", out var outer)
+                || !IsString(outer, "request_id", requestId) || !outer.TryGetProperty("response", out var inner)
+                || !inner.TryGetProperty("rate_limits", out var limits) || limits.ValueKind != JsonValueKind.Object)
+                return null;
+            return new ClaudeUsage(Window(limits, "five_hour"), Window(limits, "seven_day"),
+                Window(limits, "seven_day_opus"), Window(limits, "seven_day_sonnet"));
         }
-        double? context = root.TryGetProperty("context_window", out var ctx) && ctx.ValueKind == JsonValueKind.Object
-            ? Number(ctx, "used_percentage") : null;
-        return new ClaudeUsage(five, week, context);
+        catch (JsonException) { return null; }
     }
 
-    // A status line omite janelas (início de sessão, reset passado): mantém o que já se sabia.
-    public ClaudeUsage Merge(ClaudeUsage? older) =>
-        new(FiveHour ?? older?.FiveHour, SevenDay ?? older?.SevenDay, ContextPct);
+    private static bool IsString(JsonElement obj, string name, string value) =>
+        obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var v)
+        && v.ValueKind == JsonValueKind.String && v.GetString() == value;
 
     private static ClaudeWindow? Window(JsonElement limits, string name)
     {
         if (!limits.TryGetProperty(name, out var w) || w.ValueKind != JsonValueKind.Object) return null;
-        if (Number(w, "used_percentage") is not { } used || Number(w, "resets_at") is not { } resets) return null;
-        try { return new ClaudeWindow(used, DateTimeOffset.FromUnixTimeSeconds((long)resets)); }
-        catch (ArgumentOutOfRangeException) { return null; }
+        if (!w.TryGetProperty("utilization", out var used) || used.ValueKind != JsonValueKind.Number) return null;
+        if (!w.TryGetProperty("resets_at", out var resets) || resets.ValueKind != JsonValueKind.String) return null;
+        return DateTimeOffset.TryParse(resets.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var at)
+            ? new ClaudeWindow(used.GetDouble(), at) : null;
+    }
+}
+
+public static class ClaudeContext
+{
+    // Fim do transcript da sessão → tokens de entrada da última resposta, que é o contexto em uso.
+    // Sem % de propósito: a janela varia por modelo (200 mil ou 1 milhão) e o transcript não diz qual.
+    public static long? LastTokens(string tail)
+    {
+        foreach (var line in tail.Split('\n').Reverse())
+        {
+            if (line.IndexOf("\"usage\"", StringComparison.Ordinal) < 0) continue;
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "assistant") continue;
+                if (root.TryGetProperty("isSidechain", out var side) && side.ValueKind == JsonValueKind.True) continue;
+                if (!root.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object
+                    || !msg.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object) continue;
+                return Tokens(usage, "input_tokens") + Tokens(usage, "cache_creation_input_tokens") + Tokens(usage, "cache_read_input_tokens");
+            }
+            catch (JsonException) { } // a 1ª linha do trecho vem cortada; registro corrompido idem
+        }
+        return null;
     }
 
-    private static double? Number(JsonElement obj, string name) =>
-        obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
+    private static long Tokens(JsonElement usage, string name) =>
+        usage.TryGetProperty(name, out var v) && v.TryGetInt64(out var n) ? n : 0;
 }
 
 public sealed record ClaudeUsageRow(string Label, int Percent, double Fraction, string Detail);
@@ -49,7 +80,7 @@ public static class ClaudeUsageMath
     private const double MinElapsed = 0.05; // no começo da janela o ritmo é só ruído
     private const double AlertPct = 97;
 
-    // Janela vencida sem dado novo: o limite já zerou, mesmo que nenhuma sessão tenha falado ainda.
+    // Janela vencida sem dado novo: o limite já zerou, mesmo que ainda não tenha buscado de novo.
     public static double UsedNow(ClaudeWindow w, DateTimeOffset now) => w.ResetsAt <= now ? 0 : w.UsedPct;
 
     public static ClaudeUsageRow Row(string label, ClaudeWindow w, TimeSpan length, DateTimeOffset now)

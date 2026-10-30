@@ -111,7 +111,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new StatsViewModel());
         Register(new MercadoViewModel(_api, settings));
         Register(new NoticiasViewModel(_api, settings));
-        var claude = _claude = new ClaudeViewModel();
+        var claude = _claude = new ClaudeViewModel(ClaudeUsageClient.FetchAsync);
         Register(claude);
         claude.PropertyChanged += (_, e) =>
         {

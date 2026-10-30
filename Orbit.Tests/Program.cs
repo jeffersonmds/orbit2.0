@@ -1051,22 +1051,26 @@ public static class Program
 
         // Cota: JSON da status line, ritmo e avisos.
         {
-            var ev = ClaudeHookEvent.Parse("{\"session_id\":\"s1\",\"context_window\":{\"used_percentage\":34},\"rate_limits\":{\"five_hour\":{\"used_percentage\":23.5,\"resets_at\":1738425600}}}");
-            Check("cota: JSON sem hook_event_name é status line", ev.HookEventName == ClaudeHookEvent.StatusLine && ev.Usage?.ContextPct == 34
-                && ev.Usage.FiveHour?.UsedPct == 23.5 && ev.Usage.FiveHour.ResetsAt.ToUnixTimeSeconds() == 1738425600 && ev.Usage.SevenDay is null);
-            var cedo = ClaudeHookEvent.Parse("{\"session_id\":\"s1\",\"context_window\":{\"used_percentage\":null}}").Usage!;
-            Check("cota: início de sessão sem dados não quebra", cedo.FiveHour is null && cedo.ContextPct is null);
-            Check("cota: hook comum não traz cota", ClaudeHookEvent.Parse("{\"hook_event_name\":\"Stop\",\"session_id\":\"x\"}").Usage is null);
-            Check("cota: janela omitida mantém a anterior", cedo.Merge(ev.Usage)!.FiveHour?.UsedPct == 23.5);
+            const string resp = "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"r1\",\"response\":{\"rate_limits\":{"
+                + "\"five_hour\":{\"utilization\":3,\"resets_at\":\"2026-10-31T03:39:59.608777+00:00\"},\"seven_day\":{\"utilization\":18.5,\"resets_at\":\"2026-11-03T23:59:59+00:00\"},\"seven_day_opus\":null}}}}";
+            var cota = ClaudeUsage.ParseResponse(resp, "r1");
+            Check("cota: lê a resposta do CLI", cota?.FiveHour?.UsedPct == 3 && cota.SevenDay?.UsedPct == 18.5
+                && cota.FiveHour.ResetsAt == new DateTimeOffset(2026, 10, 31, 3, 39, 59, 608, 777, TimeSpan.Zero) && cota.Opus is null);
+            Check("cota: resposta de outro pedido não vale", ClaudeUsage.ParseResponse(resp, "r2") is null);
+            Check("cota: outra linha do CLI não vale", ClaudeUsage.ParseResponse("{\"type\":\"system\"}", "r1") is null);
+            Check("cota: lixo não quebra", ClaudeUsage.ParseResponse("nada", "r1") is null);
+            Check("cota: sem rate_limits", ClaudeUsage.ParseResponse("{\"type\":\"control_response\",\"response\":{\"request_id\":\"r1\",\"response\":{\"rate_limits\":null}}}", "r1") is null);
 
-            var ss = new Dictionary<string, ClaudeSessionInfo>();
-            ClaudeSessionReducer.Apply(ss, new ClaudeHookEvent("SessionStart", "s1", @"C:\x", null));
-            ClaudeSessionReducer.Apply(ss, new ClaudeHookEvent("Stop", "s1", @"C:\x", null));
-            ClaudeSessionReducer.MarkSeen(ss, 0);
-            ClaudeSessionReducer.Apply(ss, ev);
-            Check("cota: contexto vai pra sessão sem mudar o estado", ss["s1"].ContextText == "Contexto 34%" && ss["s1"].State == ClaudeSessionState.WaitingInput);
-            ClaudeSessionReducer.Apply(ss, ClaudeHookEvent.Parse("{\"session_id\":\"s1\"}"));
-            Check("cota: sem número novo mantém o contexto", ss["s1"].ContextPct == 34);
+            const string usage = "\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":1633,\"cache_read_input_tokens\":241102,\"output_tokens\":50}";
+            string tail = "{\"usage\":{\"cortada\n"
+                + "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n"
+                + "{\"type\":\"assistant\",\"message\":{" + usage + "}}\n"
+                + "{\"type\":\"assistant\",\"isSidechain\":true,\"message\":{\"usage\":{\"input_tokens\":9}}}\n"
+                + "{\"type\":\"user\",\"message\":{\"content\":\"\\\"usage\\\"\"}}\n";
+            Check("contexto: última resposta da sessão, sem subagente", ClaudeContext.LastTokens(tail) == 242739);
+            Check("contexto: transcript sem resposta", ClaudeContext.LastTokens("{\"type\":\"user\"}\n") is null);
+            Check("contexto: texto em milhares", new ClaudeSessionInfo("s", "p", ClaudeSessionState.Running, null, ContextTokens: 242739).ContextText == "243k de contexto");
+            Check("contexto: caminho vem do hook", ClaudeHookEvent.Parse("{\"hook_event_name\":\"Stop\",\"session_id\":\"x\",\"transcript_path\":\"C:\\\\t.jsonl\"}").TranscriptPath == @"C:\t.jsonl");
 
             var now = new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
             var five = ClaudeUsageMath.FiveHours;
@@ -1085,31 +1089,6 @@ public static class Program
             Check("limite: continuar perto não repete", ClaudeUsageMath.Crossing(1, 98) == (1, false));
             Check("limite: chegar a 100 avisa de novo", ClaudeUsageMath.Crossing(1, 100) == (2, true));
             Check("limite: janela nova rearma", ClaudeUsageMath.Crossing(2, 1) == (0, false));
-
-            const string exe = @"C:\Apps\Orbit.exe";
-            var cfg = new System.Text.Json.Nodes.JsonObject
-            {
-                ["statusLine"] = new System.Text.Json.Nodes.JsonObject { ["type"] = "command", ["command"] = "powershell -File \"C:\\a b\\sl.ps1\"", ["padding"] = 2 },
-            };
-            ClaudeHookInstaller.WrapStatusLine(cfg, exe);
-            string wrapped = cfg["statusLine"]!["command"]!.GetValue<string>();
-            Check("status line: instala preservando opções", ClaudeHookInstaller.HasStatusLine(cfg, exe) && cfg["statusLine"]!["padding"]!.GetValue<int>() == 2);
-            Check("status line: anterior vai no comando", ClaudeHookInstaller.DecodePrevious(wrapped.Split(' ')[^1]) == "powershell -File \"C:\\a b\\sl.ps1\"");
-            ClaudeHookInstaller.WrapStatusLine(cfg, exe);
-            Check("status line: instalar de novo não embrulha duas vezes", cfg["statusLine"]!["command"]!.GetValue<string>() == wrapped);
-            ClaudeHookInstaller.WrapStatusLine(cfg, @"D:\novo\Orbit.exe");
-            Check("status line: outro caminho mantém a original", ClaudeHookInstaller.HasStatusLine(cfg, @"D:\novo\Orbit.exe")
-                && ClaudeHookInstaller.DecodePrevious(cfg["statusLine"]!["command"]!.GetValue<string>().Split(' ')[^1]).StartsWith("powershell"));
-            ClaudeHookInstaller.UnwrapStatusLine(cfg);
-            Check("status line: desligar restaura", cfg["statusLine"]!["command"]!.GetValue<string>() == "powershell -File \"C:\\a b\\sl.ps1\"");
-            ClaudeHookInstaller.UnwrapStatusLine(cfg);
-            Check("status line: desligar sem ser nosso não mexe", cfg["statusLine"]!["command"]!.GetValue<string>().StartsWith("powershell"));
-            var vazio = new System.Text.Json.Nodes.JsonObject();
-            ClaudeHookInstaller.WrapStatusLine(vazio, exe);
-            Check("status line: sem anterior", vazio["statusLine"]!["command"]!.GetValue<string>() == "\"C:\\Apps\\Orbit.exe\" --claude-status");
-            ClaudeHookInstaller.UnwrapStatusLine(vazio);
-            Check("status line: sem anterior, desligar remove", vazio["statusLine"] is null);
-            Check("status line: base64 inválido não quebra", ClaudeHookInstaller.DecodePrevious("%%%") == "");
         }
 
         // "Visto" ao focar a janela da sessão: sai da pílula; aviso novo volta.

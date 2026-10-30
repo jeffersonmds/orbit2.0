@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Serilog;
@@ -9,8 +8,6 @@ namespace Orbit.Services;
 
 public static class ClaudeHookInstaller
 {
-    public const string StatusArg = "--claude-status";
-
     private static readonly string[] Events =
         { "SessionStart", "UserPromptSubmit", "Stop", "Notification", "SessionEnd" };
 
@@ -96,58 +93,10 @@ public static class ClaudeHookInstaller
         return true;
     }
 
-    // Só existe um slot de status line: o Orbit entra na frente e leva a anterior em base64 no próprio
-    // comando, o que permite executá-la (ClaudeHookClient) e restaurá-la sem arquivo à parte.
-    public static void WrapStatusLine(JsonObject root, string exePath)
-    {
-        string current = StatusCommand(root);
-        string previous = PreviousOf(current) ?? current; // já é nosso (outro caminho): não embrulha duas vezes
-        string command = $"\"{exePath}\" {StatusArg}";
-        if (previous.Length > 0) command += " " + Convert.ToBase64String(Encoding.UTF8.GetBytes(previous));
-
-        if (root["statusLine"] is not JsonObject line) root["statusLine"] = line = new JsonObject();
-        line["type"] = "command";
-        line["command"] = command;
-    }
-
-    public static void UnwrapStatusLine(JsonObject root)
-    {
-        if (PreviousOf(StatusCommand(root)) is not { } previous) return;
-        if (previous.Length == 0) root.Remove("statusLine");
-        else root["statusLine"]!["command"] = previous;
-    }
-
-    public static bool HasStatusLine(JsonObject root, string exePath) =>
-        StatusCommand(root).StartsWith($"\"{exePath}\" {StatusArg}", StringComparison.Ordinal);
-
-    public static string DecodePrevious(string? base64)
-    {
-        if (string.IsNullOrEmpty(base64)) return "";
-        try { return Encoding.UTF8.GetString(Convert.FromBase64String(base64)); }
-        catch (FormatException) { return ""; }
-    }
-
-    // Comando anterior embrulhado em `command`; null se esse comando não é do Orbit.
-    private static string? PreviousOf(string command)
-    {
-        string marker = $"Orbit.exe\" {StatusArg}";
-        int at = command.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        return at < 0 ? null : DecodePrevious(command[(at + marker.Length)..].Trim());
-    }
-
-    private static string StatusCommand(JsonObject root) =>
-        root["statusLine"] is JsonObject line && line["command"] is JsonValue v && v.TryGetValue<string>(out var c) ? c : "";
-
     // I/O: lê/cria ~/.claude/settings.json, aplica o merge, salva. Nunca lança —
     // mesma filosofia do SettingsStore. Falha silenciosa: o botão "Ativar" pode
     // ser clicado de novo sem problema.
-    public static void Install(string exePath) => Edit(root => MergeHooks(root, $"\"{exePath}\" --claude-hook"));
-
-    public static void InstallStatusLine(string exePath) => Edit(root => WrapStatusLine(root, exePath));
-
-    public static void RemoveStatusLine() => Edit(UnwrapStatusLine);
-
-    private static void Edit(Action<JsonObject> change)
+    public static void Install(string exePath)
     {
         try
         {
@@ -155,28 +104,14 @@ public static class ClaudeHookInstaller
                 ? (JsonNode.Parse(File.ReadAllText(SettingsPath)) as JsonObject ?? new JsonObject())
                 : new JsonObject();
 
-            change(root);
+            MergeHooks(root, $"\"{exePath}\" --claude-hook");
 
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             File.WriteAllText(SettingsPath, root.ToJsonString(WriteOptions));
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "ClaudeHookInstaller: falha ao gravar {Path}", SettingsPath);
-        }
-    }
-
-    public static bool IsStatusLineInstalled(string exePath)
-    {
-        try
-        {
-            return File.Exists(SettingsPath) && JsonNode.Parse(File.ReadAllText(SettingsPath)) is JsonObject root
-                && HasStatusLine(root, exePath);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "ClaudeHookInstaller: falha ao checar status line em {Path}", SettingsPath);
-            return false;
+            Log.Warning(ex, "ClaudeHookInstaller: falha ao instalar hooks em {Path}", SettingsPath);
         }
     }
 

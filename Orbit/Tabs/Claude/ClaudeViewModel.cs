@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,7 +15,21 @@ namespace Orbit.Tabs.Claude;
 // ActivityText (vira atividade na pílula).
 public sealed partial class ClaudeViewModel : TabViewModel
 {
+    // Cada consulta abre um `claude`, e o endpoint por trás dele tem rate limit.
+    private static readonly TimeSpan UsageMaxAge = TimeSpan.FromMinutes(5);
+
     private readonly Dictionary<string, ClaudeSessionInfo> _sessions = new();
+    private readonly Func<Task<ClaudeUsage?>>? _fetchUsage;
+
+    private ClaudeUsage? _usage;
+    private DateTimeOffset _usageAt;
+    private DateTime? _usageTriedAt;
+    private bool _usageFetching;
+    private int _fiveHourLevel, _sevenDayLevel;
+    private DispatcherTimer? _usageTimer;
+
+    // Sem fetchUsage (testes) a cota nunca é buscada.
+    public ClaudeViewModel(Func<Task<ClaudeUsage?>>? fetchUsage = null) => _fetchUsage = fetchUsage;
 
     public override string Id => "claude";
     public override string Title => "Claude";
@@ -22,36 +37,21 @@ public sealed partial class ClaudeViewModel : TabViewModel
     public ObservableCollection<ClaudeSessionInfo> Sessions { get; } = new();
     public ObservableCollection<ClaudeUsageRow> UsageRows { get; } = new();
 
-    private ClaudeUsage? _usage;
-    private DateTimeOffset _usageAt;
-    private int _fiveHourLevel, _sevenDayLevel;
-    private DispatcherTimer? _usageTimer;
-
     [ObservableProperty] private bool _hooksActive;
-    [ObservableProperty] private bool _statusLineActive;
     [ObservableProperty] private string? _usageAge;
     [ObservableProperty] private string? _activityText;
 
     // Stop/Notification de uma sessão conhecida.
     public event Action<ClaudeSessionInfo>? Attention;
 
-    // pid do processo dono da janela em primeiro plano (a ilha informa a cada troca de foco).
-    public int ForegroundPid { get; set; }
-
     // Título e detalhe de um aviso de limite do plano.
     public event Action<string, string>? LimitReached;
 
+    // pid do processo dono da janela em primeiro plano (a ilha informa a cada troca de foco).
+    public int ForegroundPid { get; set; }
+
     public void HandleHookEvent(ClaudeHookEvent evt)
     {
-        if (evt.Usage is { } usage)
-        {
-            var before = _sessions.GetValueOrDefault(evt.SessionId);
-            ClaudeSessionReducer.Apply(_sessions, evt);
-            if (before != _sessions.GetValueOrDefault(evt.SessionId)) Publish();
-            ApplyUsage(usage);
-            return;
-        }
-
         ClaudeSessionReducer.Apply(_sessions, evt);
         // já está olhando o terminal dessa sessão: nem aviso nem pílula (seria ruído)
         bool looking = evt.HostPid is not null && evt.HostPid == ForegroundPid;
@@ -59,6 +59,20 @@ public sealed partial class ClaudeViewModel : TabViewModel
         Publish();
         if (!looking && ClaudeSessionReducer.ShouldNotify(evt.HookEventName) && _sessions.TryGetValue(evt.SessionId, out var info))
             Attention?.Invoke(info);
+        // Fim de resposta é quando cota e contexto mudam: atualiza por evento, sem timer de fundo.
+        if (evt.HookEventName == "Stop")
+        {
+            _ = FetchUsage();
+            if (evt.TranscriptPath is { Length: > 0 } path) _ = RefreshContext(evt.SessionId, path);
+        }
+    }
+
+    private async Task RefreshContext(string sessionId, string transcriptPath)
+    {
+        var tokens = await Task.Run(() => ClaudeUsageClient.ReadContextTokens(transcriptPath));
+        if (tokens is null || !_sessions.TryGetValue(sessionId, out var session)) return;
+        _sessions[sessionId] = session with { ContextTokens = tokens };
+        Publish();
     }
 
     // Você trouxe uma janela pro primeiro plano: se é a de uma sessão aguardando, ela sai da pílula.
@@ -83,12 +97,24 @@ public sealed partial class ClaudeViewModel : TabViewModel
         ActivityText = BuildActivity(_sessions.Values);
     }
 
+    private async Task FetchUsage()
+    {
+        var tried = DateTime.Now;
+        if (_fetchUsage is null || _usageFetching || !Freshness.IsStale(_usageTriedAt, UsageMaxAge, tried)) return;
+        _usageFetching = true;
+        _usageTriedAt = tried; // conta a tentativa, não o sucesso: falha não vira um claude por resposta
+        var usage = await _fetchUsage();
+        _usageFetching = false;
+        if (usage is not null) ApplyUsage(usage);
+        else RefreshUsage();
+    }
+
     private void ApplyUsage(ClaudeUsage usage)
     {
-        _usage = usage.Merge(_usage);
+        _usage = usage;
         _usageAt = DateTimeOffset.Now;
-        CheckLimit("5 horas", _usage.FiveHour, ClaudeUsageMath.FiveHours, ref _fiveHourLevel);
-        CheckLimit("semanal", _usage.SevenDay, ClaudeUsageMath.SevenDays, ref _sevenDayLevel);
+        CheckLimit("5 horas", usage.FiveHour, ClaudeUsageMath.FiveHours, ref _fiveHourLevel);
+        CheckLimit("semanal", usage.SevenDay, ClaudeUsageMath.SevenDays, ref _sevenDayLevel);
         RefreshUsage();
     }
 
@@ -106,7 +132,9 @@ public sealed partial class ClaudeViewModel : TabViewModel
         UsageRows.Clear();
         if (_usage?.FiveHour is { } five) UsageRows.Add(ClaudeUsageMath.Row("5 horas", five, ClaudeUsageMath.FiveHours, now));
         if (_usage?.SevenDay is { } week) UsageRows.Add(ClaudeUsageMath.Row("Semanal", week, ClaudeUsageMath.SevenDays, now));
-        UsageAge = UsageRows.Count == 0 ? "aguardando a próxima resposta do Claude Code"
+        if (_usage?.Opus is { } opus) UsageRows.Add(ClaudeUsageMath.Row("Opus", opus, ClaudeUsageMath.SevenDays, now));
+        if (_usage?.Sonnet is { } sonnet) UsageRows.Add(ClaudeUsageMath.Row("Sonnet", sonnet, ClaudeUsageMath.SevenDays, now));
+        UsageAge = UsageRows.Count == 0 ? (_usageFetching ? "buscando…" : "cota indisponível")
             : now - _usageAt < TimeSpan.FromMinutes(1) ? "atualizado agora"
             : $"atualizado há {ClaudeUsageMath.Span(now - _usageAt)}";
     }
@@ -117,28 +145,12 @@ public sealed partial class ClaudeViewModel : TabViewModel
         if (active)
         {
             HooksActive = Environment.ProcessPath is { } exe && ClaudeHookInstaller.IsInstalled(exe);
-            StatusLineActive = Environment.ProcessPath is { } path && ClaudeHookInstaller.IsStatusLineInstalled(path);
+            _ = FetchUsage();
             RefreshUsage();
             _usageTimer ??= new DispatcherTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => RefreshUsage(), Dispatcher.CurrentDispatcher);
             _usageTimer.Start();
         }
         else _usageTimer?.Stop();
-    }
-
-    [RelayCommand]
-    private void InstallStatusLine()
-    {
-        if (Environment.ProcessPath is not { } exe) return;
-        ClaudeHookInstaller.InstallStatusLine(exe);
-        StatusLineActive = ClaudeHookInstaller.IsStatusLineInstalled(exe);
-    }
-
-    [RelayCommand]
-    private void RemoveStatusLine()
-    {
-        if (Environment.ProcessPath is not { } exe) return;
-        ClaudeHookInstaller.RemoveStatusLine();
-        StatusLineActive = ClaudeHookInstaller.IsStatusLineInstalled(exe);
     }
 
     [RelayCommand]

@@ -24,14 +24,6 @@ public partial class App : Application
             return;
         }
 
-        // Status line do Claude Code: mesmo esquema do hook, e ainda executa a status line anterior.
-        if (e.Args.Length > 0 && e.Args[0] == ClaudeHookInstaller.StatusArg)
-        {
-            ClaudeHookClient.RelayStatusLine(e.Args.Length > 1 ? e.Args[1] : null);
-            Shutdown();
-            return;
-        }
-
         // Explorer → Enviar para → "iPhone (Orbit)": repassa os arquivos pro Orbit aberto e sai.
         if (e.Args.Length > 0 && e.Args[0] == SendToIPhone.Arg)
         {

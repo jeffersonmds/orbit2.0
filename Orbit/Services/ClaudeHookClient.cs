@@ -5,7 +5,6 @@ using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
-using System.Threading.Tasks;
 
 namespace Orbit.Services;
 
@@ -36,59 +35,6 @@ public static class ClaudeHookClient
             // Sem Orbit rodando, timeout, pipe ocupado etc — o hook do Claude Code
             // não pode falhar/travar por causa disso.
         }
-    }
-
-    // Roda como status line do Claude Code: passa o JSON pro Orbit e executa a status line que já
-    // existia, com a saída dela. O Orbit fechado não pode atrasar o rodapé, por isso roda em paralelo.
-    public static void RelayStatusLine(string? previous)
-    {
-        try
-        {
-            using var buffer = new MemoryStream();
-            using (var stdin = Console.OpenStandardInput()) stdin.CopyTo(buffer);
-            byte[] input = buffer.ToArray();
-            var send = Task.Run(() => SendStatus(input));
-            RunPrevious(ClaudeHookInstaller.DecodePrevious(previous), input);
-            send.Wait(500);
-        }
-        catch
-        {
-            // Mesma regra do hook: nunca falha nem trava o Claude Code.
-        }
-    }
-
-    private static void SendStatus(byte[] input)
-    {
-        try
-        {
-            using var client = new NamedPipeClientStream(".", ClaudeHookServer.PipeName, PipeDirection.Out);
-            client.Connect(500);
-            client.Write(input);
-        }
-        catch { }
-    }
-
-    // ponytail: cmd.exe, não o shell do Claude Code; status line em sintaxe bash precisaria de bash -c aqui.
-    private static void RunPrevious(string command, byte[] input)
-    {
-        if (command.Length == 0) return;
-        using var p = Process.Start(new ProcessStartInfo("cmd.exe", $"/s /c \"{command}\"")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-        });
-        if (p is null) return;
-        var write = Task.Run(() =>
-        {
-            try { p.StandardInput.BaseStream.Write(input); p.StandardInput.Close(); }
-            catch (IOException) { } // quem não lê stdin pode sair antes
-        });
-        using var stdout = Console.OpenStandardOutput();
-        p.StandardOutput.BaseStream.CopyTo(stdout);
-        write.Wait(500);
-        p.WaitForExit();
     }
 
     // Acrescenta o pid do terminal/editor ao JSON (o Claude não manda). Sem achar, manda como veio.
