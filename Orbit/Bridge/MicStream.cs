@@ -40,7 +40,7 @@ public static class MicStream
             return Results.Ok(new { ticket = tickets.Issue(BridgeServer.DeviceOf(ctx).Hash, id, DateTime.Now) });
         });
 
-        api.MapPost("/mic/close", () => { sessions.StopAudio(); return Results.NoContent(); });
+        api.MapPost("/mic/close", (HttpContext ctx) => { sessions.StopAudio(BridgeServer.DeviceOf(ctx).Hash); return Results.NoContent(); });
 
         api.MapGet("/mic/stream", async (HttpContext ctx, string? ticket) =>
         {
@@ -70,6 +70,12 @@ public static class MicStream
                 var opening = Task.Run(() => h.OpenMic(deviceId, chunk => queue.Writer.TryWrite(chunk)));
                 if (await Task.WhenAny(opening, Task.Delay(ConsentTimeout, ct)) != opening)
                 {
+                    // outro aparelho assumiu (ou parou) enquanto esperava: não é falta de consentimento
+                    if (ct.IsCancellationRequested)
+                    {
+                        _ = opening.ContinueWith(t => { if (t.IsCompletedSuccessfully) t.Result.Stop.Dispose(); }, TaskScheduler.Default);
+                        return;
+                    }
                     h.Notify(new BridgeEvent("Autorize o microfone pro Orbit", "O Windows está perguntando nesta tela"));
                     // se autorizarem depois, solta na hora: ninguém está ouvindo
                     _ = opening.ContinueWith(t => { if (t.IsCompletedSuccessfully) t.Result.Stop.Dispose(); }, TaskScheduler.Default);

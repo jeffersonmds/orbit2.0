@@ -174,6 +174,17 @@ public static class Program
         Check("sessão: dono do vídeo", ss.Viewer?.Hash == "B");
         ss.End(sa);
         Check("sessão: End limpa o aviso", ss.DisplacedBy(sa) is null);
+        var sx = new RemoteSessions(_ => { });
+        var va = sx.BeginVideo(default, new SessionOwner("A", "iPhone"));
+        var au = sx.BeginAudio(default, new SessionOwner("A", "iPhone"));
+        sx.StopVideo("B"); sx.StopAudio("B");
+        Check("sessão: close de outro aparelho não mexe na sessão do dono", !va.IsCancellationRequested && !au.IsCancellationRequested);
+        sx.StopVideo("A"); sx.StopAudio("A");
+        Check("sessão: close do dono encerra", va.IsCancellationRequested && au.IsCancellationRequested);
+        Check("pílula: vendo num aparelho e controlando noutro", IslandViewModel.RemoteActivity(new RemoteState(true, true, false, "iPhone", "iPad")) == "iPhone vendo a tela · iPad controlando o PC");
+        Check("nome do aparelho cabe no motivo do close", new TokenStore(Path.Combine(Path.GetTempPath(), "orbit2-nm-" + Guid.NewGuid().ToString("N") + ".json")) is { } tsn
+            && tsn.Find(TokenStore.Hash(tsn.Create(new string('x', 80))))!.Name.Length == TokenStore.MaxNameLength);
+        Check("audit: owner não audita", !BridgeRules.ShouldAudit("GET", "/api/screen/owner"));
         Check("pílula: controlando", IslandViewModel.RemoteActivity(new RemoteState(true, true, false, "iPad", "iPad")) == "iPad controlando o PC");
         Check("pílula: vendo", IslandViewModel.RemoteActivity(new RemoteState(true, false, false, "iPad")) == "iPad vendo a tela");
         Check("pílula: mesmo aparelho", IslandViewModel.RemoteActivity(new RemoteState(true, false, true, "iPad", null, "iPad")) == "iPad vendo a tela · microfone");
@@ -270,6 +281,9 @@ public static class Program
             w2.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/remote/input?ticket={Ticket(httpB)}"), System.Threading.CancellationToken.None).Wait();
             try { w1.ReceiveAsync(new byte[16], new System.Threading.CancellationTokenSource(3000).Token).Wait(); } catch { }
             Check("sessão: quem perdeu a vez recebe 4001 e o nome", (int?)w1.CloseStatus == RemoteScreen.TakenCloseCode && w1.CloseStatusDescription == "iPad");
+            httpB.PostAsync("/api/screen/close", null).Result.Dispose();
+            System.Threading.Thread.Sleep(100);
+            Check("sessão: close de B não derruba o controle de B nem toca o de A", w2.State == System.Net.WebSockets.WebSocketState.Open);
             var own = httpB.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/screen/owner").Result;
             Check("sessão: owner sem vídeo", own.GetProperty("name").ValueKind == System.Text.Json.JsonValueKind.Null && !own.GetProperty("mine").GetBoolean());
             server.StopDevice(TokenStore.Hash(tokenB));

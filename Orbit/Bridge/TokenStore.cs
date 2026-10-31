@@ -56,8 +56,15 @@ public sealed class TokenStore
     }
 
     // Devolve o token em texto (mostrar uma vez só).
+    private static string CleanName(string? name)
+    {
+        name = (name ?? "").Trim();
+        return name.Length > MaxNameLength ? name[..MaxNameLength].TrimEnd() : name; // cabe no motivo de um close de WebSocket
+    }
+
     public string Create(string name)
     {
+        name = CleanName(name);
         var token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
         lock (_gate)
         {
@@ -99,8 +106,7 @@ public sealed class TokenStore
     // Nome aparado e cortado; vazio é recusado.
     public bool Rename(string hash, string name)
     {
-        name = (name ?? "").Trim();
-        if (name.Length > MaxNameLength) name = name[..MaxNameLength].TrimEnd();
+        name = CleanName(name);
         if (name.Length == 0) return false;
         return Update(hash, t => t with { Name = name });
     }

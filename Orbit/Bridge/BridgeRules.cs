@@ -115,7 +115,8 @@ public static class BridgeRules
           && (path.EndsWith("/stats", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/media", StringComparison.OrdinalIgnoreCase)
               || path.EndsWith("/media/cover", StringComparison.OrdinalIgnoreCase)
               || path.EndsWith("/camera/stream", StringComparison.OrdinalIgnoreCase)
-              || path.EndsWith("/camera/devices", StringComparison.OrdinalIgnoreCase)));
+              || path.EndsWith("/camera/devices", StringComparison.OrdinalIgnoreCase)
+              || path.EndsWith("/screen/owner", StringComparison.OrdinalIgnoreCase)));
 
     // Rotas /api autenticadas por tíquete (<img>/window.open/WebSocket não mandam cabeçalho): o próprio
     // handler valida o tíquete e, depois do claim, o dono (ver BridgeServer.TicketOwnerAllowed).

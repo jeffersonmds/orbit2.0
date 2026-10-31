@@ -329,8 +329,8 @@ public sealed partial class IPhoneViewModel : TabViewModel
         try
         {
             _tokens.Revoke(token.Hash);
+            Server.StopDevice(token.Hash); // antes do _onRevoked: a sessão cai mesmo se ele falhar
             _onRevoked(token.Hash);
-            Server.StopDevice(token.Hash);
         }
         catch (Exception ex)
         {

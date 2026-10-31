@@ -597,15 +597,19 @@ public sealed partial class IslandViewModel : ObservableObject
         Level = s.Level,
     };
 
+    // ponytail: aparelhos comparados pelo nome (RemoteState só tem nomes); dois com o mesmo nome parecem um só.
     public static string? RemoteActivity(RemoteState s)
     {
-        var screenDevice = s.Controlling ? s.Controller : s.Viewer;
-        var screen = s.Controlling ? (s.Controller ?? "Aparelho") + " controlando o PC"
-            : s.Viewing ? (s.Viewer ?? "Aparelho") + " vendo a tela" : null;
+        var viewer = s.Viewer ?? "Aparelho";
+        var controller = s.Controller ?? "Aparelho";
+        var screen = s.Controlling
+            ? (s.Viewing && viewer != controller ? $"{viewer} vendo a tela · {controller} controlando o PC" : controller + " controlando o PC")
+            : s.Viewing ? viewer + " vendo a tela" : null;
         if (!s.Listening) return screen;
         var mic = s.Listener ?? "Aparelho";
         if (screen is null) return "Microfone no " + mic;
-        return screen + (screenDevice == s.Listener ? " · microfone" : " · Microfone no " + mic);
+        var screenDevices = new[] { s.Viewing ? s.Viewer : null, s.Controlling ? s.Controller : null };
+        return screen + (screenDevices.All(d => d is null || d == s.Listener) ? " · microfone" : " · Microfone no " + mic);
     }
 
     private IReadOnlyCollection<string> ValidTokenHashes() => _tokens.List().Select(t => t.Hash).ToHashSet();

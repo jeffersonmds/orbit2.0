@@ -489,7 +489,7 @@ async function scrLoad() {
 
 // Outro aparelho assumiu a tela: encerra aqui e oferece "Retomar" (refaz o fluxo de abrir).
 function scrTaken(name) {
-  scrStop(true);
+  scrStop();
   scrSay(`O ${name} assumiu a tela`);
   $('#scrResume').classList.remove('hidden');
 }
@@ -498,8 +498,13 @@ function scrTaken(name) {
 async function scrCheckOwner() {
   try {
     const o = await api('/screen/owner');
-    if (scr.live && !o.mine && o.name) scrTaken(o.name);
-  } catch { /* sem rede: o onerror da imagem cuida */ }
+    if (!scr.live) return;
+    if (!o.name) { scrStop(); scrSay('Transmissão encerrada'); } // o PC não tem mais vídeo nosso
+    else if (!o.mine) scrTaken(o.name);
+  } catch (e) {
+    if (/403/.test(e.message) && scr.live) { scrStop(); scrSay('Transmissão encerrada'); } // permissão desligada
+    /* senão sem rede: o onerror da imagem cuida */
+  }
 }
 
 async function scrStart() {
@@ -516,6 +521,7 @@ async function scrStart() {
     resetView();
     if (landscape.matches) scrImmersive(true); // já deitado: vai direto pra tela cheia
     scrConnectControl(screen);
+    clearInterval(scr.watch);
     scr.watch = setInterval(scrCheckOwner, 5000);
   } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba iPhone do PC.' : e.message); }
 }
@@ -539,12 +545,11 @@ async function scrConnectControl(screen) {
   }
 }
 
-function scrStop(taken) {
+function scrStop() {
   clearInterval(scr.watch);
   scrImg.onerror = null;
   scrImg.src = BLANK; // aborta a <img>…
-  // se outro aparelho assumiu, /screen/close derrubaria a sessão dele
-  if (token && !taken) fetch('/api/screen/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {}); // …e o Safari precisa do aviso
+  if (token) fetch('/api/screen/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {}); // …e o Safari precisa do aviso
   if (scr.ws) { scr.ws.close(); scr.ws = null; }
   scr.live = false;
   scrView.classList.remove('live');

@@ -121,14 +121,15 @@ public sealed class RemoteSessions
     }
 
     // "Parar" do iPhone: o Safari não derruba a conexão MJPEG só trocando a imagem.
-    public void StopVideo()
+    // Só cancela se o aparelho que pediu é o dono da vaga (senão encerraria a sessão de outro).
+    public void StopVideo(string hash)
     {
-        lock (_gate) _video?.Cancel();
+        lock (_gate) if (Owner(_video)?.Hash == hash) _video!.Cancel();
     }
 
-    public void StopAudio()
+    public void StopAudio(string hash)
     {
-        lock (_gate) _audio?.Cancel();
+        lock (_gate) if (Owner(_audio)?.Hash == hash) _audio!.Cancel();
     }
 
     public void StopAll()
@@ -233,7 +234,7 @@ public static class RemoteScreen
             return Results.Ok(new { name = viewer?.Name, mine = viewer?.Hash == BridgeServer.DeviceOf(ctx).Hash });
         });
 
-        api.MapPost("/screen/close", () => { sessions.StopVideo(); return Results.NoContent(); });
+        api.MapPost("/screen/close", (HttpContext ctx) => { sessions.StopVideo(BridgeServer.DeviceOf(ctx).Hash); return Results.NoContent(); });
 
         // Tíquete do WebSocket de controle, preso ao monitor que o iPhone está vendo.
         api.MapPost("/remote/ticket", (RemoteTicketRequest req, HttpContext ctx) =>
@@ -312,9 +313,7 @@ public static class RemoteScreen
         // Cancelar o ReceiveAsync aborta o socket e o 4001/"fim" nunca sairia: espera sem passar o token.
         async Task<WebSocketReceiveResult> Receive(byte[] b)
         {
-            var recv = ws.ReceiveAsync(b, CancellationToken.None);
-            if (await Task.WhenAny(recv, Task.Delay(Timeout.Infinite, ct)) != recv) throw new OperationCanceledException(ct);
-            return await recv;
+            return await ws.ReceiveAsync(b, CancellationToken.None).WaitAsync(ct);
         }
         var window = Stopwatch.StartNew();
         int inWindow = 0;
@@ -330,6 +329,7 @@ public static class RemoteScreen
             }
             if (window.ElapsedMilliseconds >= 1000) { window.Restart(); inWindow = 0; }
             if (++inWindow > MaxMessagesPerSecond) continue;
+            ct.ThrowIfCancellationRequested(); // sessão encerrada/assumida: nada de comando atrasado
             if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, res.Count)) is { } cmd && allow(cmd))
                 h.RemoteInput(cmd, bounds);
         }
