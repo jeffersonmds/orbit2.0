@@ -35,18 +35,13 @@ public sealed partial class IPhoneViewModel : TabViewModel
     private readonly PairingCodes _codes = new();
     private readonly Orbit.Services.Camera _camera = new();
     private readonly StreamTickets _tickets = new();
-    public ObservableCollection<TokenInfo> Tokens { get; } = new();
+    public ObservableCollection<DeviceRow> Devices { get; } = new();
     public ObservableCollection<AuditRow> Activity { get; } = new();
 
     [ObservableProperty] private bool _enabled;
     [ObservableProperty] private string _status = "Desligada";
     [ObservableProperty] private string _publicUrl = "";
-    [ObservableProperty] private bool _cameraEnabled;
-    [ObservableProperty] private bool _pcFilesEnabled;
-    [ObservableProperty] private bool _screenEnabled;
-    [ObservableProperty] private bool _controlEnabled;
-    [ObservableProperty] private bool _micEnabled;
-    [ObservableProperty] private bool _keyboardEnabled;
+    [ObservableProperty] private string _pairName = "";
     [ObservableProperty] private bool _remoteActive;
     [ObservableProperty] private string _remoteText = "";
     [ObservableProperty] private BitmapSource? _qrImage;
@@ -86,12 +81,6 @@ public sealed partial class IPhoneViewModel : TabViewModel
         _syncing = true;
         Enabled = settings.BridgeEnabled;
         PublicUrl = settings.BridgePublicUrl;
-        CameraEnabled = settings.BridgeCameraEnabled;
-        PcFilesEnabled = settings.BridgePcFilesEnabled;
-        ScreenEnabled = settings.BridgeScreenEnabled;
-        ControlEnabled = settings.BridgeControlEnabled;
-        MicEnabled = settings.BridgeMicEnabled;
-        KeyboardEnabled = settings.BridgeKeyboardEnabled;
         _syncing = false;
         _audit.Written += _ => Application.Current?.Dispatcher.BeginInvoke(RefreshActivity);
     }
@@ -116,45 +105,6 @@ public sealed partial class IPhoneViewModel : TabViewModel
         _toggle = ApplyAsync(_toggle);
     }
 
-    partial void OnCameraEnabledChanged(bool value)
-    {
-        if (_syncing) return;
-        _settings.BridgeCameraEnabled = value;
-        SettingsStore.Save(_settings);
-    }
-
-    partial void OnScreenEnabledChanged(bool value)
-    {
-        if (_syncing) return;
-        _settings.BridgeScreenEnabled = value;
-        SettingsStore.Save(_settings);
-        if (!value) Server.StopRemote(); // desligou a permissão: derruba a sessão na hora
-    }
-
-    partial void OnControlEnabledChanged(bool value)
-    {
-        if (_syncing) return;
-        _settings.BridgeControlEnabled = value;
-        SettingsStore.Save(_settings);
-        if (!value) Server.StopRemote();
-    }
-
-    partial void OnKeyboardEnabledChanged(bool value)
-    {
-        if (_syncing) return;
-        _settings.BridgeKeyboardEnabled = value;
-        SettingsStore.Save(_settings);
-        if (!value) Server.StopRemote();
-    }
-
-    partial void OnMicEnabledChanged(bool value)
-    {
-        if (_syncing) return;
-        _settings.BridgeMicEnabled = value;
-        SettingsStore.Save(_settings);
-        if (!value) Server.StopRemote();
-    }
-
     // Chamado pela ilha quando tela/controle/microfone mudam (já na UI thread).
     public void SetRemote(RemoteState s)
     {
@@ -173,13 +123,6 @@ public sealed partial class IPhoneViewModel : TabViewModel
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private void StopRemote() => Server.StopRemote();
-
-    partial void OnPcFilesEnabledChanged(bool value)
-    {
-        if (_syncing) return;
-        _settings.BridgePcFilesEnabled = value;
-        SettingsStore.Save(_settings);
-    }
 
     partial void OnPublicUrlChanged(string value)
     {
@@ -364,7 +307,10 @@ public sealed partial class IPhoneViewModel : TabViewModel
     [RelayCommand]
     private void Pair()
     {
-        var token = _tokens.Create($"iPhone {DateTime.Now:dd/MM HH:mm}");
+        var name = PairName.Trim();
+        if (name.Length == 0) name = $"Dispositivo {DateTime.Now:dd/MM HH:mm}";
+        PairName = "";
+        var token = _tokens.Create(name);
         var baseUrl = BridgeRules.NormalizeBaseUrl(PublicUrl);
         PairLink = baseUrl.Length > 0
             ? BridgeRules.PairingLink(baseUrl, token)
@@ -384,7 +330,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
     }
 
     [RelayCommand]
-    private void Revoke(TokenInfo token)
+    private void Revoke(DeviceRow token)
     {
         try
         {
@@ -401,8 +347,42 @@ public sealed partial class IPhoneViewModel : TabViewModel
 
     private void RefreshTokens()
     {
-        Tokens.Clear();
-        foreach (var t in _tokens.List().OrderByDescending(t => t.CreatedAt)) Tokens.Add(t);
+        Devices.Clear();
+        var now = DateTime.Now;
+        foreach (var t in _tokens.List().OrderByDescending(t => t.CreatedAt))
+            Devices.Add(new DeviceRow(t, _tokens.LastSeen(t.Hash), now, OnDevicePermissions, OnDeviceRename));
+    }
+
+    private void OnDevicePermissions(DeviceRow row)
+    {
+        try
+        {
+            _tokens.SetPermissions(row.Hash, row.ToPermissions());
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Ponte: não consegui gravar as permissões de {Nome}", row.Name);
+            Status = "Não consegui gravar as permissões (tokens.json em uso). Tente de novo.";
+            RefreshTokens();
+            return;
+        }
+        // Tirou algo: derruba a sessão ao vivo (a Task 7 troca por StopDevice).
+        Server.StopRemote();
+    }
+
+    private void OnDeviceRename(DeviceRow row)
+    {
+        try
+        {
+            if (_tokens.Rename(row.Hash, row.Name)) return;
+            row.ResetName(_tokens.Find(row.Hash)?.Name ?? row.Name); // nome em branco: volta ao anterior
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Ponte: não consegui renomear {Nome}", row.Name);
+            Status = "Não consegui renomear (tokens.json em uso). Tente de novo.";
+            RefreshTokens();
+        }
     }
 
     private void RefreshActivity()

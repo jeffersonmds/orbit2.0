@@ -169,6 +169,12 @@ public static class Program
         Check("mic: texto da aba iPhone", Orbit.Tabs.IPhone.IPhoneViewModel.IPhoneRemoteText(new RemoteState(true, true, true))
             == "vendo e controlando a tela e ouvindo o microfone");
 
+        var agoraAba = new DateTime(2026, 10, 30, 12, 0, 0);
+        Check("aba: nunca visto", Orbit.Tabs.IPhone.DeviceRow.SeenText(null, agoraAba) == "sem acesso desde que abriu");
+        Check("aba: agora", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddSeconds(-30), agoraAba) == "online");
+        Check("aba: minutos", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddMinutes(-12), agoraAba) == "há 12 min");
+        Check("aba: horas", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddHours(-2), agoraAba) == "há 2 h");
+
         // Rotas
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-tela-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);

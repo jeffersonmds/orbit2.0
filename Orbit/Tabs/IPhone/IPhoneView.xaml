@@ -16,21 +16,6 @@
                     <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
-                <!-- Permissões à parte, todas desligadas por padrão -->
-                <WrapPanel Margin="0,0,0,10">
-                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding CameraEnabled}"
-                              Content="Câmera" ToolTip="Permite o iPhone ver as câmeras do PC"/>
-                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding PcFilesEnabled}"
-                              Content="Arquivos" ToolTip="Permite o iPhone ver e baixar arquivos das pastas do usuário (só leitura)"/>
-                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding ScreenEnabled}"
-                              Content="Tela" ToolTip="Permite o iPhone ver a tela do PC ao vivo"/>
-                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding ControlEnabled}" IsEnabled="{Binding ScreenEnabled}"
-                              Content="Controle" ToolTip="Permite o iPhone usar mouse e teclado (precisa de Tela)"/>
-                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding MicEnabled}"
-                              Content="Microfone" ToolTip="Permite o iPhone ouvir o microfone do PC"/>
-                    <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding KeyboardEnabled}"
-                              Content="Teclado" ToolTip="Permite o iPhone digitar (e ditar) no app em foco do PC"/>
-                </WrapPanel>
                 <!-- Sessão de tela remota ativa: quem está no PC vê e pode derrubar -->
                 <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="10" Padding="10,6" Margin="0,0,0,10"
                         Visibility="{Binding RemoteActive, Converter={StaticResource BoolToVis}}">
@@ -62,25 +47,44 @@
                     </TextBlock>
                 </DockPanel>
                 <DockPanel Margin="0,0,0,6">
-                    <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Parear iPhone" Command="{Binding PairCommand}"/>
-                    <TextBlock Text="Aparelhos com acesso" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0"/>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Parear iPhone" Command="{Binding PairCommand}" Margin="8,0,0,0"/>
+                    <TextBox Style="{StaticResource Field}" Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Nome do novo dispositivo (opcional)"/>
                 </DockPanel>
+                <TextBlock Text="Aparelhos com acesso" Style="{StaticResource Label}"/>
             </StackPanel>
             <TextBlock DockPanel.Dock="Bottom" FontSize="10.5" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,6,0,0"
                        Text="Precisa do Tailscale no PC e no iPhone + 'tailscale serve' (docs/tailscale-setup.md). Nunca use 'tailscale funnel'."/>
             <ScrollViewer VerticalScrollBarVisibility="Hidden">
-                <ItemsControl ItemsSource="{Binding Tokens}">
+                <ItemsControl ItemsSource="{Binding Devices}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Style="{StaticResource Card}" Padding="12,6" Margin="0,0,0,4">
-                                <DockPanel>
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" ToolTip="Revogar"
-                                            Command="{Binding DataContext.RevokeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}"/>
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding CreatedAt, StringFormat={}{0:dd/MM HH:mm}}" FontSize="11"
-                                               Foreground="{StaticResource InkLo}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                    <TextBlock Text="{Binding Name}" FontSize="13" VerticalAlignment="Center"/>
-                                </DockPanel>
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" ToolTip="Revogar"
+                                                Command="{Binding DataContext.RevokeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"/>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding LastSeenText}" FontSize="11"
+                                                   Foreground="{StaticResource InkLo}" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                        <TextBox Style="{StaticResource Field}" Text="{Binding Name, UpdateSourceTrigger=LostFocus}"
+                                                 FontSize="13" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                    <WrapPanel Margin="0,6,0,0">
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Camera}"
+                                                  Content="Câmera" ToolTip="Permite este iPhone ver as câmeras do PC"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding PcFiles}"
+                                                  Content="Arquivos" ToolTip="Permite ver e baixar arquivos das pastas do usuário (só leitura)"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Screen}"
+                                                  Content="Tela" ToolTip="Permite ver a tela do PC ao vivo"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Control}" IsEnabled="{Binding Screen}"
+                                                  Content="Controle" ToolTip="Permite usar mouse e teclado (precisa de Tela)"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Mic}"
+                                                  Content="Microfone" ToolTip="Permite ouvir o microfone do PC"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Keyboard}"
+                                                  Content="Teclado" ToolTip="Permite digitar (e ditar) no app em foco do PC"/>
+                                    </WrapPanel>
+                                </StackPanel>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
