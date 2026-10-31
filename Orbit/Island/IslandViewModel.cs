@@ -143,7 +143,10 @@ public sealed partial class IslandViewModel : ObservableObject
         };
         // Explorer → Enviar para → "Dispositivo (Orbit)" chega por pipe (thread do pool).
         SendToDevice.Listen(files => Application.Current?.Dispatcher.BeginInvoke(() =>
-            ChooseDevice(files.Length == 1 ? Path.GetFileName(files[0]) : $"{files.Length} arquivos", d => SendFiles(files, d))), _sendToCts.Token);
+        {
+            if (files.Length == 0) return;
+            ChooseDevice(files.Length == 1 ? Path.GetFileName(files[0]) : $"{files.Length} arquivos", d => SendFiles(files, d));
+        }), _sendToCts.Token);
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
         // Ponte com o iPhone: desligada até o usuário ligar na aba (BridgeEnabled).
         IPhone = new IPhoneViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
@@ -337,16 +340,17 @@ public sealed partial class IslandViewModel : ObservableObject
 
     // Indicador de privacidade na pílula: tudo que o iPhone está usando agora.
     // 2+ aparelhos em tela cheia: o seletor não pode ir pra fila (apareceria muito depois, sem contexto).
-    public static DeviceChoice DecideChoice(int devices, bool fullscreen) =>
+    // blocked: tela cheia ou ilha escondida pela bandeja (o seletor ficaria invisível).
+    public static DeviceChoice DecideChoice(int devices, bool blocked) =>
         devices == 0 ? DeviceChoice.None
         : devices == 1 ? DeviceChoice.Direct
-        : fullscreen ? DeviceChoice.Blocked
+        : blocked ? DeviceChoice.Blocked
         : DeviceChoice.Ask;
 
     // Um botão por aparelho (na ordem dada) e "Todos" com 2 ou mais. Quem chama ordena por CreatedAt.
     public static List<PeekAction> DeviceActions(IReadOnlyList<TokenInfo> devices, Action<IReadOnlyList<TokenInfo>> send)
     {
-        var acts = devices.Select(d => new PeekAction(d.Name, () => send(new[] { d }))).ToList();
+        var acts = devices.Select(d => new PeekAction(d.Name.Length > 12 ? d.Name[..12] + "…" : d.Name, () => send(new[] { d }))).ToList();
         if (devices.Count >= 2) acts.Add(new PeekAction("Todos", () => send(devices)));
         return acts;
     }
@@ -355,6 +359,9 @@ public sealed partial class IslandViewModel : ObservableObject
     public static List<string> LiveRecipients(IEnumerable<TokenInfo> chosen, IReadOnlyList<TokenInfo> current) =>
         chosen.Select(c => c.Hash).Where(h => current.Any(t => t.Hash == h)).ToList();
 
+    // A janela marca quando a ilha está escondida pela bandeja.
+    public bool UserHidden { get; set; }
+
     private List<TokenInfo> Devices() => _tokens.List().OrderBy(t => t.CreatedAt).ToList();
 
     // Todo envio PC → dispositivo passa por aqui. what: o que vai (aparece no seletor).
@@ -362,7 +369,7 @@ public sealed partial class IslandViewModel : ObservableObject
     {
         if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte", "Aba iPhone → Ponte ligada", "iphone")); return; }
         var devices = Devices();
-        switch (DecideChoice(devices.Count, _machine.Fullscreen))
+        switch (DecideChoice(devices.Count, _machine.Fullscreen || UserHidden))
         {
             case DeviceChoice.None:
                 RaisePeek(new Peek("Pareie um dispositivo", "Aba iPhone → Parear", "iphone"));
@@ -371,13 +378,15 @@ public sealed partial class IslandViewModel : ObservableObject
                 send(devices);
                 break;
             case DeviceChoice.Blocked:
-                ToastNotifier.Notify("Não mandei", "Saia da tela cheia para escolher o dispositivo", false);
+                ToastNotifier.Notify("Não mandei", _machine.Fullscreen
+                    ? "Saia da tela cheia para escolher o dispositivo"
+                    : "Mostre a ilha para escolher o dispositivo", false);
                 break;
             default:
                 Collapse(); // o alerta fica atrás do painel aberto
                 RaisePeek(new Peek("Mandar para…", what, "iphone")
                 {
-                    Key = "escolher-dispositivo",
+                    Key = IslandMachine.DeviceChoiceKey,
                     Duration = TimeSpan.FromSeconds(10),
                     Actions = DeviceActions(devices, send),
                 });
@@ -399,7 +408,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 try { return _outbox.AddFile(f, DateTime.Now, live, files.Count == 1 ? name : null); }
                 catch (Exception ex) { Log.Warning(ex, "Mandar pro dispositivo: não copiou {Arquivo}", f); return null; }
             }).OfType<OutboxItem>().ToList();
-            Application.Current?.Dispatcher.BeginInvoke(() => Announce(added, files.Count, to));
+            Application.Current?.Dispatcher.BeginInvoke(() => Announce(added, files.Count, live));
         });
     }
 
@@ -455,14 +464,15 @@ public sealed partial class IslandViewModel : ObservableObject
         var live = LiveRecipients(to, _tokens.List());
         if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "iphone")); return; }
         var item = _outbox.AddText(text, DateTime.Now, live);
-        Announce(item is null ? new() : new() { item }, 1, to);
+        Announce(item is null ? new() : new() { item }, 1, live);
     }
 
-    private void Announce(List<OutboxItem> added, int asked, IReadOnlyList<TokenInfo> to)
+    private void Announce(List<OutboxItem> added, int asked, IReadOnlyList<string> live)
     {
         if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "iphone")); return; }
         var (title, body) = OutboxAnnouncement(added);
-        var dest = to.Count == 1 ? $"Mandado para {to[0].Name}" : $"Mandado para {to.Count} dispositivos";
+        var current = _tokens.List();
+        var dest = live.Count == 1 ? $"Mandado para {current.FirstOrDefault(t => t.Hash == live[0])?.Name ?? "dispositivo"}" : $"Mandado para {live.Count} dispositivos";
         RaisePeek(new Peek(dest, body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
         _ = _push.SendAsync(title, body, ValidTokenHashes(), onlyTokens: added.SelectMany(i => i.Recipients ?? Array.Empty<string>()).ToHashSet(), url: OutboxPushUrl(added));
     }
@@ -473,11 +483,20 @@ public sealed partial class IslandViewModel : ObservableObject
     // Zonas de soltar: uma por aparelho + "Todos"; com um aparelho, zona única com o nome dele.
     public void BuildDropTargets()
     {
+        // Ponte desligada: sem zonas, o drop cai em ChooseDevice ("Ligue a ponte").
+        var devices = _settings.BridgeEnabled ? Devices() : new List<TokenInfo>();
+        var want = new List<DropTarget>();
+        if (devices.Count == 1) want.Add(new DropTarget(devices[0].Name, devices));
+        else
+        {
+            foreach (var d in devices) want.Add(new DropTarget(d.Name, new[] { d }));
+            if (devices.Count >= 2) want.Add(new DropTarget("Todos", devices));
+        }
+        // Já igual: não mexe (Clear destrói o Border sob o cursor e o WPF dispara DragEnter de novo).
+        if (want.Count == DropTargets.Count && want.Zip(DropTargets).All(z => z.First.Label == z.Second.Label
+            && z.First.Devices.Select(t => t.Hash).SequenceEqual(z.Second.Devices.Select(t => t.Hash)))) return;
         DropTargets.Clear();
-        var devices = Devices();
-        if (devices.Count == 1) { DropTargets.Add(new DropTarget(devices[0].Name, devices)); return; }
-        foreach (var d in devices) DropTargets.Add(new DropTarget(d.Name, new[] { d }));
-        if (devices.Count >= 2) DropTargets.Add(new DropTarget("Todos", devices));
+        foreach (var t in want) DropTargets.Add(t);
     }
 
     public static (string Title, string Body) OutboxAnnouncement(IReadOnlyList<OutboxItem> added)

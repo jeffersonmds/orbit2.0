@@ -72,12 +72,17 @@ public sealed class IslandMachine
 
     public void Collapse() => Expanded = false;
 
+    public const string DeviceChoiceKey = "escolher-dispositivo";
+
     public void SetFullscreen(bool on)
     {
         Fullscreen = on;
         if (on)
         {
             Expanded = false;
+            // O seletor de dispositivo não sobrevive à tela cheia: reapareceria depois, sem contexto.
+            _pending.RemoveAll(p => p.Key == DeviceChoiceKey);
+            if (CurrentPeek?.Key == DeviceChoiceKey) CurrentPeek = null;
             // Alerta interrompido volta pra frente da fila e reaparece ao sair da tela cheia.
             if (CurrentPeek is not null)
             {

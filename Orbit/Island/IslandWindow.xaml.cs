@@ -83,6 +83,7 @@ public partial class IslandWindow : Window
         _tray.ToggleVisibility += () =>
         {
             _userHidden = !_userHidden;
+            _vm.UserHidden = _userHidden;
             UpdateVisibility();
             // Alerta só conta tempo visível: escondida, ele espera; ao mostrar, começa a contar.
             if (_userHidden) _peek.Stop();
@@ -91,7 +92,7 @@ public partial class IslandWindow : Window
         _tray.SettingsRequested += () =>
         {
             if (_vm.Mode == IslandMode.Oculta) return; // não rouba o foco do jogo/vídeo em tela cheia
-            _userHidden = false; UpdateVisibility(); _vm.OpenTab("ajustes");
+            _userHidden = false; _vm.UserHidden = false; UpdateVisibility(); _vm.OpenTab("ajustes");
             Activate();
         };
         _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };

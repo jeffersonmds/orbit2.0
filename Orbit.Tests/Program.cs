@@ -598,6 +598,16 @@ public static class Program
         Check("destino: botão manda só a um", sentTo!.Count == 1 && sentTo[0] == ipad);
         Check("destino: um aparelho não tem Todos", IslandViewModel.DeviceActions(new[] { ipad }, _ => { }).Select(a => a.Label).SequenceEqual(new[] { "iPad" }));
         Check("destino: revogado sai da lista", IslandViewModel.LiveRecipients(new[] { ipad, iphone }, new[] { ipad }).SequenceEqual(new[] { ipad.Hash }));
+        Check("destino: ilha escondida bloqueia", IslandViewModel.DecideChoice(2, true) == DeviceChoice.Blocked);
+        var longo = new TokenInfo("iPhone do Jefferson", new string('3', 64), t0);
+        Check("destino: rótulo longo é cortado", IslandViewModel.DeviceActions(new[] { longo }, _ => { })[0].Label == "iPhone do Je…");
+        var mSel = new IslandMachine();
+        mSel.RaisePeek(new Peek("Mandar para…", "x", "iphone") { Key = IslandMachine.DeviceChoiceKey });
+        mSel.SetFullscreen(true); mSel.SetFullscreen(false);
+        Check("destino: seletor não sobrevive à tela cheia", mSel.CurrentPeek is null);
+        mSel.RaisePeek(new Peek("N", null, null));
+        mSel.SetFullscreen(true); mSel.SetFullscreen(false);
+        Check("destino: peek normal volta da tela cheia", mSel.CurrentPeek?.Title == "N");
         var mDest = new IslandMachine();
         mDest.Expand(); mDest.Collapse(); mDest.RaisePeek(new Peek("Mandar para…", "x", "iphone"));
         Check("destino: seletor aparece com o painel aberto", mDest.Mode == IslandMode.Alerta);

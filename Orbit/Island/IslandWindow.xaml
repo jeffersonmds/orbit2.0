@@ -153,6 +153,21 @@
             <!-- Arrastando arquivo pra ilha: o painel vira zonas de soltar, uma por dispositivo -->
             <Border x:Name="DropHint" Visibility="Collapsed" Background="{StaticResource IslandBg}" Margin="10"
                     CornerRadius="16" BorderThickness="2" BorderBrush="{DynamicResource AccentBrush}">
+                <Grid>
+                <!-- Sem zonas (ponte desligada): o drop cai no seletor, que avisa o que fazer -->
+                <TextBlock Text="Solte pra mandar" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DropTargets.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 <ItemsControl ItemsSource="{Binding DropTargets}" Margin="12">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate>
@@ -173,6 +188,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                </Grid>
             </Border>
         </Grid>
     </Border>
