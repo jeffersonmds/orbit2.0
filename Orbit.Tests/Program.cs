@@ -79,6 +79,7 @@ public static class Program
         MicTests();
         OutboxTests();
         KeyboardTests();
+        DevicePermissionRouteTests();
         SelfUpdateTests();
         IslandExtrasTests();
         SystemSignalsTests();
@@ -97,16 +98,19 @@ public static class Program
         var web = Path.Combine(AppContext.BaseDirectory, "wwwroot");
         var camera = new Camera();
         var tickets = new StreamTickets();
-        var handlers = new BridgeHandlers { CameraEnabled = () => true };
+        var handlers = new BridgeHandlers();
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var camHash = TokenStore.Hash(tokens.Create("iPhone teste"));
+        tokens.SetPermissions(camHash, Only(Capability.Camera));
         var server = new BridgeServer();
-        server.StartAsync(0, web, new TokenStore(Path.Combine(dir, "t.json")), new AuditLog(Path.Combine(dir, "a.jsonl")),
+        server.StartAsync(0, web, tokens, new AuditLog(Path.Combine(dir, "a.jsonl")),
             handlers, null, camera, tickets).GetAwaiter().GetResult();
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
 
         var semTicket = http.GetAsync("/api/camera/stream").Result;
         Check("câmera: stream sem tíquete = 401", semTicket.StatusCode == HttpStatusCode.Unauthorized);
 
-        var tk = tickets.Issue("device-inexistente", CameraPreset.Default, DateTime.Now);
+        var tk = tickets.Issue(camHash, "device-inexistente", CameraPreset.Default, DateTime.Now);
         var comTicket = http.GetAsync($"/api/camera/stream?ticket={tk}").Result; // sem Authorization
         Check("câmera: stream com tíquete passa o token e falha no device (409)", comTicket.StatusCode == HttpStatusCode.Conflict);
 
@@ -152,10 +156,10 @@ public static class Program
         Check("tela: captura real sai JPEG", shot is { Length: > 1000 } && shot[0] == 0xFF && shot[1] == 0xD8);
 
         var tk = new OneShotTickets<string>();
-        var t1 = tk.Issue("x", DateTime.Now);
-        Check("tela: tíquete uso único", tk.TryClaim(t1, DateTime.Now, out var v1) && v1 == "x" && !tk.TryClaim(t1, DateTime.Now, out _));
-        var t2 = tk.Issue("y", DateTime.Now);
-        Check("tela: tíquete vencido", !tk.TryClaim(t2, DateTime.Now.AddSeconds(31), out _));
+        var t1 = tk.Issue("dono", "x", DateTime.Now);
+        Check("tela: tíquete uso único", tk.TryClaim(t1, DateTime.Now, out var v1, out var o1) && v1 == "x" && o1 == "dono" && !tk.TryClaim(t1, DateTime.Now, out _, out _));
+        var t2 = tk.Issue("dono", "y", DateTime.Now);
+        Check("tela: tíquete vencido", !tk.TryClaim(t2, DateTime.Now.AddSeconds(31), out _, out _));
 
         Check("tela: texto da pílula", IslandViewModel.RemoteActivity(new RemoteState(true, false, false)) == "Tela no iPhone"
             && IslandViewModel.RemoteActivity(new RemoteState(true, true, false)) == "iPhone controlando o PC"
@@ -170,15 +174,13 @@ public static class Program
         Directory.CreateDirectory(dir);
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("iPhone teste");
-        bool screenOn = false, controlOn = false;
+        var devHash = TokenStore.Hash(token);
         var fakeScreen = new ScreenInfo("DISPLAY1", "1 · 640×480", new System.Drawing.Rectangle(0, 0, 640, 480));
         var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 0xFF, 0xD9 };
         var received = new System.Collections.Concurrent.ConcurrentQueue<RemoteCommand>();
         var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
         var handlers = new BridgeHandlers
         {
-            ScreenEnabled = () => screenOn,
-            ControlEnabled = () => controlOn,
             Screens = () => new[] { fakeScreen },
             CaptureScreen = (_, _) => jpeg,
             RemoteInput = (c, _) => received.Enqueue(c),
@@ -190,7 +192,7 @@ public static class Program
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         Check("tela: desligada = 403", http.GetAsync("/api/screen/list").Result.StatusCode == HttpStatusCode.Forbidden);
-        screenOn = true;
+        tokens.SetPermissions(devHash, Only(Capability.Screen));
         Check("tela: lista", http.GetStringAsync("/api/screen/list").Result.Contains("DISPLAY1"));
         Check("tela: controle desligado = 403", http.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result.StatusCode == HttpStatusCode.Forbidden);
         using var anon = new HttpClient { BaseAddress = http.BaseAddress };
@@ -212,7 +214,7 @@ public static class Program
         }
         Check("tela: tíquete do stream é de uso único", anon.GetAsync($"/api/screen/stream?ticket={vt}").Result.StatusCode == HttpStatusCode.Unauthorized);
 
-        controlOn = true;
+        tokens.SetPermissions(devHash, Only(Capability.Screen, Capability.Control));
         var it = http.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result
             .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
         using (var ws = new System.Net.WebSockets.ClientWebSocket())
@@ -353,6 +355,111 @@ public static class Program
             == new System.Drawing.Rectangle(3840, 0, 2560, 1600));
     }
 
+    private static DevicePermissions Only(params Capability[] caps) =>
+        new(caps.Contains(Capability.Camera), caps.Contains(Capability.PcFiles), caps.Contains(Capability.Screen),
+            caps.Contains(Capability.Control), caps.Contains(Capability.Mic), caps.Contains(Capability.Keyboard));
+
+    // Permissão é do aparelho: a mesma URL responde diferente por token, e o tíquete herda o dono —
+    // desligar ou revogar depois do tíquete emitido derruba o uso dele.
+    private static void DevicePermissionRouteTests()
+    {
+        Check("regra: remote exige tela e controle", BridgeRules.RequiredCapabilities("/api/remote/ticket").SequenceEqual(new[] { Capability.Screen, Capability.Control }));
+        Check("regra: rota comum não exige nada", BridgeRules.RequiredCapabilities("/api/clipboard").Length == 0);
+        Check("regra: câmera, arquivos, mic e teclado",
+            BridgeRules.RequiredCapabilities("/api/camera/devices").SequenceEqual(new[] { Capability.Camera })
+            && BridgeRules.RequiredCapabilities("/api/pcfiles/list").SequenceEqual(new[] { Capability.PcFiles })
+            && BridgeRules.RequiredCapabilities("/api/mic/stream").SequenceEqual(new[] { Capability.Mic })
+            && BridgeRules.RequiredCapabilities("/api/keyboard/input").SequenceEqual(new[] { Capability.Keyboard }));
+        Check("regra: rotas de tíquete só em GET",
+            BridgeRules.IsTicketRoute("GET", "/api/screen/stream") && BridgeRules.IsTicketRoute("GET", "/api/pcfiles/download")
+            && !BridgeRules.IsTicketRoute("POST", "/api/screen/stream") && !BridgeRules.IsTicketRoute("GET", "/api/screen/list"));
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-perm-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(dir, "raiz");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "a.txt"), "olá");
+        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
+        var ipadToken = tokens.Create("iPad");
+        var iphoneToken = tokens.Create("iPhone");
+        var controlToken = tokens.Create("só controle");
+        var ipad = TokenStore.Hash(ipadToken);
+        var iphone = TokenStore.Hash(iphoneToken);
+        tokens.SetPermissions(ipad, Only(Capability.Screen, Capability.Control, Capability.PcFiles));
+        tokens.SetPermissions(TokenStore.Hash(controlToken), Only(Capability.Control));
+        var fakeScreen = new ScreenInfo("DISPLAY1", "1 · 640×480", new System.Drawing.Rectangle(0, 0, 640, 480));
+        var handlers = new BridgeHandlers
+        {
+            Screens = () => new[] { fakeScreen },
+            CaptureScreen = (_, _) => new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 },
+            PcRoots = () => new[] { new PcRoot("r", "Raiz", root) },
+        };
+        using var camera = new Camera();
+        var camTickets = new StreamTickets();
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers, null, camera, camTickets)
+            .GetAwaiter().GetResult();
+        HttpClient Client(string token)
+        {
+            var c = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+            if (token.Length > 0) c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return c;
+        }
+        using var ipadHttp = Client(ipadToken);
+        using var iphoneHttp = Client(iphoneToken);
+        using var controlHttp = Client(controlToken);
+        using var anon = Client("");
+
+        Check("rota: a mesma URL muda com o aparelho", ipadHttp.GetAsync("/api/screen/list").Result.StatusCode == HttpStatusCode.OK
+            && iphoneHttp.GetAsync("/api/screen/list").Result.StatusCode == HttpStatusCode.Forbidden);
+        Check("rota: controle exige tela e controle",
+            controlHttp.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result.StatusCode == HttpStatusCode.Forbidden
+            && ipadHttp.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result.StatusCode == HttpStatusCode.OK);
+        Check("rota: teclado desligado no iPad = 403", ipadHttp.PostAsync("/api/keyboard/ticket", null).Result.StatusCode == HttpStatusCode.Forbidden);
+        Check("rota: câmera desligada no iPhone = 403", iphoneHttp.GetAsync("/api/camera/devices").Result.StatusCode == HttpStatusCode.Forbidden);
+        Check("rota: rota comum não pede permissão", iphoneHttp.GetAsync("/api/stats").Result.StatusCode == HttpStatusCode.OK);
+        Check("me: devolve o próprio nome e permissões", ipadHttp.GetStringAsync("/api/me").Result.Contains("iPad")
+            && ipadHttp.GetStringAsync("/api/me").Result.Contains("\"screen\":true")
+            && iphoneHttp.GetStringAsync("/api/me").Result.Contains("\"screen\":false"));
+
+        // Tíquete da câmera de um aparelho sem permissão (o stream é 403 antes de abrir qualquer coisa).
+        var camTk = camTickets.Issue(iphone, "x", CameraPreset.Default, DateTime.Now);
+        Check("tíquete: câmera de aparelho sem permissão = 403", anon.GetAsync($"/api/camera/stream?ticket={camTk}").Result.StatusCode == HttpStatusCode.Forbidden);
+
+        string Ticket(HttpClient c, string url, object body) => c.PostAsJsonAsync(url, body).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString()!;
+        HttpStatusCode Headers(string url)
+        {
+            using var r = anon.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
+            return r.StatusCode;
+        }
+
+        // Tela: o tíquete do iPad morre quando as permissões dele somem; o de outro aparelho não é afetado.
+        var tabletToken = tokens.Create("Tablet");
+        tokens.SetPermissions(TokenStore.Hash(tabletToken), Only(Capability.Screen));
+        using var tabletHttp = Client(tabletToken);
+        var tkIpad = Ticket(ipadHttp, "/api/screen/open", new { screen = "DISPLAY1" });
+        var tkTablet = Ticket(tabletHttp, "/api/screen/open", new { screen = "DISPLAY1" });
+        tokens.SetPermissions(ipad, DevicePermissions.None);
+        Check("tíquete: permissão desligada depois = 403", Headers($"/api/screen/stream?ticket={tkIpad}") == HttpStatusCode.Forbidden);
+        Check("tíquete: o de outro aparelho segue valendo", Headers($"/api/screen/stream?ticket={tkTablet}") == HttpStatusCode.OK);
+        Check("tíquete: inválido segue 401", Headers("/api/screen/stream?ticket=errado") == HttpStatusCode.Unauthorized);
+
+        // Arquivos do PC: o download por tíquete (reutilizável por 10 min) para quando o aparelho é desligado/revogado.
+        tokens.SetPermissions(ipad, Only(Capability.PcFiles));
+        var fileTk = Ticket(ipadHttp, "/api/pcfiles/ticket", new { root = "r", path = "a.txt" });
+        Check("tíquete: arquivo baixa com o aparelho autorizado", Headers($"/api/pcfiles/download?ticket={fileTk}") == HttpStatusCode.OK);
+        tokens.SetPermissions(ipad, DevicePermissions.None);
+        Check("tíquete: arquivo com permissão desligada = 403", Headers($"/api/pcfiles/download?ticket={fileTk}") == HttpStatusCode.Forbidden);
+        tokens.SetPermissions(ipad, Only(Capability.PcFiles));
+        Check("tíquete: religar devolve o acesso", Headers($"/api/pcfiles/download?ticket={fileTk}") == HttpStatusCode.OK);
+        tokens.Revoke(ipad);
+        Check("tíquete: revogado = 403", Headers($"/api/pcfiles/download?ticket={fileTk}") == HttpStatusCode.Forbidden);
+        Check("rota: token revogado = 401", ipadHttp.GetAsync("/api/screen/list").Result.StatusCode == HttpStatusCode.Unauthorized);
+
+        server.StopAsync().GetAwaiter().GetResult();
+        Directory.Delete(dir, recursive: true);
+    }
+
     // Autoatualização: versão gravada no build, situação em relação ao código e o script de troca.
     private static void SelfUpdateTests()
     {
@@ -396,12 +503,10 @@ public static class Program
         Directory.CreateDirectory(dir);
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("iPhone teste");
-        bool on = false;
         var got = new System.Collections.Concurrent.ConcurrentQueue<RemoteCommand>();
         var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
         var handlers = new BridgeHandlers
         {
-            KeyboardEnabled = () => on,
             RemoteInput = (c, _) => got.Enqueue(c),
             RemoteChanged = st => states.Enqueue(st),
         };
@@ -410,7 +515,7 @@ public static class Program
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         Check("teclado: desligado = 403", http.PostAsync("/api/keyboard/ticket", null).Result.StatusCode == HttpStatusCode.Forbidden);
-        on = true;
+        tokens.SetPermissions(TokenStore.Hash(token), Only(Capability.Keyboard));
         var tk = http.PostAsync("/api/keyboard/ticket", null).Result
             .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
         using (var ws = new System.Net.WebSockets.ClientWebSocket())
@@ -550,12 +655,11 @@ public static class Program
         Directory.CreateDirectory(dir);
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("iPhone teste");
-        bool micOn = false, stopped = false;
+        bool stopped = false;
         Action<byte[]>? feed = null;
         var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
         var handlers = new BridgeHandlers
         {
-            MicEnabled = () => micOn,
             MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
             OpenMic = (_, onPcm) => { feed = onPcm; return (24000, new Disposer(() => stopped = true)); },
             RemoteChanged = st => states.Enqueue(st),
@@ -565,7 +669,7 @@ public static class Program
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         Check("mic: desligado = 403", http.GetAsync("/api/mic/devices").Result.StatusCode == HttpStatusCode.Forbidden);
-        micOn = true;
+        tokens.SetPermissions(TokenStore.Hash(token), Only(Capability.Mic));
         Check("mic: lista", http.GetStringAsync("/api/mic/devices").Result.Contains("Microfone teste"));
         Check("mic: dispositivo desconhecido = 404", http.PostAsJsonAsync("/api/mic/open", new { deviceId = "nao-existe" }).Result.StatusCode == HttpStatusCode.NotFound);
         var tk = http.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1", name = "Microfone teste" }).Result
@@ -597,7 +701,6 @@ public static class Program
         var events = new System.Collections.Concurrent.ConcurrentQueue<BridgeEvent>();
         var waiting = new BridgeHandlers
         {
-            MicEnabled = () => true,
             MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
             OpenMic = (_, _) => { gate.Wait(); return (24000, new Disposer(() => lateStopped = true)); },
             Notify = e => events.Enqueue(e),
@@ -772,8 +875,7 @@ public static class Program
             Check("pcfiles: link fora da lista", PcFiles.List(root).All(e => e.Name != "atalho"));
         }
 
-        var enabled = false;
-        var handlers = new BridgeHandlers { PcFilesEnabled = () => enabled, PcRoots = () => roots };
+        var handlers = new BridgeHandlers { PcRoots = () => roots };
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("teste");
         var server = new BridgeServer();
@@ -783,7 +885,7 @@ public static class Program
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         Check("pcfiles: desligado = 403", http.GetAsync("/api/pcfiles/roots").Result.StatusCode == HttpStatusCode.Forbidden);
-        enabled = true;
+        tokens.SetPermissions(TokenStore.Hash(token), Only(Capability.PcFiles));
         Check("pcfiles: raízes", http.GetStringAsync("/api/pcfiles/roots").Result.Contains("\"id\":\"r\""));
         Check("pcfiles: lista", http.GetStringAsync("/api/pcfiles/list?root=r&path=sub").Result.Contains("b.txt"));
         Check("pcfiles: lista fora da raiz = 404", http.GetAsync("/api/pcfiles/list?root=r&path=..").Result.StatusCode == HttpStatusCode.NotFound);
@@ -1303,15 +1405,15 @@ public static class Program
     {
         var t = new StreamTickets();
         var now = new DateTime(2026, 1, 1, 12, 0, 0);
-        var tk = t.Issue("dev-A", new CameraPreset(1280, 24), now);
+        var tk = t.Issue("dono", "dev-A", new CameraPreset(1280, 24), now);
         Check("tíquete: não vazio", !string.IsNullOrEmpty(tk));
-        Check("tíquete: claim certo devolve device+preset", t.Claim(tk, now) is { DeviceId: "dev-A", Preset.Width: 1280 });
+        Check("tíquete: claim certo devolve device+preset", t.Claim(tk, now) is { Owner: "dono", DeviceId: "dev-A", Preset.Width: 1280 });
         Check("tíquete: uso único (2ª vez falha)", t.Claim(tk, now) is null);
-        var tk2 = t.Issue("dev-B", CameraPreset.Default, now);
+        var tk2 = t.Issue("dono", "dev-B", CameraPreset.Default, now);
         Check("tíquete: expira", t.Claim(tk2, now.AddSeconds(31)) is null);
         Check("tíquete: errado falha", t.Claim("naoexiste", now) is null);
-        var tk3 = t.Issue("dev-C", CameraPreset.Default, now);
-        t.Issue("dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
+        var tk3 = t.Issue("dono", "dev-C", CameraPreset.Default, now);
+        t.Issue("dono", "dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
         Check("tíquete: emitir substitui", t.Claim(tk3, now) is null);
     }
 

@@ -90,18 +90,11 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             // Stream da câmera e download de arquivo do PC são as rotas /api autenticadas por tíquete
             // (<img>/window.open não mandam cabeçalho): o próprio handler valida. As demais exigem token.
-            bool ticketRoute = HttpMethods.IsGet(ctx.Request.Method)
-                && (ctx.Request.Path.Equals("/api/camera/stream", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/pcfiles/download", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/screen/stream", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/remote/input", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/mic/stream", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/outbox/download", StringComparison.OrdinalIgnoreCase)
-                    || ctx.Request.Path.Equals("/api/keyboard/input", StringComparison.OrdinalIgnoreCase));
+            bool ticketRoute = BridgeRules.IsTicketRoute(ctx.Request.Method, ctx.Request.Path);
             if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
-                var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()))?.Name;
-                if (name is null)
+                var device = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
+                if (device is null)
                 {
                     // flood sem token não vira escrita em disco por requisição
                     var now = Environment.TickCount64;
@@ -111,7 +104,7 @@ public sealed class BridgeServer : IAsyncDisposable
                     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return;
                 }
-                ctx.Items["token"] = name;
+                ctx.Items["device"] = device;
             }
             try { await next(); }
             catch (Exception ex) { Log.Warning(ex, "Ponte: erro fora das rotas"); throw; }
@@ -142,7 +135,7 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             var req = ctx.HttpContext.Request;
             var action = $"{req.Method} {req.Path}";
-            var name = (string)ctx.HttpContext.Items["token"]!;
+            var name = (ctx.HttpContext.Items["device"] as TokenInfo)?.Name ?? "?";
             try
             {
                 var result = await next(ctx);
@@ -157,30 +150,23 @@ public sealed class BridgeServer : IAsyncDisposable
                 return Results.Problem("Falha no PC.", statusCode: StatusCodes.Status500InternalServerError);
             }
         });
-        // Câmera é capability à parte: 403 enquanto o usuário não liga "Câmera" na aba iPhone.
+        // Permissão é de cada aparelho (câmera, arquivos, tela, controle, mic, teclado): 403 se o token
+        // da requisição não tiver. Rotas por tíquete conferem o dono do tíquete no próprio handler.
         api.AddEndpointFilter(async (ctx, next) =>
         {
-            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/camera") && !h.CameraEnabled())
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/pcfiles") && !h.PcFilesEnabled())
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/screen") && !h.ScreenEnabled())
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/remote") && !(h.ScreenEnabled() && h.ControlEnabled()))
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/mic") && !h.MicEnabled())
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (ctx.HttpContext.Request.Path.StartsWithSegments("/api/keyboard") && !h.KeyboardEnabled())
+            var http = ctx.HttpContext;
+            if (!BridgeRules.IsTicketRoute(http.Request.Method, http.Request.Path)
+                && !BridgeRules.RequiredCapabilities(http.Request.Path).All(c => DeviceOf(http).Permissions?.Has(c) == true))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             return await next(ctx);
         });
-        MapApi(api, h, camera, tickets);
-        MapPcFiles(api, h, new FileTickets());
+        MapApi(api, h, tokens, camera, tickets);
+        MapPcFiles(api, h, tokens, new FileTickets());
         if (h.Push is { } push) MapPush(api, h, push);
         _remote = new RemoteSessions(h.RemoteChanged);
-        RemoteScreen.Map(api, h, _remote);
-        MicStream.Map(api, h, _remote);
-        OutboxRoutes.Map(api, h);
+        RemoteScreen.Map(api, h, tokens, _remote);
+        MicStream.Map(api, h, tokens, _remote);
+        OutboxRoutes.Map(api, h, tokens);
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }
@@ -189,8 +175,21 @@ public sealed class BridgeServer : IAsyncDisposable
         Log.Information("Ponte ouvindo em 127.0.0.1:{Porta}", Port);
     }
 
-    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h, Orbit.Services.Camera? camera, StreamTickets? tickets)
+    // Aparelho dono do token da requisição (o middleware o grava em toda rota /api fora das de tíquete).
+    internal static TokenInfo DeviceOf(HttpContext ctx) => (TokenInfo)ctx.Items["device"]!;
+
+    // Depois de reivindicar um tíquete: o dono ainda existe e ainda tem as permissões da rota.
+    internal static bool TicketOwnerAllowed(TokenStore tokens, string owner, PathString path) =>
+        tokens.Find(owner) is not null && BridgeRules.RequiredCapabilities(path).All(c => tokens.Allows(owner, c));
+
+    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, Orbit.Services.Camera? camera, StreamTickets? tickets)
     {
+        api.MapGet("/me", (HttpContext ctx) =>
+        {
+            var d = DeviceOf(ctx);
+            return Results.Ok(new { name = d.Name, permissions = d.Permissions ?? DevicePermissions.None });
+        });
+
         api.MapGet("/stats", () => h.GetStats());
 
         api.MapPost("/links/open", async (LinkRequest req) =>
@@ -279,11 +278,11 @@ public sealed class BridgeServer : IAsyncDisposable
             api.MapGet("/camera/devices", async () =>
                 Results.Ok((await Orbit.Services.Camera.DevicesAsync()).Select(d => new { id = d.Id, name = d.Name })));
 
-            api.MapPost("/camera/open", (CameraOpenRequest req) =>
+            api.MapPost("/camera/open", (CameraOpenRequest req, HttpContext ctx) =>
             {
                 if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
                 var preset = CameraPreset.Parse(req.Quality, req.Fps);
-                var ticket = tickets.Issue(req.DeviceId, preset, DateTime.Now);
+                var ticket = tickets.Issue(DeviceOf(ctx).Hash, req.DeviceId, preset, DateTime.Now);
                 h.Notify(new BridgeEvent("Câmera aberta pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name));
                 return Results.Ok(new { ticket });
             });
@@ -293,6 +292,11 @@ public sealed class BridgeServer : IAsyncDisposable
                 if (tickets.Claim(ticket, DateTime.Now) is not { } claim)
                 {
                     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return;
+                }
+                if (!TicketOwnerAllowed(tokens, claim.Owner, ctx.Request.Path))
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;
                 }
                 System.Threading.CancellationTokenSource session;
@@ -311,7 +315,8 @@ public sealed class BridgeServer : IAsyncDisposable
                     ctx.Response.ContentType = Mjpeg.ContentType;
                     ctx.Response.Headers.CacheControl = "no-cache, no-store";
                     var body = ctx.Response.BodyWriter;
-                    while (!link.Token.IsCancellationRequested)
+                    // Desligar ou revogar o aparelho corta a câmera (ela não ocupa vaga em RemoteSessions).
+                    while (!link.Token.IsCancellationRequested && tokens.Allows(claim.Owner, Capability.Camera))
                     {
                         var jpeg = await camera.NextFrameAsync(link.Token);
                         await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), link.Token);
@@ -335,7 +340,7 @@ public sealed class BridgeServer : IAsyncDisposable
         }
     }
 
-    private static void MapPcFiles(RouteGroupBuilder api, BridgeHandlers h, FileTickets tickets)
+    private static void MapPcFiles(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, FileTickets tickets)
     {
         api.MapGet("/pcfiles/roots", () => Results.Ok(h.PcRoots().Select(r => new { id = r.Id, name = r.Name })));
 
@@ -346,15 +351,17 @@ public sealed class BridgeServer : IAsyncDisposable
         });
 
         // Emite o tíquete (com token) pro download que vem em seguida sem cabeçalho.
-        api.MapPost("/pcfiles/ticket", (PcFileRequest req) =>
+        api.MapPost("/pcfiles/ticket", (PcFileRequest req, HttpContext ctx) =>
         {
             if (PcFiles.Resolve(h.PcRoots(), req.Root, req.Path) is not { } file || !File.Exists(file)) return Results.NotFound();
-            return Results.Ok(new { ticket = tickets.Issue(file, DateTime.Now) });
+            return Results.Ok(new { ticket = tickets.Issue(DeviceOf(ctx).Hash, file, DateTime.Now) });
         });
 
-        api.MapGet("/pcfiles/download", (string? ticket) =>
+        api.MapGet("/pcfiles/download", (HttpContext ctx, string? ticket) =>
         {
-            if (tickets.Path(ticket, DateTime.Now) is not { } file) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            if (tickets.Find(ticket, DateTime.Now) is not { } found) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            if (!TicketOwnerAllowed(tokens, found.Owner, ctx.Request.Path)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var file = found.Path;
             if (!File.Exists(file)) return Results.NotFound();
             new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(file, out var type);
             return Results.File(file, type ?? "application/octet-stream", Path.GetFileName(file), enableRangeProcessing: true);
@@ -364,7 +371,7 @@ public sealed class BridgeServer : IAsyncDisposable
     // O iPhone se inscreve com o próprio token: revogar o token corta os avisos dele.
     private static void MapPush(RouteGroupBuilder api, BridgeHandlers h, WebPush push)
     {
-        static string Token(HttpContext ctx) => (string)ctx.Items["token"]!;
+        static string Token(HttpContext ctx) => DeviceOf(ctx).Name; // ponytail: nome até a Task 4 trocar por Hash
 
         api.MapGet("/push/key", () => Results.Ok(new { publicKey = push.PublicKey }));
         api.MapGet("/push/status", (HttpContext ctx) => Results.Ok(new { subscriptions = push.CountFor(Token(ctx)) }));

@@ -25,28 +25,31 @@ public sealed class OneShotTickets<T>
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(30);
     private readonly object _gate = new();
-    private readonly Dictionary<string, (T Value, DateTime Expires)> _tickets = new();
+    private readonly Dictionary<string, (T Value, string Owner, DateTime Expires)> _tickets = new();
 
-    public string Issue(T value, DateTime now)
+    // owner = Hash do aparelho que pediu: quem usa o tíquete herda as permissões dele.
+    public string Issue(string owner, T value, DateTime now)
     {
         var tk = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         lock (_gate)
         {
             foreach (var k in _tickets.Where(t => t.Value.Expires < now).Select(t => t.Key).ToList()) _tickets.Remove(k);
-            _tickets[tk] = (value, now + Lifetime);
+            _tickets[tk] = (value, owner, now + Lifetime);
         }
         return tk;
     }
 
     // Uso único mesmo expirado. Tíquete inexistente/vencido = false.
-    public bool TryClaim(string? ticket, DateTime now, out T value)
+    public bool TryClaim(string? ticket, DateTime now, out T value, out string owner)
     {
         value = default!;
+        owner = "";
         if (ticket is null) return false;
         lock (_gate)
         {
             if (!_tickets.Remove(ticket, out var t) || now > t.Expires) return false;
             value = t.Value;
+            owner = t.Owner;
             return true;
         }
     }
@@ -124,7 +127,7 @@ public static class RemoteScreen
     public const int MaxMessagesPerSecond = 300;
     private static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(1); // reenvia o quadro parado (o Safari só mostra ao chegar o próximo)
 
-    public static void Map(RouteGroupBuilder api, BridgeHandlers h, RemoteSessions sessions)
+    public static void Map(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, RemoteSessions sessions)
     {
         var video = new OneShotTickets<(string Screen, ScreenQuality Quality)>();
         var input = new OneShotTickets<string>();
@@ -133,16 +136,26 @@ public static class RemoteScreen
 
         api.MapGet("/screen/list", () => Results.Ok(h.Screens().Select(s => new { id = s.Id, name = s.Name })));
 
-        api.MapPost("/screen/open", (ScreenOpenRequest req) =>
+        api.MapPost("/screen/open", (ScreenOpenRequest req, HttpContext ctx) =>
         {
             if (Find(req.Screen) is not { } screen) return Results.NotFound();
             h.Notify(new BridgeEvent("Tela compartilhada com o iPhone", screen.Name));
-            return Results.Ok(new { ticket = video.Issue((screen.Id, ScreenQuality.Parse(req.Quality)), DateTime.Now) });
+            return Results.Ok(new { ticket = video.Issue(BridgeServer.DeviceOf(ctx).Hash, (screen.Id, ScreenQuality.Parse(req.Quality)), DateTime.Now) });
         });
 
         api.MapGet("/screen/stream", async (HttpContext ctx, string? ticket) =>
         {
-            if (!video.TryClaim(ticket, DateTime.Now, out var req) || Find(req.Screen) is not { } screen)
+            if (!video.TryClaim(ticket, DateTime.Now, out var req, out var owner))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+            if (Find(req.Screen) is not { } screen)
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
@@ -179,16 +192,19 @@ public static class RemoteScreen
         api.MapPost("/screen/close", () => { sessions.StopVideo(); return Results.NoContent(); });
 
         // Tíquete do WebSocket de controle, preso ao monitor que o iPhone está vendo.
-        api.MapPost("/remote/ticket", (RemoteTicketRequest req) =>
-            Find(req.Screen) is { } screen ? Results.Ok(new { ticket = input.Issue(screen.Id, DateTime.Now) }) : Results.NotFound());
+        api.MapPost("/remote/ticket", (RemoteTicketRequest req, HttpContext ctx) =>
+            Find(req.Screen) is { } screen
+                ? Results.Ok(new { ticket = input.Issue(BridgeServer.DeviceOf(ctx).Hash, screen.Id, DateTime.Now) })
+                : Results.NotFound());
 
         // Teclado remoto (ditado): mesmo canal da tela, mas só texto e teclas — mouse é descartado.
         var keyboard = new OneShotTickets<bool>();
-        api.MapPost("/keyboard/ticket", () => Results.Ok(new { ticket = keyboard.Issue(true, DateTime.Now) }));
+        api.MapPost("/keyboard/ticket", (HttpContext ctx) => Results.Ok(new { ticket = keyboard.Issue(BridgeServer.DeviceOf(ctx).Hash, true, DateTime.Now) }));
         api.MapGet("/keyboard/input", async (HttpContext ctx, string? ticket) =>
         {
             if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
-            if (!keyboard.TryClaim(ticket, DateTime.Now, out _)) { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
+            if (!keyboard.TryClaim(ticket, DateTime.Now, out _, out var owner)) { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) { ctx.Response.StatusCode = StatusCodes.Status403Forbidden; return; }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             var session = sessions.BeginInput(ctx.RequestAborted);
             try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly); }
@@ -208,7 +224,17 @@ public static class RemoteScreen
                 ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
             }
-            if (!input.TryClaim(ticket, DateTime.Now, out var screenId) || Find(screenId) is not { } screen)
+            if (!input.TryClaim(ticket, DateTime.Now, out var screenId, out var owner))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+            if (Find(screenId) is not { } screen)
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;

@@ -36,11 +36,7 @@ public sealed class BridgeHandlers
     // Pra pílula (link aberto, arquivo recebido…). Chamado de thread do Kestrel.
     public Action<BridgeEvent> Notify { get; init; } = _ => { };
 
-    // true = a câmera pode responder. Lida a cada requisição /api/camera/*.
-    public Func<bool> CameraEnabled { get; init; } = () => false;
-
-    // Arquivos do PC (só leitura): capability à parte, lida a cada requisição /api/pcfiles/*.
-    public Func<bool> PcFilesEnabled { get; init; } = () => false;
+    // Arquivos do PC (só leitura). As permissões (câmera, arquivos, tela…) são de cada aparelho: TokenStore.
     public Func<IReadOnlyList<PcRoot>> PcRoots { get; init; } = () => Array.Empty<PcRoot>();
 
     // Avisos no iPhone (Web Push). null = rotas /api/push respondem 404.
@@ -48,15 +44,11 @@ public sealed class BridgeHandlers
 
     // Tela remota: ver (Tela) e controlar (Controle, só com Tela ligada). Captura e entrada vêm da
     // ilha; os testes injetam fakes (nenhum teste mexe no mouse de verdade).
-    public Func<bool> ScreenEnabled { get; init; } = () => false;
-    public Func<bool> ControlEnabled { get; init; } = () => false;
-    // Teclado remoto (ditado do iPhone → app em foco no PC): só texto e teclas, permissão própria.
-    public Func<bool> KeyboardEnabled { get; init; } = () => false;
+    // Teclado remoto (ditado do iPhone → app em foco no PC): só texto e teclas.
     public Func<IReadOnlyList<ScreenInfo>> Screens { get; init; } = () => Array.Empty<ScreenInfo>();
     public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
     public Action<RemoteCommand, System.Drawing.Rectangle> RemoteInput { get; init; } = (_, _) => { };
-    // Microfone (permissão própria). OpenMic devolve a taxa do PCM e quem para a captura.
-    public Func<bool> MicEnabled { get; init; } = () => false;
+    // Microfone. OpenMic devolve a taxa do PCM e quem para a captura.
     public Func<IReadOnlyList<MicDevice>> MicDevices { get; init; } = () => Array.Empty<MicDevice>();
     public Func<string?, Action<byte[]>, (int Rate, IDisposable Stop)> OpenMic { get; init; } =
         (_, _) => throw new InvalidOperationException("Sem microfone");

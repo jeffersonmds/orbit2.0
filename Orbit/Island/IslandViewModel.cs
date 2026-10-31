@@ -87,6 +87,9 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public IslandViewModel(OrbitSettings settings)
     {
+        // Tokens de antes das permissões por aparelho herdam as seis chaves globais.
+        _tokens.SeedPermissions(new DevicePermissions(settings.BridgeCameraEnabled, settings.BridgePcFilesEnabled,
+            settings.BridgeScreenEnabled, settings.BridgeControlEnabled, settings.BridgeMicEnabled, settings.BridgeKeyboardEnabled));
         _settings = settings;
         // Serviços de fundo (rodam com a ilha recolhida e alimentam a pílula).
         Pomodoro = new PomodoroViewModel(settings.PomodoroFocusMinutes, settings.PomodoroShortBreakMinutes,
@@ -249,17 +252,11 @@ public sealed partial class IslandViewModel : ObservableObject
                 }
             },
             UploadFolder = () => BridgeRules.UploadFolder(_settings.BridgeUploadFolder),
-            CameraEnabled = () => _settings.BridgeCameraEnabled,
-            PcFilesEnabled = () => _settings.BridgePcFilesEnabled,
             PcRoots = () => PcFiles.DefaultRoots(BridgeRules.UploadFolder(_settings.BridgeUploadFolder)),
             Push = _push,
-            ScreenEnabled = () => _settings.BridgeScreenEnabled,
-            ControlEnabled = () => _settings.BridgeControlEnabled,
-            KeyboardEnabled = () => _settings.BridgeKeyboardEnabled,
             Screens = ScreenCapture.Screens,
             CaptureScreen = ScreenCapture.Capture,
             RemoteInput = Orbit.Services.RemoteInput.Execute,
-            MicEnabled = () => _settings.BridgeMicEnabled,
             MicDevices = MicCapture.Devices,
             OpenMic = MicCapture.Open,
             RemoteChanged = state => ui.BeginInvoke(() =>

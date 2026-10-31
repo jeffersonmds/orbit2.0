@@ -12,16 +12,18 @@ public sealed class StreamTickets
 
     private readonly object _gate = new();
     private string? _ticket;
+    private string _owner = "";
     private string _deviceId = "";
     private CameraPreset _preset = CameraPreset.Default;
     private DateTime _expires;
 
-    public string Issue(string deviceId, CameraPreset preset, DateTime now)
+    public string Issue(string owner, string deviceId, CameraPreset preset, DateTime now)
     {
         var tk = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         lock (_gate)
         {
             _ticket = tk;
+            _owner = owner;
             _deviceId = deviceId;
             _preset = preset;
             _expires = now + Lifetime;
@@ -29,16 +31,17 @@ public sealed class StreamTickets
         return tk;
     }
 
-    public (string DeviceId, CameraPreset Preset)? Claim(string? ticket, DateTime now)
+    public (string Owner, string DeviceId, CameraPreset Preset)? Claim(string? ticket, DateTime now)
     {
         lock (_gate)
         {
             if (_ticket is null || ticket != _ticket) return null;
             var expired = now > _expires;
+            var owner = _owner;
             var device = _deviceId;
             var preset = _preset;
             _ticket = null; // uso único, mesmo expirado
-            return expired ? null : (device, preset);
+            return expired ? null : (owner, device, preset);
         }
     }
 }

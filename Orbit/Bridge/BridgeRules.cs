@@ -3,6 +3,7 @@ using System.IO;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http;
 using Orbit.Services;
 
 namespace Orbit.Bridge;
@@ -115,6 +116,29 @@ public static class BridgeRules
               || path.EndsWith("/media/cover", StringComparison.OrdinalIgnoreCase)
               || path.EndsWith("/camera/stream", StringComparison.OrdinalIgnoreCase)
               || path.EndsWith("/camera/devices", StringComparison.OrdinalIgnoreCase)));
+
+    // Rotas /api autenticadas por tíquete (<img>/window.open/WebSocket não mandam cabeçalho): o próprio
+    // handler valida o tíquete e, depois do claim, o dono (ver BridgeServer.TicketOwnerAllowed).
+    private static readonly string[] TicketPaths =
+    {
+        "/api/camera/stream", "/api/pcfiles/download", "/api/screen/stream", "/api/remote/input",
+        "/api/mic/stream", "/api/outbox/download", "/api/keyboard/input",
+    };
+
+    public static bool IsTicketRoute(string method, PathString path) =>
+        HttpMethods.IsGet(method) && TicketPaths.Any(p => path.Equals(p, StringComparison.OrdinalIgnoreCase));
+
+    // Permissões que o aparelho precisa ter pra usar a rota (vale também pro dono do tíquete, no claim).
+    public static Capability[] RequiredCapabilities(PathString path)
+    {
+        if (path.StartsWithSegments("/api/camera")) return new[] { Capability.Camera };
+        if (path.StartsWithSegments("/api/pcfiles")) return new[] { Capability.PcFiles };
+        if (path.StartsWithSegments("/api/screen")) return new[] { Capability.Screen };
+        if (path.StartsWithSegments("/api/remote")) return new[] { Capability.Screen, Capability.Control };
+        if (path.StartsWithSegments("/api/mic")) return new[] { Capability.Mic };
+        if (path.StartsWithSegments("/api/keyboard")) return new[] { Capability.Keyboard };
+        return Array.Empty<Capability>();
+    }
 
     public static string Preview(string text)
     {

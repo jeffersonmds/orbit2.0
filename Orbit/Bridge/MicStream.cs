@@ -26,18 +26,18 @@ public static class MicStream
     public static TimeSpan ConsentTimeout { get; set; } = TimeSpan.FromSeconds(20);
     public const string ConsentReason = "autorize no PC";
 
-    public static void Map(RouteGroupBuilder api, BridgeHandlers h, RemoteSessions sessions)
+    public static void Map(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, RemoteSessions sessions)
     {
         var tickets = new OneShotTickets<string?>();
 
         api.MapGet("/mic/devices", () => Results.Ok(h.MicDevices().Select(d => new { id = d.Id, name = d.Name })));
 
-        api.MapPost("/mic/open", (MicOpenRequest req) =>
+        api.MapPost("/mic/open", (MicOpenRequest req, HttpContext ctx) =>
         {
             var id = string.IsNullOrWhiteSpace(req.DeviceId) ? null : req.DeviceId;
             if (id is not null && h.MicDevices().All(d => d.Id != id)) return Results.NotFound();
             h.Notify(new BridgeEvent("Microfone aberto pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Microfone" : req.Name));
-            return Results.Ok(new { ticket = tickets.Issue(id, DateTime.Now) });
+            return Results.Ok(new { ticket = tickets.Issue(BridgeServer.DeviceOf(ctx).Hash, id, DateTime.Now) });
         });
 
         api.MapPost("/mic/close", () => { sessions.StopAudio(); return Results.NoContent(); });
@@ -49,9 +49,14 @@ public static class MicStream
                 ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
             }
-            if (!tickets.TryClaim(ticket, DateTime.Now, out var deviceId))
+            if (!tickets.TryClaim(ticket, DateTime.Now, out var deviceId, out var owner))
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
             }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();

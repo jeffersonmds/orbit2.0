@@ -80,24 +80,24 @@ public sealed class FileTickets
     private const int Max = 50;
 
     private readonly object _gate = new();
-    private readonly Dictionary<string, (string Path, DateTime Expires)> _tickets = new();
+    private readonly Dictionary<string, (string Owner, string Path, DateTime Expires)> _tickets = new();
 
-    public string Issue(string path, DateTime now)
+    public string Issue(string owner, string path, DateTime now)
     {
         var tk = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         lock (_gate)
         {
             foreach (var k in _tickets.Where(t => t.Value.Expires < now).Select(t => t.Key).ToList()) _tickets.Remove(k);
             if (_tickets.Count >= Max) _tickets.Remove(_tickets.MinBy(t => t.Value.Expires).Key);
-            _tickets[tk] = (path, now + Lifetime);
+            _tickets[tk] = (owner, path, now + Lifetime);
         }
         return tk;
     }
 
-    public string? Path(string? ticket, DateTime now)
+    public (string Owner, string Path)? Find(string? ticket, DateTime now)
     {
         if (ticket is null) return null;
         lock (_gate)
-            return _tickets.TryGetValue(ticket, out var t) && t.Expires >= now ? t.Path : null;
+            return _tickets.TryGetValue(ticket, out var t) && t.Expires >= now ? (t.Owner, t.Path) : null;
     }
 }

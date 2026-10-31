@@ -16,7 +16,7 @@ public static class OutboxRoutes
 {
     public const long MaxPhotoBytes = 40L * 1024 * 1024;
 
-    public static void Map(RouteGroupBuilder api, BridgeHandlers h)
+    public static void Map(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens)
     {
         api.MapPost("/clipboard/image", async (HttpRequest request) =>
         {
@@ -40,14 +40,16 @@ public static class OutboxRoutes
             id = i.Id, name = i.Name, size = i.Size, created = i.CreatedAt, text = i.Text, file = i.File is not null,
         })));
 
-        api.MapPost("/outbox/ticket", (OutboxTicketRequest req) =>
+        api.MapPost("/outbox/ticket", (OutboxTicketRequest req, HttpContext ctx) =>
             box.PathOf(req.Id ?? "", DateTime.Now) is { } path && File.Exists(path)
-                ? Results.Ok(new { ticket = tickets.Issue(path, DateTime.Now) })
+                ? Results.Ok(new { ticket = tickets.Issue(BridgeServer.DeviceOf(ctx).Hash, path, DateTime.Now) })
                 : Results.NotFound());
 
-        api.MapGet("/outbox/download", (string? ticket) =>
+        api.MapGet("/outbox/download", (HttpContext ctx, string? ticket) =>
         {
-            if (tickets.Path(ticket, DateTime.Now) is not { } path) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            if (tickets.Find(ticket, DateTime.Now) is not { } found) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            if (!BridgeServer.TicketOwnerAllowed(tokens, found.Owner, ctx.Request.Path)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var path = found.Path;
             if (!File.Exists(path)) return Results.NotFound();
             // nome bonito do item (o arquivo guardado é id.ext)
             var id = Path.GetFileNameWithoutExtension(path);
