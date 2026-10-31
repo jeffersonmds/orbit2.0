@@ -161,13 +161,24 @@ public static class Program
         var t2 = tk.Issue("dono", "y", DateTime.Now);
         Check("tela: tíquete vencido", !tk.TryClaim(t2, DateTime.Now.AddSeconds(31), out _, out _));
 
-        Check("tela: texto da pílula", IslandViewModel.RemoteActivity(new RemoteState(true, false, false)) == "Tela no iPhone"
-            && IslandViewModel.RemoteActivity(new RemoteState(true, true, false)) == "iPhone controlando o PC"
-            && IslandViewModel.RemoteActivity(new RemoteState(false, false, false)) is null);
-        Check("mic: texto da pílula", IslandViewModel.RemoteActivity(new RemoteState(false, false, true)) == "Microfone no iPhone"
-            && IslandViewModel.RemoteActivity(new RemoteState(true, false, true)) == "Tela no iPhone · microfone");
-        Check("mic: texto da aba iPhone", Orbit.Tabs.IPhone.IPhoneViewModel.IPhoneRemoteText(new RemoteState(true, true, true))
-            == "vendo e controlando a tela e ouvindo o microfone");
+        Check("tela: nada ativo = sem texto", IslandViewModel.RemoteActivity(new RemoteState(false, false, false)) is null);
+        var ss = new RemoteSessions(_ => { });
+        var sa = ss.BeginVideo(default, new SessionOwner("A", "iPhone"));
+        var sb = ss.BeginVideo(default, new SessionOwner("B", "iPad"));
+        Check("sessão: novo dono derruba o anterior", sa.IsCancellationRequested && ss.DisplacedBy(sa) == "iPad");
+        var sc = ss.BeginVideo(default, new SessionOwner("B", "iPad"));
+        Check("sessão: reconectar não vira assumiu", sb.IsCancellationRequested && ss.DisplacedBy(sb) is null);
+        var sd = ss.BeginAudio(default, new SessionOwner("A", "iPhone"));
+        ss.StopDevice("B");
+        Check("sessão: StopDevice poupa o outro", sc.IsCancellationRequested && !sd.IsCancellationRequested);
+        Check("sessão: dono do vídeo", ss.Viewer?.Hash == "B");
+        ss.End(sa);
+        Check("sessão: End limpa o aviso", ss.DisplacedBy(sa) is null);
+        Check("pílula: controlando", IslandViewModel.RemoteActivity(new RemoteState(true, true, false, "iPad", "iPad")) == "iPad controlando o PC");
+        Check("pílula: vendo", IslandViewModel.RemoteActivity(new RemoteState(true, false, false, "iPad")) == "iPad vendo a tela");
+        Check("pílula: mesmo aparelho", IslandViewModel.RemoteActivity(new RemoteState(true, false, true, "iPad", null, "iPad")) == "iPad vendo a tela · microfone");
+        Check("pílula: aparelhos diferentes", IslandViewModel.RemoteActivity(new RemoteState(true, false, true, "iPad", null, "iPhone")) == "iPad vendo a tela · Microfone no iPhone");
+        Check("pílula: só microfone", IslandViewModel.RemoteActivity(new RemoteState(false, false, true, null, null, "iPad")) == "Microfone no iPad");
 
         var agoraAba = new DateTime(2026, 10, 30, 12, 0, 0);
         Check("aba: nunca visto", Orbit.Tabs.IPhone.DeviceRow.SeenText(null, agoraAba) == "sem acesso desde que abriu");
@@ -221,7 +232,7 @@ public static class Program
             Check("tela: stream MJPEG com tíquete (sem token)", resp.StatusCode == HttpStatusCode.OK
                 && resp.Content.Headers.ContentType?.MediaType == "multipart/x-mixed-replace" && head.Contains("Content-Type: image/jpeg"));
             System.Threading.Thread.Sleep(200);
-            Check("tela: sessão de vídeo avisa a ilha", states.Contains(new RemoteState(true, false, false)));
+            Check("tela: sessão de vídeo avisa a ilha", states.Contains(new RemoteState(true, false, false, "iPhone teste")));
         }
         Check("tela: tíquete do stream é de uso único", anon.GetAsync($"/api/screen/stream?ticket={vt}").Result.StatusCode == HttpStatusCode.Unauthorized);
 
@@ -244,6 +255,27 @@ public static class Program
                 try { ws.ReceiveAsync(new byte[16], new System.Threading.CancellationTokenSource(100).Token).Wait(); } catch { }
             }
             Check("tela: Encerrar derruba o controle", ws.State != System.Net.WebSockets.WebSocketState.Open && states.Last() == new RemoteState(false, false, false));
+        }
+        // Segundo aparelho assume o controle: o primeiro fecha com 4001 + nome do novo.
+        var tokenB = tokens.Create("iPad");
+        tokens.SetPermissions(TokenStore.Hash(tokenB), Only(Capability.Screen, Capability.Control));
+        using var httpB = new HttpClient { BaseAddress = http.BaseAddress };
+        httpB.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenB);
+        string Ticket(HttpClient c) => c.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString()!;
+        using (var w1 = new System.Net.WebSockets.ClientWebSocket())
+        using (var w2 = new System.Net.WebSockets.ClientWebSocket())
+        {
+            w1.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/remote/input?ticket={Ticket(http)}"), System.Threading.CancellationToken.None).Wait();
+            w2.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/remote/input?ticket={Ticket(httpB)}"), System.Threading.CancellationToken.None).Wait();
+            try { w1.ReceiveAsync(new byte[16], new System.Threading.CancellationTokenSource(3000).Token).Wait(); } catch { }
+            Check("sessão: quem perdeu a vez recebe 4001 e o nome", (int?)w1.CloseStatus == RemoteScreen.TakenCloseCode && w1.CloseStatusDescription == "iPad");
+            var own = httpB.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/screen/owner").Result;
+            Check("sessão: owner sem vídeo", own.GetProperty("name").ValueKind == System.Text.Json.JsonValueKind.Null && !own.GetProperty("mine").GetBoolean());
+            server.StopDevice(TokenStore.Hash(tokenB));
+            for (int i = 0; i < 50 && w2.State == System.Net.WebSockets.WebSocketState.Open; i++)
+            { try { w2.ReceiveAsync(new byte[16], new System.Threading.CancellationTokenSource(100).Token).Wait(); } catch { } }
+            Check("sessão: StopDevice derruba o aparelho", w2.State != System.Net.WebSockets.WebSocketState.Open);
         }
         using (var ws2 = new System.Net.WebSockets.ClientWebSocket())
         {

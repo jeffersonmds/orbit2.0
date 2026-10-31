@@ -60,7 +60,7 @@ public static class MicStream
                 return;
             }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-            var session = sessions.BeginAudio(ctx.RequestAborted);
+            var session = sessions.BeginAudio(ctx.RequestAborted, RemoteScreen.Who(tokens, owner));
             var ct = session.Token;
             var queue = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(QueueChunks)
             { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
@@ -85,10 +85,10 @@ public static class MicStream
                     return;
                 }
                 await ws.SendAsync(Encoding.UTF8.GetBytes($"{{\"rate\":{rate}}}"), WebSocketMessageType.Text, true, ct);
-                // Se o iPhone fechar, o ReceiveAsync termina e cancela o envio.
+                // Se o iPhone fechar, o ReceiveAsync termina e cancela o envio (sem token: cancelar aborta o socket e o 4001 não sairia).
                 _ = Task.Run(async () =>
                 {
-                    try { while (ws.State == WebSocketState.Open && (await ws.ReceiveAsync(new byte[64], ct)).MessageType != WebSocketMessageType.Close) { } }
+                    try { while (ws.State == WebSocketState.Open && (await ws.ReceiveAsync(new byte[64], CancellationToken.None)).MessageType != WebSocketMessageType.Close) { } }
                     catch { }
                     try { session.Cancel(); } catch (ObjectDisposedException) { }
                 });
@@ -99,9 +99,7 @@ public static class MicStream
             finally
             {
                 mic?.Dispose(); // solta o microfone na hora (o ícone do Windows apaga)
-                sessions.End(session);
-                if (ws.State == WebSocketState.Open)
-                    try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "fim", CancellationToken.None); } catch { }
+                await RemoteScreen.CloseAsync(ws, sessions, session);
             }
         });
     }

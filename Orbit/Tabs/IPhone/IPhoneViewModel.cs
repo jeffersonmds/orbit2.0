@@ -112,16 +112,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
     public void SetRemote(RemoteState s)
     {
         RemoteActive = s.Viewing || s.Controlling || s.Listening;
-        RemoteText = "O iPhone está " + IPhoneRemoteText(s);
-    }
-
-    public static string IPhoneRemoteText(RemoteState s)
-    {
-        var parts = new System.Collections.Generic.List<string>();
-        if (s.Controlling) parts.Add("vendo e controlando a tela");
-        else if (s.Viewing) parts.Add("vendo a tela");
-        if (s.Listening) parts.Add("ouvindo o microfone");
-        return string.Join(" e ", parts);
+        RemoteText = Orbit.Island.IslandViewModel.RemoteActivity(s) ?? "";
     }
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]
@@ -339,6 +330,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         {
             _tokens.Revoke(token.Hash);
             _onRevoked(token.Hash);
+            Server.StopDevice(token.Hash);
         }
         catch (Exception ex)
         {
@@ -372,8 +364,8 @@ public sealed partial class IPhoneViewModel : TabViewModel
             RefreshTokens();
             return;
         }
-        // Só derruba a sessão ao vivo se alguma permissão foi desligada (a Task 7 troca por StopDevice).
-        if (RevokedAny(before, after)) Server.StopRemote();
+        // Só derruba as sessões ao vivo desse aparelho se alguma permissão foi desligada.
+        if (RevokedAny(before, after)) Server.StopDevice(row.Hash);
     }
 
     public static bool RevokedAny(DevicePermissions before, DevicePermissions after) =>

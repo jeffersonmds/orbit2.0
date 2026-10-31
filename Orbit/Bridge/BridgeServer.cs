@@ -46,6 +46,9 @@ public sealed class BridgeServer : IAsyncDisposable
     // "Encerrar" da aba iPhone: derruba tela, controle e microfone.
     public void StopRemote() => _remote?.StopAll();
 
+    // Revogar/desligar permissão: derruba só as sessões desse aparelho.
+    public void StopDevice(string hash) => _remote?.StopDevice(hash);
+
     // port 0 = porta efêmera (testes).
     // codes: pareamento por código de 6 dígitos (POST /pair, sem token). null = rota desligada.
     public async Task StartAsync(int port, string webRoot, TokenStore tokens, AuditLog audit, BridgeHandlers h,

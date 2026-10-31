@@ -599,14 +599,13 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public static string? RemoteActivity(RemoteState s)
     {
-        var screen = s.Controlling ? "iPhone controlando o PC" : s.Viewing ? "Tela no iPhone" : null;
-        return (screen, s.Listening) switch
-        {
-            (null, false) => null,
-            (null, true) => "Microfone no iPhone",
-            (_, false) => screen,
-            _ => screen + " · microfone",
-        };
+        var screenDevice = s.Controlling ? s.Controller : s.Viewer;
+        var screen = s.Controlling ? (s.Controller ?? "Aparelho") + " controlando o PC"
+            : s.Viewing ? (s.Viewer ?? "Aparelho") + " vendo a tela" : null;
+        if (!s.Listening) return screen;
+        var mic = s.Listener ?? "Aparelho";
+        if (screen is null) return "Microfone no " + mic;
+        return screen + (screenDevice == s.Listener ? " · microfone" : " · Microfone no " + mic);
     }
 
     private IReadOnlyCollection<string> ValidTokenHashes() => _tokens.List().Select(t => t.Hash).ToHashSet();

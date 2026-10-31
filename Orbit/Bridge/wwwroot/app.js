@@ -473,6 +473,7 @@ async function pfDownload(name) {
 // Modo trackpad: o dedo move o cursor (relativo), toque clica, toque com dois dedos = botão direito.
 const scr = { live: false, loaded: false, ws: null, mode: 'touch', ctrl: false };
 const scrImg = $('#scrImg'), scrView = $('#scrView'), scrTouch = $('#scrTouch');
+const TAKEN = 4001; // o PC fechou porque outro aparelho assumiu (reason = nome dele)
 const scrSay = msg => { $('#scrMsg').textContent = msg || ''; $('#scrMsg').classList.toggle('hidden', !msg); };
 const scrSend = o => { if (scr.ws && scr.ws.readyState === 1) scr.ws.send(JSON.stringify(o)); };
 
@@ -486,7 +487,23 @@ async function scrLoad() {
   } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba iPhone do PC.' : e.message); }
 }
 
+// Outro aparelho assumiu a tela: encerra aqui e oferece "Retomar" (refaz o fluxo de abrir).
+function scrTaken(name) {
+  scrStop(true);
+  scrSay(`O ${name} assumiu a tela`);
+  $('#scrResume').classList.remove('hidden');
+}
+
+// O Safari não sinaliza o fim do MJPEG de forma confiável: pergunta ao PC quem está vendo.
+async function scrCheckOwner() {
+  try {
+    const o = await api('/screen/owner');
+    if (scr.live && !o.mine && o.name) scrTaken(o.name);
+  } catch { /* sem rede: o onerror da imagem cuida */ }
+}
+
 async function scrStart() {
+  $('#scrResume').classList.add('hidden');
   try {
     const screen = $('#scrScreen').value;
     const { ticket } = await api('/screen/open', { method: 'POST', json: { screen, quality: $('#scrQuality').value } });
@@ -499,6 +516,7 @@ async function scrStart() {
     resetView();
     if (landscape.matches) scrImmersive(true); // já deitado: vai direto pra tela cheia
     scrConnectControl(screen);
+    scr.watch = setInterval(scrCheckOwner, 5000);
   } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba iPhone do PC.' : e.message); }
 }
 
@@ -509,17 +527,24 @@ async function scrConnectControl(screen) {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/remote/input?ticket=${encodeURIComponent(ticket)}`);
     ws.onopen = () => $('#scrBar').classList.remove('hidden');
-    ws.onclose = () => { $('#scrBar').classList.add('hidden'); if (scr.ws === ws) scr.ws = null; };
+    ws.onclose = e => {
+      const mine = scr.ws === ws; // false = fechei eu (Parar)
+      $('#scrBar').classList.add('hidden');
+      if (mine) scr.ws = null;
+      if (mine && e.code === TAKEN) scrTaken(e.reason);
+    };
     scr.ws = ws;
   } catch (e) {
     if (/403/.test(e.message)) scrSay('Só visualização — ligue "Controle" na aba iPhone pra usar mouse e teclado.');
   }
 }
 
-function scrStop() {
+function scrStop(taken) {
+  clearInterval(scr.watch);
   scrImg.onerror = null;
   scrImg.src = BLANK; // aborta a <img>…
-  if (token) fetch('/api/screen/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {}); // …e o Safari precisa do aviso
+  // se outro aparelho assumiu, /screen/close derrubaria a sessão dele
+  if (token && !taken) fetch('/api/screen/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {}); // …e o Safari precisa do aviso
   if (scr.ws) { scr.ws.close(); scr.ws = null; }
   scr.live = false;
   scrView.classList.remove('live');
@@ -528,6 +553,7 @@ function scrStop() {
   $('#scrToggle').textContent = 'Ver tela';
 }
 
+$('#scrResume').onclick = scrStart;
 $('#scrToggle').onclick = () => scr.live ? scrStop() : scrStart();
 const scrRestart = () => { if (scr.live) { scrStop(); scrStart(); } };
 $('#scrScreen').onchange = scrRestart;
@@ -753,7 +779,8 @@ function micStart() {
     ws.binaryType = 'arraybuffer';
     ws.onmessage = e => { if (typeof e.data === 'string') mic.rate = JSON.parse(e.data).rate; else micPlay(e.data); };
     ws.onclose = e => {
-      if (e.reason === 'autorize no PC') micSay('Autorize o microfone na tela do PC (aviso do Windows) e toque Ouvir de novo.');
+      if (e.code === TAKEN) micSay(`O ${e.reason} assumiu o microfone`);
+      else if (e.reason === 'autorize no PC') micSay('Autorize o microfone na tela do PC (aviso do Windows) e toque Ouvir de novo.');
       else if (e.code === 1011) micSay('O microfone do PC não abriu (em uso por outro programa?).');
       if (mic.ws === ws) { mic.ws = null; micUi(false); }
     };
@@ -867,7 +894,7 @@ function kbConnect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/keyboard/input?ticket=${encodeURIComponent(ticket)}`);
     await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = () => fail(new Error('Não conectou ao PC')); });
-    ws.onclose = () => { if (kb.ws === ws) kb.ws = null; };
+    ws.onclose = e => { if (kb.ws === ws) kb.ws = null; if (e.code === TAKEN) kbSay(`O ${e.reason} assumiu o teclado`); };
     kb.ws = ws;
     return ws;
   })().finally(() => { kb.connecting = null; });

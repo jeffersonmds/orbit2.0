@@ -17,7 +17,10 @@ namespace Orbit.Bridge;
 
 public sealed record ScreenOpenRequest(string? Screen, string? Quality);
 // O que o iPhone está fazendo agora — vira o indicador de privacidade na pílula.
-public sealed record RemoteState(bool Viewing, bool Controlling, bool Listening);
+public sealed record RemoteState(bool Viewing, bool Controlling, bool Listening,
+    string? Viewer = null, string? Controller = null, string? Listener = null);
+// Quem segura uma vaga: Hash identifica o aparelho, Name é o que aparece pra pessoa.
+public sealed record SessionOwner(string Hash, string Name);
 public sealed record RemoteTicketRequest(string? Screen);
 
 // Tíquete de uso único (30 s pra conectar) com um valor junto. Vários em aberto (vídeo + controle).
@@ -56,30 +59,52 @@ public sealed class OneShotTickets<T>
 }
 
 // Uma sessão de cada tipo por vez — vídeo da tela, controle, microfone (uma nova derruba a anterior).
+// Cada vaga tem dono: quem perde a vaga pra outro aparelho fica sabendo quem assumiu (DisplacedBy).
 // Avisa a ilha a cada mudança pra pílula mostrar o indicador; StopAll é o "Encerrar" da aba iPhone.
 public sealed class RemoteSessions
 {
     private readonly object _gate = new();
     private readonly Action<RemoteState> _changed;
     private CancellationTokenSource? _video, _input, _audio;
+    private readonly Dictionary<CancellationTokenSource, SessionOwner> _owners = new();
+    private readonly Dictionary<CancellationTokenSource, string> _displaced = new();
 
     public RemoteSessions(Action<RemoteState> changed) => _changed = changed;
 
-    public CancellationTokenSource BeginVideo(CancellationToken aborted) => Begin(ref _video, aborted);
-    public CancellationTokenSource BeginInput(CancellationToken aborted) => Begin(ref _input, aborted);
-    public CancellationTokenSource BeginAudio(CancellationToken aborted) => Begin(ref _audio, aborted);
+    public CancellationTokenSource BeginVideo(CancellationToken aborted, SessionOwner owner) => Begin(ref _video, aborted, owner);
+    public CancellationTokenSource BeginInput(CancellationToken aborted, SessionOwner owner) => Begin(ref _input, aborted, owner);
+    public CancellationTokenSource BeginAudio(CancellationToken aborted, SessionOwner owner) => Begin(ref _audio, aborted, owner);
 
-    private CancellationTokenSource Begin(ref CancellationTokenSource? slot, CancellationToken aborted)
+    private CancellationTokenSource Begin(ref CancellationTokenSource? slot, CancellationToken aborted, SessionOwner owner)
     {
         var s = CancellationTokenSource.CreateLinkedTokenSource(aborted);
         lock (_gate)
         {
-            slot?.Cancel();
+            if (slot is not null)
+            {
+                // mesmo aparelho reconectando não é "assumiu"
+                if (_owners.TryGetValue(slot, out var old) && old.Hash != owner.Hash) _displaced[slot] = owner.Name;
+                slot.Cancel();
+            }
             slot = s;
+            _owners[s] = owner;
         }
         Notify();
         return s;
     }
+
+    // Nome de quem tomou a vaga desta sessão, ou null (consultar ANTES de End).
+    public string? DisplacedBy(CancellationTokenSource s)
+    {
+        lock (_gate) return _displaced.GetValueOrDefault(s);
+    }
+
+    public SessionOwner? Viewer
+    {
+        get { lock (_gate) return Owner(_video); }
+    }
+
+    private SessionOwner? Owner(CancellationTokenSource? s) => s is not null && _owners.TryGetValue(s, out var o) ? o : null;
 
     public void End(CancellationTokenSource s)
     {
@@ -88,6 +113,8 @@ public sealed class RemoteSessions
             if (_video == s) _video = null;
             if (_input == s) _input = null;
             if (_audio == s) _audio = null;
+            _owners.Remove(s);
+            _displaced.Remove(s);
         }
         s.Dispose();
         Notify();
@@ -114,16 +141,26 @@ public sealed class RemoteSessions
         }
     }
 
+    // Revogar ou desligar permissão de um aparelho derruba só as sessões dele.
+    public void StopDevice(string hash)
+    {
+        lock (_gate)
+            foreach (var s in new[] { _video, _input, _audio })
+                if (s is not null && Owner(s)?.Hash == hash) s.Cancel();
+    }
+
     private void Notify()
     {
         RemoteState state;
-        lock (_gate) state = new(_video is not null, _input is not null, _audio is not null);
+        lock (_gate) state = new(_video is not null, _input is not null, _audio is not null,
+            Owner(_video)?.Name, Owner(_input)?.Name, Owner(_audio)?.Name);
         try { _changed(state); } catch (Exception ex) { Log.Warning(ex, "Tela remota: falha ao avisar a ilha"); }
     }
 }
 
 public static class RemoteScreen
 {
+    public const int TakenCloseCode = 4001; // WebSocket fechado porque outro aparelho assumiu (reason = nome dele)
     public const int MaxMessagesPerSecond = 300;
     private static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(1); // reenvia o quadro parado (o Safari só mostra ao chegar o próximo)
 
@@ -160,7 +197,7 @@ public static class RemoteScreen
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
             }
-            var session = sessions.BeginVideo(ctx.RequestAborted);
+            var session = sessions.BeginVideo(ctx.RequestAborted, Who(tokens, owner));
             var ct = session.Token;
             try
             {
@@ -189,6 +226,13 @@ public static class RemoteScreen
             finally { sessions.End(session); }
         });
 
+        // Quem está vendo a tela agora (o MJPEG não avisa o Safari quando outro aparelho assume).
+        api.MapGet("/screen/owner", (HttpContext ctx) =>
+        {
+            var viewer = sessions.Viewer;
+            return Results.Ok(new { name = viewer?.Name, mine = viewer?.Hash == BridgeServer.DeviceOf(ctx).Hash });
+        });
+
         api.MapPost("/screen/close", () => { sessions.StopVideo(); return Results.NoContent(); });
 
         // Tíquete do WebSocket de controle, preso ao monitor que o iPhone está vendo.
@@ -206,15 +250,10 @@ public static class RemoteScreen
             if (!keyboard.TryClaim(ticket, DateTime.Now, out _, out var owner)) { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) { ctx.Response.StatusCode = StatusCodes.Status403Forbidden; return; }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-            var session = sessions.BeginInput(ctx.RequestAborted);
+            var session = sessions.BeginInput(ctx.RequestAborted, Who(tokens, owner));
             try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
-            finally
-            {
-                sessions.End(session);
-                if (ws.State == WebSocketState.Open)
-                    try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "fim", CancellationToken.None); } catch { }
-            }
+            finally { await CloseAsync(ws, sessions, session); }
         });
 
         api.MapGet("/remote/input", async (HttpContext ctx, string? ticket) =>
@@ -240,16 +279,28 @@ public static class RemoteScreen
                 return;
             }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-            var session = sessions.BeginInput(ctx.RequestAborted);
+            var session = sessions.BeginInput(ctx.RequestAborted, Who(tokens, owner));
             try { await ReceiveLoop(ws, screen.Bounds, h, session.Token, _ => true); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
-            finally
-            {
-                sessions.End(session);
-                if (ws.State == WebSocketState.Open)
-                    try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "fim", CancellationToken.None); } catch { }
-            }
+            finally { await CloseAsync(ws, sessions, session); }
         });
+    }
+
+    internal static SessionOwner Who(TokenStore tokens, string hash) => new(hash, tokens.Find(hash)?.Name ?? "Aparelho");
+
+    // Fim do WebSocket: se outro aparelho tomou a vaga, avisa com 4001 + nome (ler antes de End).
+    internal static async Task CloseAsync(WebSocket ws, RemoteSessions sessions, CancellationTokenSource session)
+    {
+        var taken = sessions.DisplacedBy(session);
+        sessions.End(session);
+        if (ws.State != WebSocketState.Open) return;
+        try
+        {
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(2)); // cliente sumido não prende o handler
+            if (taken is null) await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "fim", limit.Token);
+            else await ws.CloseAsync((WebSocketCloseStatus)TakenCloseCode, taken, limit.Token);
+        }
+        catch { }
     }
 
     public static bool KeyboardOnly(RemoteCommand c) => c.Kind is RemoteKind.Text or RemoteKind.Key;
@@ -258,16 +309,23 @@ public static class RemoteScreen
         Func<RemoteCommand, bool> allow)
     {
         var buf = new byte[8192];
+        // Cancelar o ReceiveAsync aborta o socket e o 4001/"fim" nunca sairia: espera sem passar o token.
+        async Task<WebSocketReceiveResult> Receive(byte[] b)
+        {
+            var recv = ws.ReceiveAsync(b, CancellationToken.None);
+            if (await Task.WhenAny(recv, Task.Delay(Timeout.Infinite, ct)) != recv) throw new OperationCanceledException(ct);
+            return await recv;
+        }
         var window = Stopwatch.StartNew();
         int inWindow = 0;
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
-            var res = await ws.ReceiveAsync(buf, ct);
+            var res = await Receive(buf);
             if (res.MessageType == WebSocketMessageType.Close) break;
             if (!res.EndOfMessage)
             {
                 // mensagem grande demais: descarta até o fim dela
-                while (!(await ws.ReceiveAsync(buf, ct)).EndOfMessage) { }
+                while (!(await Receive(buf)).EndOfMessage) { }
                 continue;
             }
             if (window.ElapsedMilliseconds >= 1000) { window.Restart(); inWindow = 0; }
