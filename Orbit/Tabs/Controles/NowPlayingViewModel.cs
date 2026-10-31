@@ -19,7 +19,7 @@ public sealed partial class NowPlayingViewModel : ObservableObject
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private BitmapImage? _thumbnail;
 
-    // Bytes originais da capa (como o app de mídia entregou): a ponte manda estes pro iPhone,
+    // Bytes originais da capa (como o app de mídia entregou): a ponte manda estes pro aparelho,
     // que mostra a capa grande — o Thumbnail acima é reduzido pra 128 px da ilha.
     public byte[]? ThumbnailBytes { get; private set; }
     [ObservableProperty] private string _playPauseGlyph = "\uE768";

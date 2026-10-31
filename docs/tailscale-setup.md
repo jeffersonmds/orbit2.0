@@ -1,6 +1,6 @@
-# Ligando o iPhone ao Orbit com Tailscale
+# Ligando iPhone e iPad ao Orbit com Tailscale
 
-O Orbit tem uma "ponte" que deixa o seu iPhone abrir links no PC, trocar texto, enviar arquivos,
+O Orbit tem uma "ponte" que deixa o seu iPhone ou iPad abrir links no PC, trocar texto, enviar arquivos,
 controlar a música e ver o estado do computador. Para o iPhone alcançar o PC de qualquer lugar
 sem abrir nada para a internet, usamos o **Tailscale**: uma rede privada só sua, que liga os seus
 aparelhos entre si.
@@ -50,7 +50,7 @@ Anote esse nome: ele é usado nos próximos passos. Nos exemplos abaixo, troque 
 
 ### 4. Ligar a ponte no Orbit
 
-1. Abra a ilha e vá na aba **iPhone**.
+1. Abra a ilha e vá na aba **Dispositivos**.
 2. Ligue **Ponte ligada** (porta 5191).
 3. No campo **Endereço do Tailscale**, escreva `https://notebook.tail1234.ts.net` (com o seu nome).
 
@@ -84,7 +84,7 @@ confira com `tailscale serve --help`. Documentação oficial: tailscale.com/kb/1
 
 ### 6. Parear o iPhone
 
-1. Com o Tailscale **conectado** no iPhone, volte à ilha: aba **iPhone** > **Parear iPhone**.
+1. Com o Tailscale **conectado** no iPhone, volte à ilha: aba **Dispositivos** > **Parear dispositivo**.
 2. Aponte a câmera do iPhone para o QR que aparece.
 3. Toque no aviso para abrir. O Safari abre o painel do Orbit já com o token guardado.
 4. Toque em **Compartilhar** (o quadrado com a seta) > **Adicionar à Tela de Início**.
@@ -94,11 +94,11 @@ herda** o token que o Safari guardou. Na primeira vez, o app instalado abre pedi
 só uma vez:
 
 1. Abra o Orbit pelo **ícone da Tela de Início**.
-2. Aponte a câmera para o QR (na aba **iPhone** do PC > **Parear iPhone**).
+2. Aponte a câmera para o QR (na aba **Dispositivos** do PC > **Parear dispositivo**).
 3. **Toque e segure** o aviso amarelo que aparece e toque em **Copiar** (não em abrir).
 4. Volte ao app, cole no campo (ele aceita o link inteiro ou só o token) e toque em **Salvar**.
 
-Sem o QR à mão, use o botão **Copiar** da aba iPhone no PC e mande o link para o iPhone por
+Sem o QR à mão, use o botão **Copiar** da aba Dispositivos no PC e mande o link para o iPhone por
 qualquer meio seguro (por exemplo, uma mensagem para você mesmo). O token fica salvo só nesse
 aparelho.
 
@@ -148,9 +148,9 @@ atrapalhar a entrada de aparelhos novos.
 
 ### 8. Revogar um aparelho (perdeu ou trocou o iPhone)
 
-Na ilha: aba **iPhone** > na lista de aparelhos pareados, clique no **X** ao lado do token.
+Na ilha: aba **Dispositivos** > na lista de aparelhos pareados, clique no **X** ao lado do token.
 Esse aparelho perde o acesso na hora (o token deixa de valer). Se quiser pareá-lo de novo,
-use **Parear iPhone** outra vez. Para cortar de vez o aparelho da rede, remova-o também no
+use **Parear dispositivo** outra vez. Para cortar de vez o aparelho da rede, remova-o também no
 painel do Tailscale (aba Machines).
 
 ### 9. Problemas comuns
@@ -158,10 +158,18 @@ painel do Tailscale (aba Machines).
 | Sintoma | O que verificar |
 | --- | --- |
 | Painel mostra **PC fora do ar** | O PC está dormindo ou desligado; ou a **Ponte ligada** está desligada na ilha; ou o Orbit não está aberto; ou o `tailscale serve` parou (rode `tailscale serve status`). Confirme também que o Tailscale está conectado no iPhone. |
-| **Token inválido** / pede para parear | O token foi revogado ou você reinstalou o app. Faça **Parear iPhone** de novo. |
+| **Token inválido** / pede para parear | O token foi revogado ou você reinstalou o app. Faça **Parear dispositivo** de novo. |
 | A página nem abre no Safari | O Tailscale do iPhone está desligado, ou o endereço está errado, ou o HTTPS Certificates não foi ativado (passo 2). |
 | **Calma: muitas ações seguidas** | O limite de segurança é de 120 ações por minuto. Espere um instante. |
-| Arquivos enviados não aparecem | Eles vão para `Downloads\Orbit` (ou a pasta configurada na aba iPhone). |
+| Arquivos enviados não aparecem | Eles vão para `Downloads\Orbit` (ou a pasta configurada na aba Dispositivos). |
 
 Todas as ações feitas pelo iPhone (abrir link, energia, arquivos etc.) ficam registradas em
 `%AppData%\Orbit2\audit.jsonl`, caso queira conferir o que aconteceu.
+
+## Vários aparelhos (iPhone e iPad)
+
+Cada aparelho é pareado separadamente (passo 6) e tem as próprias permissões na aba **Dispositivos**:
+Câmera, Arquivos, Tela, Controle, Microfone e Teclado são por aparelho, desligados por padrão. A permissão
+vale também no momento do uso: desligar derruba o que o aparelho estiver fazendo. A caixa de saída ("Recebidos
+do PC") é por destinatário; com mais de um aparelho pareado o Orbit pergunta para qual mandar. O PWA usa a
+tela larga do iPad (grade de 2 a 4 colunas).

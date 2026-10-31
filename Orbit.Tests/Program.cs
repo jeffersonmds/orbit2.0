@@ -69,7 +69,7 @@ public static class Program
         TokenAuditTests();
         DeviceStoreTests();
         BridgeServerTests();
-        IPhoneTests();
+        DispositivosTests();
         TailscaleTests();
         PairingCodeTests();
         CameraStreamAuthTests();
@@ -192,15 +192,15 @@ public static class Program
         Check("pílula: só microfone", IslandViewModel.RemoteActivity(new RemoteState(false, false, true, null, null, "iPad")) == "Microfone no iPad");
 
         var agoraAba = new DateTime(2026, 10, 30, 12, 0, 0);
-        Check("aba: nunca visto", Orbit.Tabs.IPhone.DeviceRow.SeenText(null, agoraAba) == "sem acesso desde que abriu");
-        Check("aba: agora", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddSeconds(-30), agoraAba) == "online");
-        Check("aba: minutos", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddMinutes(-12), agoraAba) == "há 12 min");
+        Check("aba: nunca visto", Orbit.Tabs.Dispositivos.DeviceRow.SeenText(null, agoraAba) == "sem acesso desde que abriu");
+        Check("aba: agora", Orbit.Tabs.Dispositivos.DeviceRow.SeenText(agoraAba.AddSeconds(-30), agoraAba) == "online");
+        Check("aba: minutos", Orbit.Tabs.Dispositivos.DeviceRow.SeenText(agoraAba.AddMinutes(-12), agoraAba) == "há 12 min");
         var semPerm = Orbit.Bridge.DevicePermissions.None;
         var comCam = semPerm with { Camera = true };
-        Check("aba: ligar não derruba", !Orbit.Tabs.IPhone.IPhoneViewModel.RevokedAny(semPerm, comCam));
-        Check("aba: desligar derruba", Orbit.Tabs.IPhone.IPhoneViewModel.RevokedAny(comCam, semPerm));
-        Check("aba: sem mudança não derruba", !Orbit.Tabs.IPhone.IPhoneViewModel.RevokedAny(comCam, comCam));
-        Check("aba: horas", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddHours(-2), agoraAba) == "há 2 h");
+        Check("aba: ligar não derruba", !Orbit.Tabs.Dispositivos.DispositivosViewModel.RevokedAny(semPerm, comCam));
+        Check("aba: desligar derruba", Orbit.Tabs.Dispositivos.DispositivosViewModel.RevokedAny(comCam, semPerm));
+        Check("aba: sem mudança não derruba", !Orbit.Tabs.Dispositivos.DispositivosViewModel.RevokedAny(comCam, comCam));
+        Check("aba: horas", Orbit.Tabs.Dispositivos.DeviceRow.SeenText(agoraAba.AddHours(-2), agoraAba) == "há 2 h");
 
         // Rotas
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-tela-" + Guid.NewGuid().ToString("N"));
@@ -666,7 +666,7 @@ public static class Program
 
         var f1 = Path.Combine(dir, "um.txt");
         File.WriteAllText(f1, "x");
-        Check("enviar para: só arquivos que existem", SendToDevice.FilesFrom(new[] { "--send-iphone", f1, dir, Path.Combine(dir, "sumiu.txt"), f1 })
+        Check("enviar para: só arquivos que existem", SendToDevice.FilesFrom(new[] { "--send-device", f1, dir, Path.Combine(dir, "sumiu.txt"), f1 })
             .SequenceEqual(new[] { f1 }));
 
         Check("foto: EXIF 6 = 90°, 3 = 180°, 8 = 270°", PhotoDecoder.Rotation(6) == 90 && PhotoDecoder.Rotation(3) == 180 && PhotoDecoder.Rotation(8) == 270 && PhotoDecoder.Rotation(1) == 0);
@@ -1150,7 +1150,7 @@ public static class Program
             && TailscaleCli.Describe(ok, true).Contains("Publicado"));
     }
 
-    private static void IPhoneTests()
+    private static void DispositivosTests()
     {
         var png = Qr.RenderPng("https://pc.tail1.ts.net/#token=abc");
         Check("qr: gera PNG", png is { Length: > 100 } && png[1] == (byte)'P' && png[2] == (byte)'N' && png[3] == (byte)'G');
@@ -1164,7 +1164,7 @@ public static class Program
     {
         var order = string.Join(",", IslandViewModel.TabOrder);
         Check("abas: clipboard, notas e apps entre stats e mercado", order.Contains("stats,clipboard,notas,apps,mercado"));
-        Check("abas: iphone antes de energia", order.Contains("claude,iphone,energia"));
+        Check("abas: dispositivos antes de energia", order.Contains("claude,dispositivos,energia"));
         Check("abas: 12 ids na ordem", IslandViewModel.TabOrder.Length == 12);
     }
 
@@ -1669,6 +1669,14 @@ public static class Program
         File.WriteAllText(path, "{ isso não é json");
         var c = Orbit.Services.SettingsStore.Load(path);
         Check("settings: arquivo corrompido → defaults", c.LastTab == "energia");
+
+        var mig = new Orbit.Models.OrbitSettings { LastTab = "iphone", HiddenTabs = new() { "iphone", "notas" } };
+        Orbit.Services.SettingsStore.MigrateTabIds(mig);
+        Check("migra: LastTab", mig.LastTab == "dispositivos");
+        Check("migra: HiddenTabs", mig.HiddenTabs.Contains("dispositivos") && !mig.HiddenTabs.Contains("iphone") && mig.HiddenTabs.Contains("notas"));
+        File.WriteAllText(path, "{\"LastTab\":\"iphone\",\"HiddenTabs\":[\"iphone\"]}");
+        var ml = Orbit.Services.SettingsStore.Load(path);
+        Check("migra: Load já vem migrado", ml.LastTab == "dispositivos" && ml.HiddenTabs.Contains("dispositivos"));
 
         var bad = Path.Combine(dir, "a|b", "settings.json");
         bool threw = false;

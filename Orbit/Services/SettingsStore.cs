@@ -23,12 +23,21 @@ public static class SettingsStore
         {
             var p = path ?? FilePath;
             if (!File.Exists(p)) return new OrbitSettings();
-            return JsonSerializer.Deserialize<OrbitSettings>(File.ReadAllText(p)) ?? new OrbitSettings();
+            var s = JsonSerializer.Deserialize<OrbitSettings>(File.ReadAllText(p)) ?? new OrbitSettings();
+            MigrateTabIds(s); // em memória; o próximo Save grava
+            return s;
         }
         catch
         {
             return new OrbitSettings(); // faltando/corrompido/I/O → defaults
         }
+    }
+
+    // A aba "iphone" virou "dispositivos" (multi-dispositivos).
+    public static void MigrateTabIds(OrbitSettings s)
+    {
+        if (s.LastTab == "iphone") s.LastTab = "dispositivos";
+        if (s.HiddenTabs.Remove("iphone") && !s.HiddenTabs.Contains("dispositivos")) s.HiddenTabs.Add("dispositivos");
     }
 
     public static void Save(OrbitSettings s, string? path = null)

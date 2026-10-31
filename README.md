@@ -1,7 +1,7 @@
 # Orbit 2.0
 
 **Uma Dynamic Island para o Windows.** Uma pílula discreta no topo da tela que, ao passar o mouse,
-vira um painel com controles, stats, clipboard, apps, mercado, notícias e uma ponte segura com o iPhone.
+vira um painel com controles, stats, clipboard, apps, mercado, notícias e uma ponte segura com iPhone e iPad.
 
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
 ![WPF](https://img.shields.io/badge/UI-WPF-0078D4?logo=windows&logoColor=white)
@@ -37,23 +37,23 @@ mostra a atividade. Passou o mouse, expande. Some sozinha em jogos e vídeos em 
 - **Conta-gotas** (`Ctrl+Alt+C`) e **desenho sobre a tela** (`Ctrl+Alt+D`).
 - Cor de destaque do Windows ou paleta própria; escolha de monitor; abas que dá pra esconder.
 
-**Ponte com o iPhone** (desligada por padrão)
+**Ponte com iPhone e iPad (vários aparelhos)** (desligada por padrão)
 - Servidor Kestrel dentro do processo, só em `127.0.0.1`, exposto ao celular pelo
   [Tailscale](https://tailscale.com) (`tailscale serve`, nunca funnel).
 - PWA instalável na tela inicial: clipboard nos dois sentidos, envio de arquivos e fotos, player,
   stats, energia, abrir links.
 - Câmera do PC ao vivo, microfone, **tela remota** com mouse e teclado, arquivos do PC (só leitura).
-- **PC → iPhone**: "Enviar para" no Explorer, arrastar pra pílula ou `Ctrl+Alt+I`.
-- Notificações no iPhone por **Web Push** (RFC 8291/8292 com cripto nativa do .NET).
+- **PC → aparelho**: "Enviar para" no Explorer, arrastar pra pílula ou `Ctrl+Alt+I`.
+- Notificações nos aparelhos por **Web Push** (RFC 8291/8292 com cripto nativa do .NET).
 
 ## Segurança da ponte
 
 Expor o PC pro celular pede cuidado, então cada parte é opt-in e fechada por padrão:
 
 - Pareamento por código de 6 dígitos (5 min, uso único, trava após 5 erros) ou QR.
-- Tokens guardados só como SHA-256; revogáveis na aba iPhone.
+- Tokens guardados só como SHA-256; revogáveis na aba Dispositivos.
 - Autenticação antes do rate limit e antes de ler o corpo; auditoria em `audit.jsonl`.
-- Câmera, microfone, tela, controle, teclado e arquivos são **permissões separadas**, todas desligadas (403).
+- Câmera, microfone, tela, controle, teclado e arquivos são **permissões separadas por dispositivo**, todas desligadas (403), checadas também no uso do tíquete.
 - Streams autenticados por tíquete de uso único; caminhos de arquivo validados contra a raiz (sem path traversal).
 - Web Push só aceita endpoints de serviços de push conhecidos (anti-SSRF).
 
@@ -89,7 +89,7 @@ dotnet run --project Orbit.Tests    # roda os testes (exit != 0 se algum falhar)
 installer\build.ps1                 # instalador self-contained (precisa do Inno Setup)
 ```
 
-Para a ponte com o iPhone, ligue-a na aba **iPhone** e siga o guia de [Atalhos do iOS](docs/atalhos-ios.md).
+Para a ponte com iPhone ou iPad, ligue-a na aba **Dispositivos** e siga o guia de [Atalhos do iOS](docs/atalhos-ios.md).
 
 ---
 

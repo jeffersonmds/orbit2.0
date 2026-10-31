@@ -26,7 +26,7 @@
   <main id="app">
     <section id="pair" class="card hidden">
       <h2>Parear com o PC</h2>
-      <p class="muted">No PC: abra a ilha → aba <b>iPhone</b> → <b>Parear iPhone</b> e digite aqui o <b>código de 6 dígitos</b>.
+      <p class="muted">No PC: abra a ilha → aba <b>Dispositivos</b> → <b>Parear dispositivo</b> e digite aqui o <b>código de 6 dígitos</b>.
         (Também aceita colar o link do QR ou o token.)</p>
       <input id="tokenInput" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="000 000" maxlength="200">
       <button class="primary" id="saveToken">Parear</button>
@@ -78,7 +78,7 @@
         <span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
         <b>PC e energia</b><span id="tileStats">--</span>
       </a>
-      <!-- Avisos do PC neste iPhone (Web Push). Ocupa a linha inteira da grade. -->
+      <!-- Avisos do PC neste aparelho (Web Push). Ocupa a linha inteira da grade. -->
       <div class="card pushcard">
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
         <div class="pushtext"><b>Avisos do PC</b><span id="pushState">Claude aguardando, Pomodoro…</span></div>
@@ -98,7 +98,7 @@
     </section>
 
     <section class="page card" data-page="teclado" data-title="Teclado do PC">
-      <p class="crumb">Escreva ou dite (microfone do teclado do iPhone) e mande pro app em foco no PC.</p>
+      <p class="crumb">Escreva ou dite (microfone do teclado do aparelho) e mande pro app em foco no PC.</p>
       <textarea id="kbText" class="fill" placeholder="Escreva ou dite aqui…"></textarea>
       <label class="kb-opt"><input type="checkbox" id="kbEnter"> Apertar Enter depois de mandar</label>
       <div class="row">
@@ -147,7 +147,7 @@
         <input id="files" type="file" multiple>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
         <span>Escolher fotos ou arquivos</span>
-        <small>Vão pra pasta "Recebidos do iPhone" no PC</small>
+        <small>Vão pra pasta "Downloads\Orbit" no PC</small>
       </label>
       <div class="progress hidden" id="progress"><div id="bar"></div></div>
     </section>

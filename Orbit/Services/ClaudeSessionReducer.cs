@@ -9,7 +9,7 @@ namespace Orbit.Services;
 public enum ClaudeSessionState { Running, WaitingInput, NeedsAttention }
 
 // HostPid: processo com janela onde o Claude roda (Windows Terminal, VS Code…). Seen: você já focou
-// essa janela depois do último aviso — sai da pílula (continua na aba), como abrir o app no iPhone.
+// essa janela depois do último aviso — sai da pílula (continua na aba), como abrir o app no aparelho.
 public sealed record ClaudeSessionInfo(string SessionId, string ProjectName, ClaudeSessionState State, string? Message,
     int? HostPid = null, bool Seen = false, long? ContextTokens = null)
 {

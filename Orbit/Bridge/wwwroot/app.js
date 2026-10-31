@@ -82,7 +82,7 @@ showPair(!token);
 
 // --- Link ---
 $('#pasteUrl').onclick = () => run(async () => { $('#url').value = await navigator.clipboard.readText(); });
-// Últimos links abertos (só neste iPhone, no localStorage): tocar reabre no PC.
+// Últimos links abertos (só neste aparelho, no localStorage): tocar reabre no PC.
 const LINKS_KEY = 'orbit.links';
 function loadLinks() { try { return JSON.parse(localStorage.getItem(LINKS_KEY)) || []; } catch { return []; } }
 async function openLink(url) {
@@ -109,7 +109,7 @@ $('#getClip').onclick = () => {
   const blob = api('/clipboard').then(({ text }) => { $('#clip').value = text; return new Blob([text], { type: 'text/plain' }); });
   if (navigator.clipboard && window.ClipboardItem) {
     navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })])
-      .then(() => toast('Copiado no iPhone'), () => blob.then(() => toast('Texto do PC abaixo'), e => toast(e.message)));
+      .then(() => toast('Copiado no aparelho'), () => blob.then(() => toast('Texto do PC abaixo'), e => toast(e.message)));
   } else {
     blob.then(() => toast('Texto do PC abaixo'), e => toast(e.message));
   }
@@ -298,7 +298,7 @@ async function camLoadDevices() {
   if (!token || camStreaming) return;
   try {
     const r = await fetch('/api/camera/devices', { headers: { Authorization: `Bearer ${token}` } });
-    if (r.status === 403) { camSay('Ligue "Câmera" na aba iPhone do PC.'); return; }
+    if (r.status === 403) { camSay('Ligue "Câmera" na aba Dispositivos do PC.'); return; }
     if (!r.ok) return;
     const list = await r.json();
     camDevice.innerHTML = '';
@@ -319,7 +319,7 @@ async function camStart() {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: camDevice.value, name: camName(), quality: camQuality.value, fps: '24' }),
     });
-    if (r.status === 403) { camSay('Ligue "Câmera" na aba iPhone do PC.'); return; }
+    if (r.status === 403) { camSay('Ligue "Câmera" na aba Dispositivos do PC.'); return; }
     if (!r.ok) { camSay('Não consegui abrir a câmera.'); return; }
     const { ticket } = await r.json();
     camImg.onerror = () => { camSay('Câmera em uso por outro programa, ou o stream caiu.'); camStop(); };
@@ -453,7 +453,7 @@ async function pfLoad() {
     if (!entries.length) { msg.textContent = 'Pasta vazia.'; msg.classList.remove('hidden'); }
   } catch (e) {
     list.replaceChildren();
-    msg.textContent = /403/.test(e.message) ? 'Ligue "Arquivos" na aba iPhone do PC.' : e.message;
+    msg.textContent = /403/.test(e.message) ? 'Ligue "Arquivos" na aba Dispositivos do PC.' : e.message;
     msg.classList.remove('hidden');
   }
 }
@@ -484,7 +484,7 @@ async function scrLoad() {
     $('#scrScreen').replaceChildren(...list.map(s => Object.assign(document.createElement('option'), { value: s.id, textContent: s.name })));
     scr.loaded = true;
     scrSay(list.length ? '' : 'Nenhum monitor encontrado.');
-  } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba iPhone do PC.' : e.message); }
+  } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba Dispositivos do PC.' : e.message); }
 }
 
 // Outro aparelho assumiu a tela: encerra aqui e oferece "Retomar" (refaz o fluxo de abrir).
@@ -523,7 +523,7 @@ async function scrStart() {
     scrConnectControl(screen);
     clearInterval(scr.watch);
     scr.watch = setInterval(scrCheckOwner, 5000);
-  } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba iPhone do PC.' : e.message); }
+  } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba Dispositivos do PC.' : e.message); }
 }
 
 // Controle é opcional: sem a permissão "Controle", fica só olhando.
@@ -541,7 +541,7 @@ async function scrConnectControl(screen) {
     };
     scr.ws = ws;
   } catch (e) {
-    if (/403/.test(e.message)) scrSay('Só visualização — ligue "Controle" na aba iPhone pra usar mouse e teclado.');
+    if (/403/.test(e.message)) scrSay('Só visualização — ligue "Controle" na aba Dispositivos pra usar mouse e teclado.');
   }
 }
 
@@ -736,7 +736,7 @@ async function micLoad() {
     const list = await api('/mic/devices');
     $('#micDevice').replaceChildren(...list.map(d => Object.assign(document.createElement('option'), { value: d.id, textContent: d.name })));
     micSay(list.length ? '' : 'Nenhum microfone no PC.');
-  } catch (e) { micSay(/403/.test(e.message) ? 'Ligue "Microfone" na aba iPhone do PC.' : e.message); }
+  } catch (e) { micSay(/403/.test(e.message) ? 'Ligue "Microfone" na aba Dispositivos do PC.' : e.message); }
 }
 
 function micUi(on) {
@@ -774,7 +774,7 @@ function micStart() {
   mic.ctx.resume();
   const friendly = fn => async () => {
     try { await fn(); }
-    catch (e) { if (/403/.test(e.message)) { micSay('Ligue "Microfone" na aba iPhone do PC.'); return; } throw e; }
+    catch (e) { if (/403/.test(e.message)) { micSay('Ligue "Microfone" na aba Dispositivos do PC.'); return; } throw e; }
   };
   run(friendly(async () => {
     const sel = $('#micDevice');
@@ -825,7 +825,7 @@ async function photoToClipboard(input) {
 ['#photoCam', '#photoLib'].forEach(id => $(id).onchange = e => run(() => photoToClipboard(e.target), 'Foto no clipboard do PC'));
 
 // --- Recebidos do PC ---
-// O PC manda (Enviar para, arrastar pra ilha, aba Clipboard) e avisa por push; aqui o iPhone
+// O PC manda (Enviar para, arrastar pra ilha, aba Clipboard) e avisa por push; aqui o aparelho
 // decide o destino: Compartilhar abre o menu do iOS (Arquivos, Fotos, AirDrop, apps).
 const SHARE_MAX = 150 * 1024 * 1024; // acima disso o iOS não segura o arquivo na memória: baixa
 const inSay = msg => { $('#inMsg').textContent = msg || ''; $('#inMsg').classList.toggle('hidden', !msg); };
@@ -870,7 +870,7 @@ async function inLoad() {
         act.onclick = () => window.open(item.text.trim(), '_blank');
       } else {
         act.textContent = 'Copiar';
-        act.onclick = () => run(() => navigator.clipboard.writeText(item.text), 'Copiado no iPhone');
+        act.onclick = () => run(() => navigator.clipboard.writeText(item.text), 'Copiado no aparelho');
       }
       const del = document.createElement('button');
       del.className = 'del';
@@ -880,11 +880,11 @@ async function inLoad() {
       row.append(info, act, del);
       return row;
     }));
-    inSay(items.length ? '' : 'Nada por aqui. No PC: botão direito no arquivo → Enviar para → iPhone (Orbit), ou arraste pra ilha.');
+    inSay(items.length ? '' : 'Nada por aqui. No PC: botão direito no arquivo → Enviar para → Dispositivo (Orbit), ou arraste pra ilha.');
   } catch (e) { inSay(e.message); }
 }
 
-// --- Teclado do PC (escrever/ditar no iPhone → app em foco no PC) ---
+// --- Teclado do PC (escrever/ditar no aparelho → app em foco no PC) ---
 // Compor e mandar: o ditado do iOS corrige palavras enquanto você fala, então nada vai letra a letra.
 // "Digitar" manda o texto como teclas; "Colar" põe no clipboard do PC e dá Ctrl+V (texto longo,
 // editores de código com autocompletar). O WebSocket só fica aberto com a página aberta.
@@ -911,7 +911,7 @@ function kbClose() { if (kb.ws) { kb.ws.close(); kb.ws = null; } }
 async function kbSend(o) {
   try { (await kbConnect()).send(JSON.stringify(o)); }
   catch (e) {
-    if (/403/.test(e.message)) { kbSay('Ligue "Teclado" na aba iPhone do PC.'); throw new Error('Teclado desligado no PC'); }
+    if (/403/.test(e.message)) { kbSay('Ligue "Teclado" na aba Dispositivos do PC.'); throw new Error('Teclado desligado no PC'); }
     throw e;
   }
   return true;
@@ -1013,7 +1013,7 @@ async function pushRender() {
   }
   const reg = await navigator.serviceWorker.ready;
   const on = !!(await reg.pushManager.getSubscription()) && Notification.permission === 'granted';
-  state.textContent = on ? 'Ligados neste iPhone' : 'Claude aguardando, Pomodoro…';
+  state.textContent = on ? 'Ligados neste aparelho' : 'Claude aguardando, Pomodoro…';
   btn.textContent = on ? 'Testar' : 'Ativar';
   btn.classList.remove('hidden');
   off.classList.toggle('hidden', !on);

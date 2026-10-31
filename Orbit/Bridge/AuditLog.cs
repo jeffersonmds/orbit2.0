@@ -9,7 +9,7 @@ namespace Orbit.Bridge;
 
 public sealed record AuditEntry(DateTime When, string Token, string Action, string Result);
 
-// Uma linha JSON por ação em audit.jsonl + as últimas N em memória (aba iPhone).
+// Uma linha JSON por ação em audit.jsonl + as últimas N em memória (aba Dispositivos).
 // Write roda em threads do Kestrel: tudo sob lock; Written dispara fora da UI thread.
 public sealed class AuditLog
 {

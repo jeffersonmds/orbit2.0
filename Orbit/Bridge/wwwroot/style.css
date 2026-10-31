@@ -250,3 +250,16 @@ textarea.fill { flex: 1; min-height: 200px; resize: none; }
 .drop svg { width: 48px; height: 48px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .drop span { font-size: 18px; }
 .drop small { color: var(--ink-lo); font-size: 13px; font-weight: 400; }
+
+/* iPad / janela larga: a home usa a largura; cada página aberta ocupa a grade inteira */
+@media (min-width: 900px) {
+  header, main { max-width: 1040px; }
+  main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  main > .page, main > #pair { grid-column: 1 / -1; }
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1200px) {
+  header, main { max-width: 1320px; }
+  main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

@@ -19,9 +19,9 @@ public sealed class BridgeHandlers
     public Func<string, Task> OpenUrl { get; init; } = _ => Task.CompletedTask;
     public Func<Task<string>> GetClipboard { get; init; } = () => Task.FromResult("");
     public Func<string, Task> SetClipboard { get; init; } = _ => Task.CompletedTask;
-    // Foto do iPhone pro clipboard do PC. false = não é imagem / clipboard ocupado.
+    // Foto do aparelho pro clipboard do PC. false = não é imagem / clipboard ocupado.
     public Func<byte[], Task<bool>> SetClipboardImage { get; init; } = _ => Task.FromResult(false);
-    // "Recebidos do PC": o que o dono do PC mandou pro iPhone. null = rotas /api/outbox somem.
+    // "Recebidos do PC": o que o dono do PC mandou pro aparelho. null = rotas /api/outbox somem.
     public Outbox? Outbox { get; init; }
     // Texto da aba Notas (notes.txt).
     public Func<Task<string>> GetNotes { get; init; } = () => Task.FromResult("");
@@ -39,12 +39,12 @@ public sealed class BridgeHandlers
     // Arquivos do PC (só leitura). As permissões (câmera, arquivos, tela…) são de cada aparelho: TokenStore.
     public Func<IReadOnlyList<PcRoot>> PcRoots { get; init; } = () => Array.Empty<PcRoot>();
 
-    // Avisos no iPhone (Web Push). null = rotas /api/push respondem 404.
+    // Avisos no aparelho (Web Push). null = rotas /api/push respondem 404.
     public WebPush? Push { get; init; }
 
     // Tela remota: ver (Tela) e controlar (Controle, só com Tela ligada). Captura e entrada vêm da
     // ilha; os testes injetam fakes (nenhum teste mexe no mouse de verdade).
-    // Teclado remoto (ditado do iPhone → app em foco no PC): só texto e teclas.
+    // Teclado remoto (ditado do aparelho → app em foco no PC): só texto e teclas.
     public Func<IReadOnlyList<ScreenInfo>> Screens { get; init; } = () => Array.Empty<ScreenInfo>();
     public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
     public Action<RemoteCommand, System.Drawing.Rectangle> RemoteInput { get; init; } = (_, _) => { };

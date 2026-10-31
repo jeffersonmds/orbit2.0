@@ -147,7 +147,7 @@ public partial class IslandWindow : Window
             else ExpandFocused();
         };
 
-        // Ctrl+Alt+I: copia a seleção do app em foco e manda pro iPhone, sem abrir a ilha
+        // Ctrl+Alt+I: copia a seleção do app em foco e manda pro aparelho, sem abrir a ilha
         // (sem seleção, vai o que já estava no clipboard).
         _sendHotKey = new GlobalHotKey(hwnd, GlobalHotKey.VK_I);
         _sendHotKey.Pressed += async () =>
@@ -318,7 +318,7 @@ public partial class IslandWindow : Window
         }
     }
 
-    // Bolinha do indicador pulsa devagar (como no iPhone); a animação só roda com ele visível.
+    // Bolinha do indicador pulsa devagar (como no aparelho); a animação só roda com ele visível.
     private void OnCameraMicChanged()
     {
         if (_vm.ShowCameraMic)

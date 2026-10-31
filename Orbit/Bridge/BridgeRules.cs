@@ -28,7 +28,7 @@ public static class BridgeRules
         Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var u)
         && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
 
-    // Aceita "youtube.com" / "www.x.com/a" digitado no iPhone: completa com https://.
+    // Aceita "youtube.com" / "www.x.com/a" digitado no aparelho: completa com https://.
     // Devolve a URL normalizada, ou null se não for link http/https.
     public static string? NormalizeOpenUrl(string? url)
     {

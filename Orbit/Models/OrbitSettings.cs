@@ -33,10 +33,10 @@ public sealed class OrbitSettings
     // Volume, carregador, saída de som, Caps Lock e internet animando na pílula.
     public bool SystemSignalsEnabled { get; set; } = true;
 
-    // Print novo (pasta Capturas de tela): a pílula oferece mandar pro iPhone.
+    // Print novo (pasta Capturas de tela): a pílula oferece mandar pro aparelho.
     public bool ScreenshotOfferEnabled { get; set; } = true;
 
-    // Aviso de chuva chegando (ilha + iPhone), pela previsão de 15 em 15 min.
+    // Aviso de chuva chegando (ilha + aparelhos), pela previsão de 15 em 15 min.
     public bool RainAlertEnabled { get; set; } = true;
 
     // Pomodoro (defaults = clássico).
@@ -46,26 +46,26 @@ public sealed class OrbitSettings
     public int PomodoroCyclesUntilLongBreak { get; set; } = 4;
     public bool PomodoroSoundEnabled { get; set; } = true;
 
-    // Ponte com o iPhone (desligada até o usuário ligar na aba iPhone).
+    // Ponte com o aparelho (desligada até o usuário ligar na aba Dispositivos).
     public bool BridgeEnabled { get; set; }
     public int BridgePort { get; set; } = 5191;
     public string BridgePublicUrl { get; set; } = "";       // ex.: https://notebook.tail1234.ts.net
     public string? BridgeUploadFolder { get; set; }         // null = Downloads\Orbit
 
-    // Câmera pelo iPhone: desligada mesmo com a ponte ligada, até o usuário ligar na aba.
+    // Câmera pelo aparelho: desligada mesmo com a ponte ligada, até o usuário ligar na aba.
     public bool BridgeCameraEnabled { get; set; }
 
-    // Arquivos do PC pelo iPhone (só leitura, pastas do usuário): desligado até ligar na aba.
+    // Arquivos do PC pelo aparelho (só leitura, pastas do usuário): desligado até ligar na aba.
     public bool BridgePcFilesEnabled { get; set; }
 
-    // Tela remota pelo iPhone: ver (Tela) e mouse/teclado (Controle, só com Tela). Desligados por padrão.
+    // Tela remota pelo aparelho: ver (Tela) e mouse/teclado (Controle, só com Tela). Desligados por padrão.
     public bool BridgeScreenEnabled { get; set; }
     public bool BridgeControlEnabled { get; set; }
 
-    // Microfone do PC no iPhone (ouvir com ou sem a câmera). Desligado por padrão.
+    // Microfone do PC no aparelho (ouvir com ou sem a câmera). Desligado por padrão.
     public bool BridgeMicEnabled { get; set; }
 
-    // Teclado remoto (escrever/ditar no iPhone → app em foco no PC). Desligado por padrão.
+    // Teclado remoto (escrever/ditar no aparelho → app em foco no PC). Desligado por padrão.
     public bool BridgeKeyboardEnabled { get; set; }
 
     // Monitor da ilha (Screen.DeviceName, ex.: \\.\DISPLAY2). null = sempre o principal;

@@ -17,7 +17,7 @@ public sealed record ScreenQuality(int MaxWidth, long JpegQuality, int FrameMs)
 {
     public static readonly ScreenQuality Leve = new(1280, 60, 100);
     public static readonly ScreenQuality Nitida = new(1920, 75, 150);
-    // Resolução nativa: o único jeito de ler texto pequeno com zoom no iPhone (reduzir borra as letras).
+    // Resolução nativa: o único jeito de ler texto pequeno com zoom no aparelho (reduzir borra as letras).
     public static readonly ScreenQuality Original = new(int.MaxValue, 90, 250);
 
     public static ScreenQuality Parse(string? q) => q switch { "nitida" => Nitida, "original" => Original, _ => Leve };

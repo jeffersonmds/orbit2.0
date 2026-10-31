@@ -11,7 +11,7 @@
         xmlns:claude="clr-namespace:Orbit.Tabs.Claude"
         xmlns:clips="clr-namespace:Orbit.Tabs.Clips"
         xmlns:apps="clr-namespace:Orbit.Tabs.Apps"
-        xmlns:iphone="clr-namespace:Orbit.Tabs.IPhone"
+        xmlns:dispositivos="clr-namespace:Orbit.Tabs.Dispositivos"
         xmlns:notas="clr-namespace:Orbit.Tabs.Notas"
         Title="Orbit" Width="760" Height="400"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
@@ -19,8 +19,8 @@
         FontFamily="{StaticResource UiFont}" Foreground="{StaticResource InkHi}"
         KeyDown="OnKeyDown" Deactivated="OnDeactivated">
     <Window.Resources>
-        <DataTemplate DataType="{x:Type iphone:IPhoneViewModel}">
-            <iphone:IPhoneView/>
+        <DataTemplate DataType="{x:Type dispositivos:DispositivosViewModel}">
+            <dispositivos:DispositivosView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type energia:EnergiaViewModel}">
             <energia:EnergiaView/>
@@ -72,7 +72,7 @@
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" Margin="14,0,38,0"
                            Visibility="{Binding ShowCameraMic, Converter={StaticResource NotBoolToVis}}"/>
-                <!-- Câmera/microfone em uso: as bolinhas do iPhone (verde = câmera, laranja = microfone) -->
+                <!-- Câmera/microfone em uso: as bolinhas do aparelho (verde = câmera, laranja = microfone) -->
                 <DockPanel Margin="14,0" LastChildFill="True"
                            Visibility="{Binding ShowCameraMic, Converter={StaticResource BoolToVis}}">
                     <Ellipse x:Name="CameraMicDot" DockPanel.Dock="Left" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,9,0">
@@ -109,7 +109,7 @@
             </Grid>
 
             <DockPanel x:Name="PeekLayer" Visibility="Collapsed" Margin="18,0" VerticalAlignment="Center">
-                <!-- Ações do alerta (ex.: print → iPhone / Abrir) -->
+                <!-- Ações do alerta (ex.: print → aparelho / Abrir) -->
                 <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Peek.Actions}" VerticalAlignment="Center" Margin="8,0,0,0"
                               Visibility="{Binding Peek.HasActions, Converter={StaticResource BoolToVis}}">
                     <ItemsControl.ItemsPanel>

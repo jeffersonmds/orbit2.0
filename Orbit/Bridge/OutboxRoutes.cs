@@ -10,7 +10,7 @@ namespace Orbit.Bridge;
 
 public sealed record OutboxTicketRequest(string? Id);
 
-// Troca de arquivos iPhone ↔ PC além do "Enviar": foto direto pro clipboard do PC e a caixa de
+// Troca de arquivos aparelho ↔ PC além do "Enviar": foto direto pro clipboard do PC e a caixa de
 // saída "Recebidos do PC" (download por tíquete — o compartilhar do iOS busca o arquivo sem cabeçalho).
 public static class OutboxRoutes
 {

@@ -8,13 +8,13 @@ using Serilog;
 
 namespace Orbit.Bridge;
 
-// Item mandado do PC pro iPhone. Arquivo: File = nome na pasta da caixa de saída. Texto: Text.
+// Item mandado do PC pro aparelho. Arquivo: File = nome na pasta da caixa de saída. Texto: Text.
 // Recipients = hashes dos aparelhos que ainda veem o item; null (outbox.json antigo) = todos.
 public sealed record OutboxItem(string Id, string Name, long Size, string? File, string? Text, DateTime CreatedAt, IReadOnlyList<string>? Recipients = null);
 
-// "Recebidos do PC" no iPhone: o que o usuário mandou do PC (Enviar para, arrastar pra ilha, aba
+// "Recebidos do PC" no aparelho: o que o usuário mandou do PC (Enviar para, arrastar pra ilha, aba
 // Clipboard). Arquivos são copiados pra pasta própria (mover/apagar o original não quebra o envio) e
-// tudo vence em 24 h. Só entra o que o dono do PC escolheu — o iPhone não pede arquivo nenhum aqui.
+// tudo vence em 24 h. Só entra o que o dono do PC escolheu — o aparelho não pede arquivo nenhum aqui.
 public sealed class Outbox
 {
     public static readonly string DefaultDir = Path.Combine(Orbit.Services.SettingsStore.Dir, "outbox");

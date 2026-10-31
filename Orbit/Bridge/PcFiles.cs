@@ -9,7 +9,7 @@ namespace Orbit.Bridge;
 public sealed record PcRoot(string Id, string Name, string Path);
 public sealed record PcEntry(string Name, bool Dir, long Size, DateTime Modified);
 
-// Arquivos do PC pelo iPhone: só leitura e só dentro das raízes (pastas do usuário).
+// Arquivos do PC pelo aparelho: só leitura e só dentro das raízes (pastas do usuário).
 // Todo caminho vem como raiz + relativo e é validado aqui — nunca um caminho absoluto do celular.
 public static class PcFiles
 {
@@ -27,7 +27,7 @@ public static class PcFiles
             new("imagens", "Imagens", F(Environment.SpecialFolder.MyPictures)),
             new("videos", "Vídeos", F(Environment.SpecialFolder.MyVideos)),
             new("musicas", "Músicas", F(Environment.SpecialFolder.MyMusic)),
-            new("orbit", "Recebidos do iPhone", uploadFolder),
+            new("orbit", "Recebidos (Orbit)", uploadFolder),
         };
         return roots.Where(r => r.Path.Length > 0 && Directory.Exists(r.Path)).ToList();
     }
@@ -71,7 +71,7 @@ public static class PcFiles
         (fi.Attributes & FileAttributes.ReparsePoint) != 0 && fi.LinkTarget is not null;
 }
 
-// Tíquete de download: a navegação do iPhone (window.open) não manda o cabeçalho com o token.
+// Tíquete de download: a navegação do aparelho (window.open) não manda o cabeçalho com o token.
 // Vale 10 min pra um arquivo só e aguenta várias requisições (o Safari pede por faixas).
 // ponytail: em memória, limpa vencidos ao emitir; teto de 50 ativos.
 public sealed class FileTickets

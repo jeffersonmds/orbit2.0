@@ -2,7 +2,7 @@ using QRCoder;
 
 namespace Orbit.Bridge;
 
-// QR do link de pareamento (o iPhone abre com a câmera). Se o Smart App Control bloquear o
+// QR do link de pareamento (o aparelho abre com a câmera). Se o Smart App Control bloquear o
 // QRCoder.dll, quem chama captura a exceção e mostra só o link (plano B).
 public static class Qr
 {

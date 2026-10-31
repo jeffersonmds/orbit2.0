@@ -7,7 +7,7 @@ using Serilog;
 namespace Orbit.Services;
 
 // Print novo (Win+Shift+S / PrintScreen salvam sozinhos na pasta Capturas de tela do Windows 11):
-// avisa com o caminho pra ilha oferecer "mandar pro iPhone". Pasta conhecida do Windows (pode estar no
+// avisa com o caminho pra ilha oferecer "mandar pro aparelho". Pasta conhecida do Windows (pode estar no
 // OneDrive). Sem polling: FileSystemWatcher.
 public sealed class ScreenshotWatcher : IDisposable
 {

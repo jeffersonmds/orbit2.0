@@ -18,7 +18,7 @@ namespace Orbit.Bridge;
 // TokenName: o Hash do dispositivo que fez a inscrição (nome do campo mantido no JSON). Revogado = não recebe mais nada.
 public sealed record PushSubscription(string Endpoint, string P256dh, string Auth, string TokenName, DateTime CreatedAt);
 
-// Web Push pros iPhones inscritos (iOS 16.4+, PWA na Tela de Início): RFC 8291 (payload cifrado,
+// Web Push pros aparelhos inscritos (iOS 16.4+, PWA na Tela de Início): RFC 8291 (payload cifrado,
 // aes128gcm) + RFC 8292 (VAPID, ES256), só com a cripto nativa do .NET — sem pacote.
 // Chave VAPID e inscrições ficam em %AppData%\Orbit2 (vapid.json, push.json); nunca lança por I/O.
 public sealed class WebPush
@@ -132,7 +132,7 @@ public sealed class WebPush
         using var req = new HttpRequestMessage(HttpMethod.Post, uri) { Content = new ByteArrayContent(Encrypt(payload, uaPublic, auth)) };
         req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         req.Content.Headers.ContentEncoding.Add("aes128gcm");
-        req.Headers.TryAddWithoutValidation("TTL", "86400"); // aviso vale 1 dia se o iPhone estiver offline
+        req.Headers.TryAddWithoutValidation("TTL", "86400"); // aviso vale 1 dia se o aparelho estiver offline
         req.Headers.TryAddWithoutValidation("Urgency", "high");
         req.Headers.TryAddWithoutValidation("Authorization",
             $"vapid t={VapidJwt(_vapid, uri.GetLeftPart(UriPartial.Authority), DateTime.UtcNow)}, k={PublicKey}");

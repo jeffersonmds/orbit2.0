@@ -16,7 +16,7 @@ using Serilog;
 namespace Orbit.Bridge;
 
 public sealed record ScreenOpenRequest(string? Screen, string? Quality);
-// O que o iPhone está fazendo agora — vira o indicador de privacidade na pílula.
+// O que o aparelho está fazendo agora — vira o indicador de privacidade na pílula.
 public sealed record RemoteState(bool Viewing, bool Controlling, bool Listening,
     string? Viewer = null, string? Controller = null, string? Listener = null);
 // Quem segura uma vaga: Hash identifica o aparelho, Name é o que aparece pra pessoa.
@@ -60,7 +60,7 @@ public sealed class OneShotTickets<T>
 
 // Uma sessão de cada tipo por vez — vídeo da tela, controle, microfone (uma nova derruba a anterior).
 // Cada vaga tem dono: quem perde a vaga pra outro aparelho fica sabendo quem assumiu (DisplacedBy).
-// Avisa a ilha a cada mudança pra pílula mostrar o indicador; StopAll é o "Encerrar" da aba iPhone.
+// Avisa a ilha a cada mudança pra pílula mostrar o indicador; StopAll é o "Encerrar" da aba Dispositivos.
 public sealed class RemoteSessions
 {
     private readonly object _gate = new();
@@ -120,7 +120,7 @@ public sealed class RemoteSessions
         Notify();
     }
 
-    // "Parar" do iPhone: o Safari não derruba a conexão MJPEG só trocando a imagem.
+    // "Parar" do aparelho: o Safari não derruba a conexão MJPEG só trocando a imagem.
     // Só cancela se o aparelho que pediu é o dono da vaga (senão encerraria a sessão de outro).
     public void StopVideo(string hash)
     {
@@ -223,7 +223,7 @@ public static class RemoteScreen
                     await Task.Delay(Math.Max(10, wait), ct);
                 }
             }
-            catch (OperationCanceledException) { /* parar, troca, encerrar ou iPhone fechou */ }
+            catch (OperationCanceledException) { /* parar, troca, encerrar ou aparelho fechou */ }
             finally { sessions.End(session); }
         });
 
@@ -236,7 +236,7 @@ public static class RemoteScreen
 
         api.MapPost("/screen/close", (HttpContext ctx) => { sessions.StopVideo(BridgeServer.DeviceOf(ctx).Hash); return Results.NoContent(); });
 
-        // Tíquete do WebSocket de controle, preso ao monitor que o iPhone está vendo.
+        // Tíquete do WebSocket de controle, preso ao monitor que o aparelho está vendo.
         api.MapPost("/remote/ticket", (RemoteTicketRequest req, HttpContext ctx) =>
             Find(req.Screen) is { } screen
                 ? Results.Ok(new { ticket = input.Issue(BridgeServer.DeviceOf(ctx).Hash, screen.Id, DateTime.Now) })

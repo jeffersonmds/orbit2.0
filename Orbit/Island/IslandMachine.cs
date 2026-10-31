@@ -6,9 +6,9 @@ namespace Orbit.Island;
 public enum IslandMode { Repouso, Atividade, Alerta, Expandida, Oculta }
 
 // Valor maior = prioridade maior na pílula.
-// Maior valor vence na pílula. TelaRemota (tela, controle e microfone pelo iPhone) é indicador de
+// Maior valor vence na pílula. TelaRemota (tela, controle e microfone pelo aparelho) é indicador de
 // privacidade: nunca fica atrás de nada.
-// CameraMic: algum app do PC usando câmera/microfone (indicador de privacidade, logo abaixo do iPhone).
+// CameraMic: algum app do PC usando câmera/microfone (indicador de privacidade, logo abaixo do aparelho).
 public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2, Atualizacao = 3, CameraMic = 4, TelaRemota = 5 }
 
 // Evento pontual que a pílula mostra por alguns segundos. TabId = aba aberta ao clicar.
@@ -34,7 +34,7 @@ public sealed class Peek
     public System.TimeSpan? Duration { get; init; }
     public double? Level { get; init; }
     public bool HasLevel => Level is not null;
-    // Botões no próprio alerta (ex.: print → "iPhone" / "Abrir"); clicar executa e fecha o alerta.
+    // Botões no próprio alerta (ex.: print → "Aparelho" / "Abrir"); clicar executa e fecha o alerta.
     public System.Collections.Generic.IReadOnlyList<PeekAction> Actions { get; init; } = System.Array.Empty<PeekAction>();
     public bool HasActions => Actions.Count > 0;
 }

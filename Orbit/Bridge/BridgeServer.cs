@@ -43,7 +43,7 @@ public sealed class BridgeServer : IAsyncDisposable
 
     private RemoteSessions? _remote;
 
-    // "Encerrar" da aba iPhone: derruba tela, controle e microfone.
+    // "Encerrar" da aba Dispositivos: derruba tela, controle e microfone.
     public void StopRemote() => _remote?.StopAll();
 
     // Revogar/desligar permissão: derruba só as sessões desse aparelho.
@@ -213,7 +213,7 @@ public sealed class BridgeServer : IAsyncDisposable
             return Results.NoContent();
         });
 
-        // ponytail: última gravação vence; editar ao mesmo tempo no PC e no iPhone perde uma das versões.
+        // ponytail: última gravação vence; editar ao mesmo tempo no PC e no aparelho perde uma das versões.
         api.MapGet("/notes", async () => Results.Ok(new { text = await h.GetNotes() }));
         api.MapPut("/notes", async (TextRequest req) =>
         {
@@ -327,7 +327,7 @@ public sealed class BridgeServer : IAsyncDisposable
                         await body.FlushAsync(link.Token);
                     }
                 }
-                catch (OperationCanceledException) { /* parar, troca ou iPhone fechou */ }
+                catch (OperationCanceledException) { /* parar, troca ou aparelho fechou */ }
                 finally { await camera.EndStream(session); }
             });
 
@@ -371,7 +371,7 @@ public sealed class BridgeServer : IAsyncDisposable
         });
     }
 
-    // O iPhone se inscreve com o próprio token: revogar o token corta os avisos dele.
+    // O aparelho se inscreve com o próprio token: revogar o token corta os avisos dele.
     private static void MapPush(RouteGroupBuilder api, BridgeHandlers h, WebPush push)
     {
         static string Token(HttpContext ctx) => DeviceOf(ctx).Hash;

@@ -14,13 +14,13 @@ no iPhone.
 
 Use um token próprio para os Atalhos, separado do app. Assim você revoga um sem afetar o outro.
 
-1. No PC: ilha > aba **iPhone** > **Parear iPhone**. Aparece o QR e um link parecido com
+1. No PC: ilha > aba **Dispositivos** > **Parear dispositivo**. Aparece o QR e um link parecido com
    `https://notebook.tail1234.ts.net/#token=AbCdEf...`.
 2. Copie o link (botão de copiar na aba) e envie para o iPhone (por exemplo, pelo próprio
    Orbit ou uma mensagem para você mesmo).
 3. **Use só a parte depois de `#token=`**. No exemplo, `AbCdEf...` é o token. O endereço
    (`https://notebook.tail1234.ts.net`) é a base das chamadas.
-4. Trate o token como uma senha: quem o tem controla o PC. Se vazar, revogue na aba iPhone (X).
+4. Trate o token como uma senha: quem o tem controla o PC. Se vazar, revogue na aba Dispositivos (X).
 
 Em todos os atalhos abaixo, a ação principal é **Obter Conteúdo do URL**, com o cabeçalho:
 

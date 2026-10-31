@@ -45,7 +45,7 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **Serviços de fundo** (rodam com a ilha recolhida, por evento) alimentam a pílula via
   `IslandViewModel.SetActivity`: `NowPlayingViewModel` (SMTC), `PomodoroViewModel` (timer só
   rodando) e `ClaudeHookServer` (pipe `Orbit2ClaudeHooks`, distinto do 1.0; o Claude Code chama
-  `Orbit.exe --claude-hook`). Prioridade na pílula (`ActivityKind`, maior vence): tela remota do iPhone >
+  `Orbit.exe --claude-hook`). Prioridade na pílula (`ActivityKind`, maior vence): tela remota de um aparelho >
   câmera/microfone em uso > atualização > Claude aguardando > Pomodoro > mídia.
   `CameraMicWatcher`: microfone pelas sessões de captura do serviço de áudio (qualquer app); câmera pelo
   registro ConsentStore (nesta máquina só anota apps assinados). Mídia tocando mostra barrinhas (`AudioMeter`,
@@ -63,34 +63,38 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   `IShellItemImageFactory` (alfa direto → `Bgra32`) com cache em `app-icons\`; abre por shell
   execute de `shell:AppsFolder\<id>`.
 - **Ponte** (`Bridge/`): Kestrel in-process (`BridgeServer`, `CreateSlimBuilder`) só em
-  `127.0.0.1:BridgePort` (padrão 5191), **desligada por padrão** (aba iPhone liga). Não conhece
+  `127.0.0.1:BridgePort` (padrão 5191), **desligada por padrão** (aba Dispositivos liga). Não conhece
   WPF: chama `BridgeHandlers` (delegates que o `IslandViewModel` implementa com Dispatcher).
   `/api/*` exige `Authorization: Bearer` (tokens só como SHA-256 em `tokens.json`), rate limit e
   auditoria em `audit.jsonl`; `/health` e o PWA (`Bridge/wwwroot`, HTML/JS puro, copiado pra
   `<saída>\wwwroot`) são abertos. Testada de ponta a ponta no harness com `HttpClient` em porta
-  efêmera. Exposição ao iPhone é pelo `tailscale serve` (docs/tailscale-setup.md), nunca funnel.
+  efêmera. Exposição aos aparelhos é pelo `tailscale serve` (docs/tailscale-setup.md), nunca funnel.
+  **Multi-dispositivo:** cada token é um aparelho; permissão (Câmera, Arquivos, Tela, Controle, Microfone, Teclado) é
+  por dispositivo, checada também no uso do tíquete (desligar derruba a sessão). Sessões de tela/câmera/mic têm dono
+  (`SessionOwner`): quem perde a vez é avisado. Aba renomeada `iphone` → `dispositivos` (`SettingsStore.MigrateTabIds`).
   Capabilities à parte, desligadas por padrão (403): Câmera e Arquivos do PC (`PcFiles`: só leitura,
   só pastas do usuário, caminho sempre raiz + relativo validado; download por tíquete de 10 min).
-  Avisos no iPhone por **Web Push** (`WebPush`: RFC 8291/8292 com cripto nativa, testado contra o
+  Avisos nos aparelhos por **Web Push** (`WebPush`: RFC 8291/8292 com cripto nativa, testado contra o
   vetor do RFC; endpoint só de serviço de push conhecido — anti-SSRF; inscrição ligada ao token).
-  `Notify` empurra os alertas da ilha com a ponte ligada, exceto os causados pelo próprio iPhone.
+  `Notify` empurra os alertas da ilha com a ponte ligada, exceto os causados pelo próprio aparelho.
   **Tela remota** (`Bridge/RemoteScreen`, `Services/ScreenCapture` + `RemoteInput`; spec
   `2026-10-17-tela-remota-design.md`): permissões Tela e Controle; vídeo MJPEG e WebSocket de entrada
   por tíquete; `RemoteInput.Parse` recusa o que não conhece; sessão ativa = atividade `TelaRemota`
-  (prioridade máxima) na pílula + "Encerrar" na aba iPhone. Testes nunca executam `SendInput`.
+  (prioridade máxima) na pílula + "Encerrar" na aba Dispositivos. Testes nunca executam `SendInput`.
   **Microfone** (`Bridge/MicStream`, `Services/MicCapture`): permissão própria, independente da câmera;
-  WebSocket por tíquete com PCM 16 bits mono ~24 kHz, Web Audio no iPhone. Na 1ª vez o Windows pede
-  consentimento NA TELA DO PC e abrir trava até responder: `ConsentTimeout` avisa iPhone e ilha.
-  **PC → iPhone** (`Bridge/Outbox`): caixa de saída de 24 h (cópias em `outbox\`), alimentada por Explorer
-  → Enviar para (`Orbit.exe --send-iphone`, pipe `CurrentUserOnly`; atalho existe só com a ponte ligada),
-  arrastar pra pílula e o botão iPhone da aba Clipboard; push abre "Recebidos do PC". Foto do iPhone →
+  WebSocket por tíquete com PCM 16 bits mono ~24 kHz, Web Audio no aparelho. Na 1ª vez o Windows pede
+  consentimento NA TELA DO PC e abrir trava até responder: `ConsentTimeout` avisa o aparelho e a ilha.
+  **PC → aparelho** (`Bridge/Outbox`): caixa de saída de 24 h **por destinatário** (cópias em `outbox\`), alimentada por Explorer
+  → Enviar para (`Orbit.exe --send-device`, pipe `CurrentUserOnly`; atalho existe só com a ponte ligada),
+  arrastar pra pílula e o botão da aba Clipboard; o destino sai de `IslandViewModel.ChooseDevice` (1 aparelho: direto;
+  vários: a ilha pergunta); push abre "Recebidos do PC". Foto do aparelho →
   clipboard do PC (`/api/clipboard/image`, `PhotoDecoder` gira pelo EXIF).
   **Teclado remoto** (`/api/keyboard/*`): permissão própria; mesmo canal da tela com filtro
   `RemoteScreen.KeyboardOnly` (só texto/teclas); o PWA compõe e manda (ditado do iOS reescreve palavras).
 - **Alertas** passam sempre por `IslandViewModel.Notify(peek, sound)`: peek na pílula, ou toast
   em tela cheia se `AlertsAsToastInFullscreen`. Exceção: eventos do sistema (`SystemSignals`: volume, saída de
   som, carregador, Caps Lock, internet) e a oferta de print (`ScreenshotWatcher`) vão direto por `RaisePeek`
-  — não podem virar push no iPhone nem toast em tela cheia. `Peek.Key` igual substitui o alerta da vez
+  — não podem virar push nos aparelhos nem toast em tela cheia. `Peek.Key` igual substitui o alerta da vez
   (girar o volume não enfileira); `Duration`, `Level` (barra) e `Actions` (botões no alerta) são opcionais.
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
 - **Claude "visto"**: o hook acrescenta `orbit_host_pid` (1º processo pai com janela: terminal/VS Code); focar
@@ -110,7 +114,7 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **Tela congelada** (`Island/FrozenScreen`): foto de todos os monitores numa janela por cima de tudo, base do
   conta-gotas (Ctrl+Alt+C) e do desenho (Ctrl+Alt+D). Regras que custaram um travamento: a janela some e fecha
   ANTES de entregar imagem (clipboard pode demorar); copiar/enviar só o monitor do desenho; o mesmo atalho fecha.
-- Hotkeys globais: Ctrl+Alt+I manda o clipboard pro iPhone (arquivos do Explorer vão como os originais;
+- Hotkeys globais: Ctrl+Alt+I manda o clipboard pro aparelho (arquivos do Explorer vão como os originais;
   conteúdo privado nunca sai). Ctrl+Alt+O — a mesma do 1.0 (o 2.0 o substitui; com o 1.0 aberto o registro
   falha e vai pro log). Ignorada com a ilha Oculta (tela cheia) ou escondida pela bandeja.
 - Ligar "Iniciar com o Windows" apaga a entrada `Run\Orbit` do 1.0.

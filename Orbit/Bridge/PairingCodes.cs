@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Orbit.Bridge;
 
-// Código de 6 dígitos que troca por um token no pareamento (digitar no iPhone em vez de copiar link).
+// Código de 6 dígitos que troca por um token no pareamento (digitar no aparelho em vez de copiar link).
 // Um código ativo por vez; vale 5 minutos, uso único, invalida após 5 tentativas erradas.
 // Em memória só: reiniciar o Orbit invalida o código pendente (o token já criado continua).
 public sealed class PairingCodes

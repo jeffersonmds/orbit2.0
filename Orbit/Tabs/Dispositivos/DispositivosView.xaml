@@ -1,4 +1,4 @@
-<UserControl x:Class="Orbit.Tabs.IPhone.IPhoneView"
+<UserControl x:Class="Orbit.Tabs.Dispositivos.DispositivosView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid>
@@ -43,18 +43,18 @@
                 <DockPanel Margin="0,0,0,8">
                     <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Content="Abrir pasta" Command="{Binding OpenUploadFolderCommand}"/>
                     <TextBlock FontSize="11.5" Foreground="{StaticResource InkLo}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
-                        <Run Text="Arquivos do iPhone vão para "/><Run Text="{Binding UploadFolder, Mode=OneWay}"/>
+                        <Run Text="Arquivos dos aparelhos vão para "/><Run Text="{Binding UploadFolder, Mode=OneWay}"/>
                     </TextBlock>
                 </DockPanel>
                 <DockPanel Margin="0,0,0,6">
-                    <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Parear iPhone" Command="{Binding PairCommand}" Margin="8,0,0,0"/>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Parear dispositivo" Command="{Binding PairCommand}" Margin="8,0,0,0"/>
                     <TextBox Style="{StaticResource Field}" Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Nome do novo dispositivo (opcional)"/>
                 </DockPanel>
                 <TextBlock Text="Aparelhos com acesso" Style="{StaticResource Label}"/>
             </StackPanel>
             <TextBlock DockPanel.Dock="Bottom" FontSize="10.5" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,6,0,0"
-                       Text="Precisa do Tailscale no PC e no iPhone + 'tailscale serve' (docs/tailscale-setup.md). Nunca use 'tailscale funnel'."/>
+                       Text="Precisa do Tailscale no PC e nos aparelhos + 'tailscale serve' (docs/tailscale-setup.md). Nunca use 'tailscale funnel'."/>
             <ScrollViewer VerticalScrollBarVisibility="Hidden">
                 <ItemsControl ItemsSource="{Binding Devices}">
                     <ItemsControl.ItemTemplate>
@@ -72,7 +72,7 @@
                                     </DockPanel>
                                     <WrapPanel Margin="0,6,0,0">
                                         <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Camera}"
-                                                  Content="Câmera" ToolTip="Permite este iPhone ver as câmeras do PC"/>
+                                                  Content="Câmera" ToolTip="Permite este dispositivo ver as câmeras do PC"/>
                                         <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding PcFiles}"
                                                   Content="Arquivos" ToolTip="Permite ver e baixar arquivos das pastas do usuário (só leitura)"/>
                                         <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Screen}"

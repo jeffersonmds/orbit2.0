@@ -5,7 +5,7 @@ using System.Windows.Media.Imaging;
 
 namespace Orbit.Services;
 
-// Foto do iPhone pro clipboard. O iPhone grava a rotação só no EXIF (Orientation) e o WPF ignora:
+// Foto do aparelho pro clipboard. O iPhone grava a rotação só no EXIF (Orientation) e o WPF ignora:
 // sem girar aqui, foto tirada em pé colaria deitada.
 public static class PhotoDecoder
 {

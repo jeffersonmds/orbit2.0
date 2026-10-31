@@ -13,13 +13,13 @@ using Orbit.Models;
 using Orbit.Services;
 using Serilog;
 
-namespace Orbit.Tabs.IPhone;
+namespace Orbit.Tabs.Dispositivos;
 
 public sealed record AuditRow(string When, string Action, string Result);
 
-// Aba iPhone: liga/desliga a ponte, mostra status, endereço do Tailscale, pareamento (QR com
+// Aba Dispositivos: liga/desliga a ponte, mostra status, endereço do Tailscale, pareamento (QR com
 // token novo, exibido uma vez) e tokens ativos (revogar). O servidor só existe ligado.
-public sealed partial class IPhoneViewModel : TabViewModel
+public sealed partial class DispositivosViewModel : TabViewModel
 {
     private readonly OrbitSettings _settings;
     private readonly TokenStore _tokens;
@@ -28,8 +28,8 @@ public sealed partial class IPhoneViewModel : TabViewModel
     private readonly string _webRoot;
     private bool _syncing; // muda Enabled por código sem disparar start/stop de novo
 
-    public override string Id => "iphone";
-    public override string Title => "iPhone";
+    public override string Id => "dispositivos";
+    public override string Title => "Dispositivos";
 
     public BridgeServer Server { get; } = new();
     private readonly PairingCodes _codes = new();
@@ -73,7 +73,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
 
     private readonly Action<string> _onRevoked;
 
-    public IPhoneViewModel(OrbitSettings settings, TokenStore tokens, AuditLog audit, Func<BridgeHandlers> handlers, string webRoot, Action<string> onRevoked)
+    public DispositivosViewModel(OrbitSettings settings, TokenStore tokens, AuditLog audit, Func<BridgeHandlers> handlers, string webRoot, Action<string> onRevoked)
     {
         _onRevoked = onRevoked;
         _settings = settings;
@@ -135,7 +135,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
             var handlers = _handlers(); // na UI thread: captura o Dispatcher
             await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers, _codes, _camera, _tickets));
             Status = $"Ligada · 127.0.0.1:{Server.Port}";
-            // "Enviar para → iPhone (Orbit)" só existe com a ponte ligada
+            // "Enviar para → Dispositivo (Orbit)" só existe com a ponte ligada
             if (Environment.ProcessPath is { } exe) SendToDevice.EnsureShortcut(exe);
         }
         catch (Exception ex)
@@ -173,7 +173,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         PairLink = null;
         PairCode = null;
         HasPairing = false;
-        // O código continua valendo até expirar: dá pra fechar a ilha e digitar no iPhone com calma.
+        // O código continua valendo até expirar: dá pra fechar a ilha e digitar no aparelho com calma.
     }
 
     private async Task RefreshTailscaleAsync()
@@ -312,7 +312,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         QrImage = baseUrl.Length > 0 ? TryRenderQr(PairLink) : null;
         var now = DateTime.Now;
         PairCode = PairingCodes.Format(_codes.Issue(token, now));
-        PairCodeHint = $"Digite no app Orbit do iPhone · vale até {now + PairingCodes.Lifetime:HH:mm}";
+        PairCodeHint = $"Digite no app Orbit do aparelho · vale até {now + PairingCodes.Lifetime:HH:mm}";
         HasPairing = true;
         RefreshTokens();
     }

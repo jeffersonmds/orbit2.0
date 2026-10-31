@@ -19,7 +19,7 @@ using Orbit.Tabs.Clips;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
 using Orbit.Tabs.Hoje;
-using Orbit.Tabs.IPhone;
+using Orbit.Tabs.Dispositivos;
 using Orbit.Tabs.Mercado;
 using Orbit.Tabs.Noticias;
 using Orbit.Tabs.Notas;
@@ -36,13 +36,13 @@ public sealed partial class IslandViewModel : ObservableObject
 {
     // Ordem fixa das abas no painel. Ids ainda não registrados são pulados.
     public static readonly string[] TabOrder =
-        { "controles", "hoje", "stats", "clipboard", "notas", "apps", "mercado", "noticias", "claude", "iphone", "energia", "ajustes" };
+        { "controles", "hoje", "stats", "clipboard", "notas", "apps", "mercado", "noticias", "claude", "dispositivos", "energia", "ajustes" };
 
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;
 
     public ClipsViewModel Clips { get; }
-    public IPhoneViewModel IPhone { get; }
+    public DispositivosViewModel Dispositivos { get; }
     public NotasViewModel Notas { get; } = new(NotasViewModel.FilePath);
     private readonly ApiService _api = new();
     private readonly TokenStore _tokens = new(TokenStore.FilePath);
@@ -148,11 +148,11 @@ public sealed partial class IslandViewModel : ObservableObject
             ChooseDevice(files.Length == 1 ? Path.GetFileName(files[0]) : $"{files.Length} arquivos", d => SendFiles(files, d));
         }), _sendToCts.Token);
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
-        // Ponte com o iPhone: desligada até o usuário ligar na aba (BridgeEnabled).
-        IPhone = new IPhoneViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
+        // Ponte com o aparelho: desligada até o usuário ligar na aba (BridgeEnabled).
+        Dispositivos = new DispositivosViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
             BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"), _outbox.RemoveDevice);
-        Register(IPhone);
-        _ = IPhone.StartIfEnabledAsync();
+        Register(Dispositivos);
+        _ = Dispositivos.StartIfEnabledAsync();
         Register(Notas);
         _ = AnnounceUpdateAsync();
         // Quem está usando câmera/microfone: o watcher avisa (thread própria) e a pílula mostra.
@@ -164,7 +164,7 @@ public sealed partial class IslandViewModel : ObservableObject
             ShowCameraMicActivity();
         });
         _cameraMic.Start();
-        // Eventos do sistema: alerta curto na pílula (não vai pro iPhone nem vira toast em tela cheia).
+        // Eventos do sistema: alerta curto na pílula (não vai pro aparelho nem vira toast em tela cheia).
         _signals.Raised += sig => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
             if (_settings.SystemSignalsEnabled) RaisePeek(SignalPeek(sig));
@@ -206,7 +206,7 @@ public sealed partial class IslandViewModel : ObservableObject
             SetClipboardImage = bytes => ui.InvokeAsync(() =>
             {
                 try { return ClipboardReader.SetImage(PhotoDecoder.Decode(bytes)); }
-                catch (Exception ex) { Log.Warning(ex, "Foto do iPhone: não decodificou"); return false; }
+                catch (Exception ex) { Log.Warning(ex, "Foto do aparelho: não decodificou"); return false; }
             }).Task,
             Outbox = _outbox,
             SetClipboard = text => ui.InvokeAsync(() =>
@@ -270,10 +270,10 @@ public sealed partial class IslandViewModel : ObservableObject
             RemoteChanged = state => ui.BeginInvoke(() =>
             {
                 SetActivity(ActivityKind.TelaRemota, RemoteActivity(state));
-                IPhone.SetRemote(state);
+                Dispositivos.SetRemote(state);
             }),
             ValidTokens = ValidTokenHashes,
-            Notify = e => ui.BeginInvoke(() => Notify(new Peek(PeekTitle(e), e.Detail, "iphone", e.OpenPath), false)),
+            Notify = e => ui.BeginInvoke(() => Notify(new Peek(PeekTitle(e), e.Detail, "dispositivos", e.OpenPath), false)),
         };
     }
 
@@ -326,9 +326,9 @@ public sealed partial class IslandViewModel : ObservableObject
     // toast do Windows; senão é peek na pílula (com bip curto, já que o peek é silencioso).
     public void Notify(Peek peek, bool sound)
     {
-        // Também no iPhone (Web Push), com a ponte ligada. Eventos causados pelo próprio iPhone
+        // Também no aparelho (Web Push), com a ponte ligada. Eventos causados pelo próprio aparelho
         // (link aberto, arquivo recebido) não voltam pra ele.
-        if (_settings.BridgeEnabled && peek.TabId != "iphone")
+        if (_settings.BridgeEnabled && peek.TabId != "dispositivos")
             _ = _push.SendAsync(peek.Title, peek.Detail ?? "", ValidTokenHashes());
         if (ShouldToast(_machine.Fullscreen, _settings.AlertsAsToastInFullscreen))
         {
@@ -341,7 +341,7 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public static bool ShouldToast(bool fullscreen, bool preferToast) => fullscreen && preferToast;
 
-    // Indicador de privacidade na pílula: tudo que o iPhone está usando agora.
+    // Indicador de privacidade na pílula: tudo que o aparelho está usando agora.
     // 2+ aparelhos em tela cheia: o seletor não pode ir pra fila (apareceria muito depois, sem contexto).
     // blocked: tela cheia ou ilha escondida pela bandeja (o seletor ficaria invisível).
     public static DeviceChoice DecideChoice(int devices, bool blocked) =>
@@ -370,12 +370,12 @@ public sealed partial class IslandViewModel : ObservableObject
     // Todo envio PC → dispositivo passa por aqui. what: o que vai (aparece no seletor).
     public void ChooseDevice(string what, Action<IReadOnlyList<TokenInfo>> send)
     {
-        if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte", "Aba iPhone → Ponte ligada", "iphone")); return; }
+        if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte", "Aba Dispositivos → Ponte ligada", "dispositivos")); return; }
         var devices = Devices();
         switch (DecideChoice(devices.Count, _machine.Fullscreen || UserHidden))
         {
             case DeviceChoice.None:
-                RaisePeek(new Peek("Pareie um dispositivo", "Aba iPhone → Parear", "iphone"));
+                RaisePeek(new Peek("Pareie um dispositivo", "Aba Dispositivos → Parear", "dispositivos"));
                 break;
             case DeviceChoice.Direct:
                 send(devices);
@@ -387,7 +387,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 break;
             default:
                 Collapse(); // o alerta fica atrás do painel aberto
-                RaisePeek(new Peek("Mandar para…", what, "iphone")
+                RaisePeek(new Peek("Mandar para…", what, "dispositivos")
                 {
                     Key = IslandMachine.DeviceChoiceKey,
                     Duration = TimeSpan.FromSeconds(10),
@@ -403,7 +403,7 @@ public sealed partial class IslandViewModel : ObservableObject
     {
         if (files.Count == 0) return;
         var live = LiveRecipients(to, _tokens.List());
-        if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "iphone")); return; }
+        if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "dispositivos")); return; }
         _ = Task.Run(() =>
         {
             var added = files.Select(f =>
@@ -465,18 +465,18 @@ public sealed partial class IslandViewModel : ObservableObject
     public void SendText(string text, IReadOnlyList<TokenInfo> to)
     {
         var live = LiveRecipients(to, _tokens.List());
-        if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "iphone")); return; }
+        if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "dispositivos")); return; }
         var item = _outbox.AddText(text, DateTime.Now, live);
         Announce(item is null ? new() : new() { item }, 1, live);
     }
 
     private void Announce(List<OutboxItem> added, int asked, IReadOnlyList<string> live)
     {
-        if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "iphone")); return; }
+        if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "dispositivos")); return; }
         var (title, body) = OutboxAnnouncement(added);
         var current = _tokens.List();
         var dest = live.Count == 1 ? $"Mandado para {current.FirstOrDefault(t => t.Hash == live[0])?.Name ?? "dispositivo"}" : $"Mandado para {live.Count} dispositivos";
-        RaisePeek(new Peek(dest, body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
+        RaisePeek(new Peek(dest, body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "dispositivos"));
         _ = _push.SendAsync(title, body, ValidTokenHashes(), onlyTokens: added.SelectMany(i => i.Recipients ?? Array.Empty<string>()).ToHashSet(), url: OutboxPushUrl(added));
     }
 
@@ -511,7 +511,7 @@ public sealed partial class IslandViewModel : ObservableObject
         return ("Arquivo do PC", $"{i.Name} · {Orbit.Tabs.Stats.StatsViewModel.FormatBytes(i.Size)}");
     }
 
-    // Link sozinho: tocar no aviso abre o próprio link no iPhone. O resto abre "Recebidos do PC"
+    // Link sozinho: tocar no aviso abre o próprio link no aparelho. O resto abre "Recebidos do PC"
     // (texto precisa de um toque na página pra ir pro clipboard — regra do iOS).
     public static string OutboxPushUrl(IReadOnlyList<OutboxItem> added) =>
         added is [{ Text: { } t }] && IsLink(t) ? t.Trim() : "./#recebidos";
@@ -577,7 +577,7 @@ public sealed partial class IslandViewModel : ObservableObject
         _rainLocation ??= await _api.GetLocationAsync();
         if (_rainLocation is null || await _api.GetRainAsync(_rainLocation.Lat, _rainLocation.Lon) is not { } f) return;
         if (_rain.Next(f) is { } minutes)
-            Notify(new Peek(RainAlert.Text(minutes), _rainLocation.City, "hoje"), false); // Notify: vai pro iPhone também
+            Notify(new Peek(RainAlert.Text(minutes), _rainLocation.City, "hoje"), false); // Notify: vai pro aparelho também
     }
 
     // Print novo: 6 s com um botão por aparelho (+ "Todos") e "Abrir"; sem aparelhos, só "Abrir".

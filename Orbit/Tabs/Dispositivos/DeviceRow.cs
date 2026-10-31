@@ -2,7 +2,7 @@ using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Orbit.Bridge;
 
-namespace Orbit.Tabs.IPhone;
+namespace Orbit.Tabs.Dispositivos;
 
 // Uma linha da lista de dispositivos: nome, último acesso e as seis permissões.
 // Mudar uma chave chama onChanged; o ViewModel grava no TokenStore.

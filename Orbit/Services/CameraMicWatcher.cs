@@ -18,7 +18,7 @@ public sealed record CameraMicUse(string App, bool Camera, bool Mic, DateTime Si
 // O que a pílula desenha: bolinha (verde se câmera, laranja se só microfone), nome, ícones e tempo.
 public sealed record CameraMicDisplay(string App, bool Camera, bool Mic, string Time);
 
-// "Quem está usando sua câmera e seu microfone" — as bolinhas verde/laranja do iPhone, no Windows.
+// "Quem está usando sua câmera e seu microfone" — as bolinhas verde/laranja do aparelho, no Windows.
 // Microfone: sessões de captura ativas no serviço de áudio (vale pra qualquer app). Câmera: o registro
 // de privacidade do Windows (ConsentStore; Fim = 0 é uso em andamento) — nesta máquina ele só anota
 // apps assinados, então app sem assinatura usando a câmera pode não aparecer.

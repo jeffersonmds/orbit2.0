@@ -8,7 +8,7 @@ namespace Orbit.Services;
 
 public sealed record MicDevice(string Id, string Name);
 
-// Microfone do PC pro iPhone: WASAPI (NAudio) → mono, reduzido pra ~24 kHz, PCM 16 bits.
+// Microfone do PC pro aparelho: WASAPI (NAudio) → mono, reduzido pra ~24 kHz, PCM 16 bits.
 // O iPhone toca com Web Audio; sem codec (~48 KB/s cabe folgado no Tailscale).
 public static class MicCapture
 {

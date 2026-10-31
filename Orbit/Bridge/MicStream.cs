@@ -14,7 +14,7 @@ namespace Orbit.Bridge;
 
 public sealed record MicOpenRequest(string? DeviceId, string? Name);
 
-// Microfone do PC no iPhone: WebSocket por tíquete (o browser não manda cabeçalho no WS).
+// Microfone do PC no aparelho: WebSocket por tíquete (o browser não manda cabeçalho no WS).
 // 1ª mensagem (texto) = {"rate":N}; depois binárias com PCM 16 bits mono. Independe da câmera.
 public static class MicStream
 {
@@ -22,7 +22,7 @@ public static class MicStream
     private const int QueueChunks = 40;
 
     // Na 1ª vez o Windows pergunta NA TELA DO PC se o Orbit pode usar o microfone, e abrir fica
-    // parado até alguém responder. Quem está no sofá não vê: depois deste prazo o iPhone é avisado.
+    // parado até alguém responder. Quem está no sofá não vê: depois deste prazo o aparelho é avisado.
     public static TimeSpan ConsentTimeout { get; set; } = TimeSpan.FromSeconds(20);
     public const string ConsentReason = "autorize no PC";
 
@@ -91,7 +91,7 @@ public static class MicStream
                     return;
                 }
                 await ws.SendAsync(Encoding.UTF8.GetBytes($"{{\"rate\":{rate}}}"), WebSocketMessageType.Text, true, ct);
-                // Se o iPhone fechar, o ReceiveAsync termina e cancela o envio (sem token: cancelar aborta o socket e o 4001 não sairia).
+                // Se o aparelho fechar, o ReceiveAsync termina e cancela o envio (sem token: cancelar aborta o socket e o 4001 não sairia).
                 _ = Task.Run(async () =>
                 {
                     try { while (ws.State == WebSocketState.Open && (await ws.ReceiveAsync(new byte[64], CancellationToken.None)).MessageType != WebSocketMessageType.Close) { } }
