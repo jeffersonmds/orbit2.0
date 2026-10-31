@@ -822,13 +822,24 @@ public static class Program
         Check("push: chaves válidas", WebPush.TryKeys(p256, auth64, out _, out _));
         Check("push: chaves inválidas", !WebPush.TryKeys(p256[..20], auth64, out _, out _) && !WebPush.TryKeys(p256, "!!", out _, out _));
 
+        // Migração: nome vira hash do token mais recente; hash fica; nome sem token sai.
+        var t0 = DateTime.Now;
+        var hA = new string('A', 64); var hB = new string('B', 64);
+        var toks = new[] { new TokenInfo("iPad", hA, t0), new TokenInfo("iPad", hB, t0.AddDays(1)) };
+        PushSubscription Sub(string e, string n) => new(e, "p", "a", n, t0);
+        var m = WebPush.MigrateTokenRefs(new[] { Sub("e1", "iPad"), Sub("e2", hA), Sub("e3", "sumiu") }, toks);
+        Check("push: nome vira hash do mais recente", m.Single(x => x.Endpoint == "e1").TokenName == hB);
+        Check("push: hash fica como está", m.Single(x => x.Endpoint == "e2").TokenName == hA);
+        Check("push: nome sem token sai", m.All(x => x.Endpoint != "e3"));
+
         // Rotas: inscrição fica ligada ao token que a fez.
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-push-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("iPhone teste");
+        var hash = tokens.List().Single().Hash;
         var push = new WebPush(Path.Combine(dir, "vapid.json"), Path.Combine(dir, "push.json"));
-        var handlers = new BridgeHandlers { Push = push, ValidTokens = () => tokens.List().Select(t => t.Name).ToHashSet() };
+        var handlers = new BridgeHandlers { Push = push, ValidTokens = () => tokens.List().Select(t => t.Hash).ToHashSet() };
         var server = new BridgeServer();
         server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
@@ -836,14 +847,17 @@ public static class Program
         Check("push: chave pública = 65 bytes", System.Buffers.Text.Base64Url.DecodeFromChars(
             http.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/push/key").Result.GetProperty("publicKey").GetString()!).Length == 65);
         var ok = http.PostAsJsonAsync("/api/push/subscribe", new { endpoint = "https://web.push.apple.com/abc", keys = new { p256dh = p256, auth = auth64 } }).Result;
-        Check("push: inscrição aceita", ok.StatusCode == HttpStatusCode.NoContent && push.CountFor("iPhone teste") == 1);
+        Check("push: inscrição aceita", ok.StatusCode == HttpStatusCode.NoContent && push.CountFor(hash) == 1);
         var bad = http.PostAsJsonAsync("/api/push/subscribe", new { endpoint = "https://10.0.0.1/abc", keys = new { p256dh = p256, auth = auth64 } }).Result;
-        Check("push: endpoint fora da lista = 400", bad.StatusCode == HttpStatusCode.BadRequest && push.CountFor("iPhone teste") == 1);
+        Check("push: endpoint fora da lista = 400", bad.StatusCode == HttpStatusCode.BadRequest && push.CountFor(hash) == 1);
         Check("push: status conta as do token", http.GetStringAsync("/api/push/status").Result.Contains("\"subscriptions\":1"));
-        Check("push: inscrição sobrevive a reiniciar", new WebPush(Path.Combine(dir, "vapid.json"), Path.Combine(dir, "push.json")).CountFor("iPhone teste") == 1
+        Check("push: inscrição sobrevive a reiniciar", new WebPush(Path.Combine(dir, "vapid.json"), Path.Combine(dir, "push.json")).CountFor(hash) == 1
             && new WebPush(Path.Combine(dir, "vapid.json"), Path.Combine(dir, "push.json")).PublicKey == push.PublicKey);
+        tokens.Rename(hash, "Outro");
+        Check("push: renomear não perde a inscrição", push.CountFor(hash) == 1
+            && http.GetStringAsync("/api/push/status").Result.Contains("\"subscriptions\":1"));
         http.PostAsJsonAsync("/api/push/unsubscribe", new { endpoint = "https://web.push.apple.com/abc" }).Result.Dispose();
-        Check("push: desinscrever", push.CountFor("iPhone teste") == 0);
+        Check("push: desinscrever", push.CountFor(hash) == 0);
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
     }

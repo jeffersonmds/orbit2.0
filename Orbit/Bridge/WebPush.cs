@@ -15,7 +15,7 @@ using Serilog;
 
 namespace Orbit.Bridge;
 
-// TokenName: o token da ponte que fez a inscrição. Token revogado = não recebe mais nada.
+// TokenName: o Hash do dispositivo que fez a inscrição (nome do campo mantido no JSON). Revogado = não recebe mais nada.
 public sealed record PushSubscription(string Endpoint, string P256dh, string Auth, string TokenName, DateTime CreatedAt);
 
 // Web Push pros iPhones inscritos (iOS 16.4+, PWA na Tela de Início): RFC 8291 (payload cifrado,
@@ -51,9 +51,35 @@ public sealed class WebPush
         _subs = LoadSubs(subsPath);
     }
 
-    public int CountFor(string tokenName)
+    public int CountFor(string hash)
     {
-        lock (_gate) return _subs.Count(s => s.TokenName == tokenName);
+        lock (_gate) return _subs.Count(s => s.TokenName == hash);
+    }
+
+    // push.json antigo guarda o NOME do token: vira o Hash do token mais recente com esse nome;
+    // sem token correspondente, a inscrição sai. Quem já é Hash (64 hex) fica como está.
+    public static List<PushSubscription> MigrateTokenRefs(IEnumerable<PushSubscription> subs, IReadOnlyList<TokenInfo> tokens)
+    {
+        var result = new List<PushSubscription>();
+        foreach (var s in subs)
+        {
+            if (s.TokenName is { Length: 64 } && s.TokenName.All(char.IsAsciiHexDigit)) { result.Add(s); continue; }
+            var t = tokens.Where(x => x.Name == s.TokenName).OrderByDescending(x => x.CreatedAt).FirstOrDefault();
+            if (t is not null) result.Add(s with { TokenName = t.Hash });
+        }
+        return result;
+    }
+
+    public void MigrateTokenRefs(IReadOnlyList<TokenInfo> tokens)
+    {
+        lock (_gate)
+        {
+            var migrated = MigrateTokenRefs(_subs, tokens);
+            if (migrated.SequenceEqual(_subs)) return;
+            _subs.Clear();
+            _subs.AddRange(migrated);
+            SaveSubs();
+        }
     }
 
     // false = inscrição inválida (endpoint fora da lista, chaves com tamanho errado).
@@ -75,13 +101,13 @@ public sealed class WebPush
             if (_subs.RemoveAll(s => s.Endpoint == endpoint) > 0) SaveSubs();
     }
 
-    // Manda pra todas as inscrições de tokens ainda válidos (onlyToken: só as de um token, pro "Testar").
+    // Manda pra todas as inscrições de tokens ainda válidos (onlyTokens: só as desses hashes, pro "Testar").
     // Endpoint que responde 404/410 morreu (app removido, permissão retirada): sai da lista.
     // url: página do PWA que o toque no aviso abre (ex.: "./#recebidos").
-    public async Task SendAsync(string title, string body, IReadOnlyCollection<string> validTokens, string? onlyToken = null, string? url = null)
+    public async Task SendAsync(string title, string body, IReadOnlyCollection<string> validTokens, IReadOnlyCollection<string>? onlyTokens = null, string? url = null)
     {
         List<PushSubscription> targets;
-        lock (_gate) targets = _subs.Where(s => validTokens.Contains(s.TokenName) && (onlyToken is null || s.TokenName == onlyToken)).ToList();
+        lock (_gate) targets = _subs.Where(s => validTokens.Contains(s.TokenName) && (onlyTokens is null || onlyTokens.Contains(s.TokenName))).ToList();
         if (targets.Count == 0) return;
         var payload = JsonSerializer.SerializeToUtf8Bytes(new { title, body, url });
         foreach (var sub in targets)

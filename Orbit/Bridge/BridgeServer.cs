@@ -371,7 +371,7 @@ public sealed class BridgeServer : IAsyncDisposable
     // O iPhone se inscreve com o próprio token: revogar o token corta os avisos dele.
     private static void MapPush(RouteGroupBuilder api, BridgeHandlers h, WebPush push)
     {
-        static string Token(HttpContext ctx) => DeviceOf(ctx).Name; // ponytail: nome até a Task 4 trocar por Hash
+        static string Token(HttpContext ctx) => DeviceOf(ctx).Hash;
 
         api.MapGet("/push/key", () => Results.Ok(new { publicKey = push.PublicKey }));
         api.MapGet("/push/status", (HttpContext ctx) => Results.Ok(new { subscriptions = push.CountFor(Token(ctx)) }));
@@ -382,7 +382,7 @@ public sealed class BridgeServer : IAsyncDisposable
         api.MapPost("/push/unsubscribe", (PushSubRequest req) => { push.Unsubscribe(req.Endpoint); return Results.NoContent(); });
         api.MapPost("/push/test", async (HttpContext ctx) =>
         {
-            await push.SendAsync("Orbit", "Avisos do PC funcionando.", h.ValidTokens(), onlyToken: Token(ctx));
+            await push.SendAsync("Orbit", "Avisos do PC funcionando.", h.ValidTokens(), onlyTokens: new[] { Token(ctx) });
             return Results.NoContent();
         });
     }

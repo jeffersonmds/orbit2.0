@@ -90,6 +90,7 @@ public sealed partial class IslandViewModel : ObservableObject
         // Tokens de antes das permissões por aparelho herdam as seis chaves globais.
         _tokens.SeedPermissions(new DevicePermissions(settings.BridgeCameraEnabled, settings.BridgePcFilesEnabled,
             settings.BridgeScreenEnabled, settings.BridgeControlEnabled, settings.BridgeMicEnabled, settings.BridgeKeyboardEnabled));
+        _push.MigrateTokenRefs(_tokens.List());
         _settings = settings;
         // Serviços de fundo (rodam com a ilha recolhida e alimentam a pílula).
         Pomodoro = new PomodoroViewModel(settings.PomodoroFocusMinutes, settings.PomodoroShortBreakMinutes,
@@ -264,7 +265,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 SetActivity(ActivityKind.TelaRemota, RemoteActivity(state));
                 IPhone.SetRemote(state);
             }),
-            ValidTokens = ValidTokenNames,
+            ValidTokens = ValidTokenHashes,
             Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone", e.OpenPath), false)),
         };
     }
@@ -318,7 +319,7 @@ public sealed partial class IslandViewModel : ObservableObject
         // Também no iPhone (Web Push), com a ponte ligada. Eventos causados pelo próprio iPhone
         // (link aberto, arquivo recebido) não voltam pra ele.
         if (_settings.BridgeEnabled && peek.TabId != "iphone")
-            _ = _push.SendAsync(peek.Title, peek.Detail ?? "", ValidTokenNames());
+            _ = _push.SendAsync(peek.Title, peek.Detail ?? "", ValidTokenHashes());
         if (ShouldToast(_machine.Fullscreen, _settings.AlertsAsToastInFullscreen))
         {
             ToastNotifier.Notify(peek.Title, peek.Detail ?? "", sound);
@@ -406,7 +407,7 @@ public sealed partial class IslandViewModel : ObservableObject
         if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "iphone")); return; }
         var (title, body) = OutboxAnnouncement(added);
         RaisePeek(new Peek("Mandado pro iPhone", body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
-        _ = _push.SendAsync(title, body, ValidTokenNames(), url: OutboxPushUrl(added));
+        _ = _push.SendAsync(title, body, ValidTokenHashes(), url: OutboxPushUrl(added));
     }
 
     public static (string Title, string Body) OutboxAnnouncement(IReadOnlyList<OutboxItem> added)
@@ -520,7 +521,7 @@ public sealed partial class IslandViewModel : ObservableObject
         };
     }
 
-    private IReadOnlyCollection<string> ValidTokenNames() => _tokens.List().Select(t => t.Name).ToHashSet();
+    private IReadOnlyCollection<string> ValidTokenHashes() => _tokens.List().Select(t => t.Hash).ToHashSet();
 
     public void OpenTab(string id)
     {
