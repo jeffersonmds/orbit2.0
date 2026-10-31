@@ -128,7 +128,7 @@ public sealed class BridgeServer : IAsyncDisposable
                 var token = codes.Claim(req.Code, DateTime.Now);
                 audit.Write("?", "POST /pair", token is null ? "400" : "200");
                 if (token is null) return Results.BadRequest(new { erro = "Código inválido ou expirado." });
-                h.Notify(new BridgeEvent("Pareado", "O iPhone recebeu o acesso."));
+                h.Notify(new BridgeEvent("Pareado", $"O {tokens.Verify(token)?.Name ?? "aparelho"} recebeu o acesso"));
                 return Results.Ok(new { token });
             }).RequireRateLimiting("pair");
         }
@@ -195,21 +195,21 @@ public sealed class BridgeServer : IAsyncDisposable
 
         api.MapGet("/stats", () => h.GetStats());
 
-        api.MapPost("/links/open", async (LinkRequest req) =>
+        api.MapPost("/links/open", async (LinkRequest req, HttpContext ctx) =>
         {
             if (BridgeRules.NormalizeOpenUrl(req.Url) is not { } url) return Results.BadRequest(new { erro = "Isso não parece um link." });
             await h.OpenUrl(url);
-            h.Notify(new BridgeEvent("Link aberto no PC", BridgeRules.Host(url)));
+            h.Notify(new BridgeEvent("Link aberto no PC", BridgeRules.Host(url), Device: DeviceOf(ctx).Name));
             return Results.NoContent();
         });
 
         api.MapGet("/clipboard", async () => Results.Ok(new { text = await h.GetClipboard() }));
-        api.MapPut("/clipboard", async (TextRequest req) =>
+        api.MapPut("/clipboard", async (TextRequest req, HttpContext ctx) =>
         {
             if (req.Text is null || req.Text.Length > BridgeRules.MaxClipboardChars)
                 return Results.BadRequest(new { erro = "Texto vazio ou grande demais." });
             await h.SetClipboard(req.Text);
-            h.Notify(new BridgeEvent("Texto no clipboard do PC", BridgeRules.Preview(req.Text)));
+            h.Notify(new BridgeEvent("Texto no clipboard do PC", BridgeRules.Preview(req.Text), Device: DeviceOf(ctx).Name));
             return Results.NoContent();
         });
 
@@ -271,8 +271,8 @@ public sealed class BridgeServer : IAsyncDisposable
                     catch (IOException) when (attempt < 5 && File.Exists(Path.Combine(dir, name))) { }
                 }
             }
-            h.Notify(new BridgeEvent(saved.Count == 1 ? "Arquivo do iPhone" : $"{saved.Count} arquivos do iPhone",
-                string.Join(", ", saved), OpenPath: dir));
+            h.Notify(new BridgeEvent(saved.Count == 1 ? "Arquivo recebido" : $"{saved.Count} arquivos recebidos",
+                string.Join(", ", saved), OpenPath: dir, Device: DeviceOf(request.HttpContext).Name));
             return Results.Ok(new { saved, folder = dir });
         });
 
@@ -286,7 +286,7 @@ public sealed class BridgeServer : IAsyncDisposable
                 if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
                 var preset = CameraPreset.Parse(req.Quality, req.Fps);
                 var ticket = tickets.Issue(DeviceOf(ctx).Hash, req.DeviceId, preset, DateTime.Now);
-                h.Notify(new BridgeEvent("Câmera aberta pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name));
+                h.Notify(new BridgeEvent("Câmera aberta", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
                 return Results.Ok(new { ticket });
             });
 
@@ -333,11 +333,11 @@ public sealed class BridgeServer : IAsyncDisposable
 
             api.MapPost("/camera/close", async () => { await camera.CloseAsync(); return Results.NoContent(); });
 
-            api.MapPost("/camera/photo", async (CameraPhotoRequest req) =>
+            api.MapPost("/camera/photo", async (CameraPhotoRequest req, HttpContext ctx) =>
             {
                 if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
                 var jpeg = await camera.PhotoAsync(req.DeviceId);
-                h.Notify(new BridgeEvent("Foto capturada pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name));
+                h.Notify(new BridgeEvent("Foto capturada", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
                 return Results.File(jpeg, "image/jpeg");
             });
         }

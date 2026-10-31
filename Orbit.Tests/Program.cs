@@ -852,7 +852,7 @@ public static class Program
             var r = ws.ReceiveAsync(new byte[64], new System.Threading.CancellationTokenSource(5000).Token).Result;
             Check("mic: consentimento pendente avisa o iPhone", r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close
                 && ws.CloseStatusDescription == MicStream.ConsentReason);
-            Check("mic: e avisa quem está no PC", events.Any(e => e.Title.Contains("Autorize")));
+            Check("mic: e avisa quem está no PC", events.Any(e => e.Title.Contains("Autorize") && e.Device == "iPhone teste"));
             gate.Set(); // "autorizaram" depois
             for (int i = 0; i < 50 && !lateStopped; i++) System.Threading.Thread.Sleep(20);
             Check("mic: autorizado tarde = solto na hora", lateStopped);
@@ -2154,7 +2154,9 @@ public static class Program
         Check("ponte: link inválido = 400 e não abre", bad.StatusCode == HttpStatusCode.BadRequest && opened is null);
         var ok = http.PostAsJsonAsync("/api/links/open", new { url = "https://example.com/a" }).Result;
         Check("ponte: link válido abre e avisa", ok.StatusCode == HttpStatusCode.NoContent && opened == "https://example.com/a"
-            && events.Exists(e => e.Detail == "example.com"));
+            && events.Exists(e => e.Detail == "example.com" && e.Device == "teste"));
+        Check("alerta: com origem", IslandViewModel.PeekTitle(new BridgeEvent("Link aberto no PC", "x", null, "iPad")) == "iPad · Link aberto no PC");
+        Check("alerta: sem origem", IslandViewModel.PeekTitle(new BridgeEvent("Autorize o microfone", "x")) == "Autorize o microfone");
 
         var put = http.PutAsJsonAsync("/api/clipboard", new { text = "do iPhone" }).Result;
         Check("ponte: PUT clipboard", put.StatusCode == HttpStatusCode.NoContent && clip == "do iPhone");

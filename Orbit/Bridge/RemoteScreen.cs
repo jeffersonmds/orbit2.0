@@ -177,7 +177,7 @@ public static class RemoteScreen
         api.MapPost("/screen/open", (ScreenOpenRequest req, HttpContext ctx) =>
         {
             if (Find(req.Screen) is not { } screen) return Results.NotFound();
-            h.Notify(new BridgeEvent("Tela compartilhada com o iPhone", screen.Name));
+            h.Notify(new BridgeEvent("Tela compartilhada", screen.Name, Device: BridgeServer.DeviceOf(ctx).Name));
             return Results.Ok(new { ticket = video.Issue(BridgeServer.DeviceOf(ctx).Hash, (screen.Id, ScreenQuality.Parse(req.Quality)), DateTime.Now) });
         });
 

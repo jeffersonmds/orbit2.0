@@ -36,7 +36,7 @@ public static class MicStream
         {
             var id = string.IsNullOrWhiteSpace(req.DeviceId) ? null : req.DeviceId;
             if (id is not null && h.MicDevices().All(d => d.Id != id)) return Results.NotFound();
-            h.Notify(new BridgeEvent("Microfone aberto pelo iPhone", string.IsNullOrWhiteSpace(req.Name) ? "Microfone" : req.Name));
+            h.Notify(new BridgeEvent("Microfone aberto", string.IsNullOrWhiteSpace(req.Name) ? "Microfone" : req.Name, Device: BridgeServer.DeviceOf(ctx).Name));
             return Results.Ok(new { ticket = tickets.Issue(BridgeServer.DeviceOf(ctx).Hash, id, DateTime.Now) });
         });
 
@@ -76,7 +76,7 @@ public static class MicStream
                         _ = opening.ContinueWith(t => { if (t.IsCompletedSuccessfully) t.Result.Stop.Dispose(); }, TaskScheduler.Default);
                         return;
                     }
-                    h.Notify(new BridgeEvent("Autorize o microfone pro Orbit", "O Windows está perguntando nesta tela"));
+                    h.Notify(new BridgeEvent("Autorize o microfone pro Orbit", "O Windows está perguntando nesta tela", Device: tokens.Find(owner)?.Name));
                     // se autorizarem depois, solta na hora: ninguém está ouvindo
                     _ = opening.ContinueWith(t => { if (t.IsCompletedSuccessfully) t.Result.Stop.Dispose(); }, TaskScheduler.Default);
                     await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, ConsentReason, CancellationToken.None);

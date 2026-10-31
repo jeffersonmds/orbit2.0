@@ -273,9 +273,12 @@ public sealed partial class IslandViewModel : ObservableObject
                 IPhone.SetRemote(state);
             }),
             ValidTokens = ValidTokenHashes,
-            Notify = e => ui.BeginInvoke(() => Notify(new Peek("iPhone · " + e.Title, e.Detail, "iphone", e.OpenPath), false)),
+            Notify = e => ui.BeginInvoke(() => Notify(new Peek(PeekTitle(e), e.Detail, "iphone", e.OpenPath), false)),
         };
     }
+
+    // "iPad · Link aberto no PC"; sem aparelho (ex.: pareamento) fica só o título.
+    public static string PeekTitle(BridgeEvent e) => e.Device is { Length: > 0 } d ? d + " · " + e.Title : e.Title;
 
     private void OnPomodoroPhase(PomodoroPhase phase, int minutes) =>
         Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "hoje"), _settings.PomodoroSoundEnabled);

@@ -28,7 +28,7 @@ public static class OutboxRoutes
             using var ms = new MemoryStream();
             await form.Files[0].CopyToAsync(ms);
             if (!await h.SetClipboardImage(ms.ToArray())) return Results.BadRequest(new { erro = "Não parece uma imagem, ou o clipboard do PC está ocupado." });
-            h.Notify(new BridgeEvent("Foto do iPhone no clipboard", "É só colar (Ctrl+V)"));
+            h.Notify(new BridgeEvent("Foto no clipboard", "É só colar (Ctrl+V)", Device: BridgeServer.DeviceOf(request.HttpContext).Name));
             return Results.NoContent();
         });
 

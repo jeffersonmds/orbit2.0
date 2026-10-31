@@ -10,7 +10,7 @@ public sealed record MediaState(string? Title, string? Artist, bool Playing, dou
 public sealed record StatsSnapshot(double Cpu, double RamUsedGb, double RamTotalGb, double DiskUsedGb, double DiskTotalGb,
     int? BatteryPercent, bool Charging);
 // OpenPath: pasta/arquivo que o clique no alerta abre (ex.: onde o upload foi salvo).
-public sealed record BridgeEvent(string Title, string Detail, string? OpenPath = null);
+public sealed record BridgeEvent(string Title, string Detail, string? OpenPath = null, string? Device = null);
 
 // O que o servidor pede pra ilha fazer. O BridgeServer não conhece WPF; a ilha implementa
 // estes delegates (com Dispatcher quando precisa da UI thread) e os testes usam fakes.
