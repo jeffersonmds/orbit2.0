@@ -54,6 +54,7 @@ public static class MicStream
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
             }
+            ctx.Items["device"] = tokens.Find(owner); // a auditoria mostra o aparelho do tíquete
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path))
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -61,6 +62,8 @@ public static class MicStream
             }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             var session = sessions.BeginAudio(ctx.RequestAborted, RemoteScreen.Who(tokens, owner));
+            // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
             var ct = session.Token;
             var queue = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(QueueChunks)
             { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });

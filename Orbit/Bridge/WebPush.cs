@@ -60,6 +60,8 @@ public sealed class WebPush
     // sem token correspondente, a inscrição sai. Quem já é Hash (64 hex) fica como está.
     public static List<PushSubscription> MigrateTokenRefs(IEnumerable<PushSubscription> subs, IReadOnlyList<TokenInfo> tokens)
     {
+        // tokens.json ilegível volta lista vazia: migrar agora apagaria as inscrições por nome pra sempre.
+        if (tokens.Count == 0) return subs.ToList();
         var result = new List<PushSubscription>();
         foreach (var s in subs)
         {

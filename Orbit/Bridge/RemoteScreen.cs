@@ -188,6 +188,7 @@ public static class RemoteScreen
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
             }
+            ctx.Items["device"] = tokens.Find(owner); // a auditoria mostra o aparelho do tíquete
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path))
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -199,6 +200,8 @@ public static class RemoteScreen
                 return;
             }
             var session = sessions.BeginVideo(ctx.RequestAborted, Who(tokens, owner));
+            // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
             var ct = session.Token;
             try
             {
@@ -249,9 +252,12 @@ public static class RemoteScreen
         {
             if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
             if (!keyboard.TryClaim(ticket, DateTime.Now, out _, out var owner)) { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
+            ctx.Items["device"] = tokens.Find(owner); // a auditoria mostra o aparelho do tíquete
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) { ctx.Response.StatusCode = StatusCodes.Status403Forbidden; return; }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             var session = sessions.BeginInput(ctx.RequestAborted, Who(tokens, owner));
+            // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
             try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
             finally { await CloseAsync(ws, sessions, session); }
@@ -269,6 +275,7 @@ public static class RemoteScreen
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
             }
+            ctx.Items["device"] = tokens.Find(owner); // a auditoria mostra o aparelho do tíquete
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path))
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -281,6 +288,8 @@ public static class RemoteScreen
             }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             var session = sessions.BeginInput(ctx.RequestAborted, Who(tokens, owner));
+            // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
+            if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
             try { await ReceiveLoop(ws, screen.Bounds, h, session.Token, _ => true); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
             finally { await CloseAsync(ws, sessions, session); }

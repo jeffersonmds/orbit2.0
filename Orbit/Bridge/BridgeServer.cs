@@ -143,7 +143,7 @@ public sealed class BridgeServer : IAsyncDisposable
             {
                 var result = await next(ctx);
                 if (BridgeRules.ShouldAudit(req.Method, req.Path))
-                    audit.Write(name, action, ((result as IStatusCodeHttpResult)?.StatusCode ?? 200).ToString());
+                    audit.Write(name, action, ((result as IStatusCodeHttpResult)?.StatusCode ?? ctx.HttpContext.Response.StatusCode).ToString());
                 return result;
             }
             catch (Exception ex) when (ex is not BadHttpRequestException)
@@ -297,6 +297,7 @@ public sealed class BridgeServer : IAsyncDisposable
                     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return;
                 }
+                ctx.Items["device"] = tokens.Find(claim.Owner); // a auditoria mostra o aparelho do tíquete
                 if (!TicketOwnerAllowed(tokens, claim.Owner, ctx.Request.Path))
                 {
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -304,7 +305,7 @@ public sealed class BridgeServer : IAsyncDisposable
                 }
                 System.Threading.CancellationTokenSource session;
                 System.Threading.CancellationToken sessionToken;
-                try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset); }
+                try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset, claim.Owner); }
                 catch (Exception ex)
                 {
                     Log.Warning(ex, "Câmera: não abriu");
@@ -331,7 +332,7 @@ public sealed class BridgeServer : IAsyncDisposable
                 finally { await camera.EndStream(session); }
             });
 
-            api.MapPost("/camera/close", async () => { await camera.CloseAsync(); return Results.NoContent(); });
+            api.MapPost("/camera/close", async (HttpContext ctx) => { await camera.CloseAsync(DeviceOf(ctx).Hash); return Results.NoContent(); });
 
             api.MapPost("/camera/photo", async (CameraPhotoRequest req, HttpContext ctx) =>
             {

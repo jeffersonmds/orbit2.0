@@ -26,6 +26,7 @@ public sealed class Camera : IDisposable
     private MediaCapture? _capture;
     private MediaFrameReader? _reader;
     private string? _openDevice;
+    private string? _sessionOwner; // hash do aparelho dono do stream atual
     private CancellationTokenSource? _session; // sessão de stream atual; cancelar encerra o stream
 
     private readonly object _frameLock = new();
@@ -55,7 +56,7 @@ public sealed class Camera : IDisposable
     // ao trocar, então não dá pra contar viewers pela conexão: cada abertura cancela a sessão anterior
     // (derruba o stream antigo) e o fim real é explícito (EndStream/CloseAsync). O token devolvido é
     // observado pelo loop do stream; cancelá-lo encerra o stream na hora.
-    public async Task<(CancellationTokenSource Session, CancellationToken Token)> OpenStreamAsync(string deviceId, Orbit.Bridge.CameraPreset preset)
+    public async Task<(CancellationTokenSource Session, CancellationToken Token)> OpenStreamAsync(string deviceId, Orbit.Bridge.CameraPreset preset, string? owner = null)
     {
         await _gate.WaitAsync();
         try
@@ -66,6 +67,7 @@ public sealed class Camera : IDisposable
             await CloseLocked();
             await OpenLocked(deviceId, preset);
             _session = new CancellationTokenSource();
+            _sessionOwner = owner;
             return (_session, _session.Token);
         }
         finally { _gate.Release(); }
@@ -88,12 +90,16 @@ public sealed class Camera : IDisposable
         finally { _gate.Release(); }
     }
 
+    // Fechar só vale pro dono do stream (mesma regra de StopVideo/StopAudio); owner nulo = incondicional.
+    public static bool MayClose(string? sessionOwner, string? requester) => requester is null || sessionOwner == requester;
+
     // Parar explícito (o PWA chama ao tocar em "Parar"): derruba a sessão e fecha a câmera já.
-    public async Task CloseAsync()
+    public async Task CloseAsync(string? owner = null)
     {
         await _gate.WaitAsync();
         try
         {
+            if (_session is not null && !MayClose(_sessionOwner, owner)) return;
             _session?.Cancel();
             _session?.Dispose();
             _session = null;

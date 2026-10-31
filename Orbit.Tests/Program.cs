@@ -78,6 +78,7 @@ public static class Program
         RemoteScreenTests();
         MicTests();
         OutboxTests();
+        Check("câmera: só o dono fecha o stream", Camera.MayClose("A", "A") && !Camera.MayClose("A", "B") && Camera.MayClose("A", null));
         KeyboardTests();
         DevicePermissionRouteTests();
         SelfUpdateTests();
@@ -612,7 +613,8 @@ public static class Program
         Check("saída: texto", b is { Text: "https://example.com/x", File: null });
         Check("saída: mais novo primeiro", box.List(t0.AddMinutes(2), "D").Select(i => i.Id).SequenceEqual(new[] { b!.Id, a.Id }));
         Check("saída: nome seguro", box.AddFile(Path.Combine(dir, "nao-existe.bin"), t0, all) is null && box.AddText("   ", t0, all) is null && box.AddText("x", t0, Array.Empty<string>()) is null);
-        Check("saída: sobrevive a reiniciar", new Outbox(boxDir).List(t0.AddMinutes(2), "D").Count == 2);
+        Check("saída: sobrevive a reiniciar", new Outbox(boxDir).List(t0.AddMinutes(2), "D").Count == 2
+            && new Outbox(boxDir).List(t0.AddMinutes(2), "outro").Count == 0);
         var stored = box.PathOf(a.Id, t0, "D")!;
         Check("saída: vence em 24 h e apaga o arquivo", box.List(t0.AddHours(24).AddMinutes(1), "D").Count == 1 && !File.Exists(stored));
         Check("saída: remover", box.Remove(b.Id, "D") && box.List(t0.AddMinutes(3), "D").Count == 0 && !box.Remove(b.Id, "D"));
@@ -953,6 +955,7 @@ public static class Program
         Check("push: nome vira hash do mais recente", m.Single(x => x.Endpoint == "e1").TokenName == hB);
         Check("push: hash fica como está", m.Single(x => x.Endpoint == "e2").TokenName == hA);
         Check("push: nome sem token sai", m.All(x => x.Endpoint != "e3"));
+        Check("push: lista de tokens vazia não migra nada", WebPush.MigrateTokenRefs(new[] { Sub("e1", "iPad") }, Array.Empty<TokenInfo>()).Single().TokenName == "iPad");
 
         // Rotas: inscrição fica ligada ao token que a fez.
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-push-" + Guid.NewGuid().ToString("N"));

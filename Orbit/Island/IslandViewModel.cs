@@ -90,8 +90,13 @@ public sealed partial class IslandViewModel : ObservableObject
     public IslandViewModel(OrbitSettings settings)
     {
         // Tokens de antes das permissões por aparelho herdam as seis chaves globais.
-        _tokens.SeedPermissions(new DevicePermissions(settings.BridgeCameraEnabled, settings.BridgePcFilesEnabled,
-            settings.BridgeScreenEnabled, settings.BridgeControlEnabled, settings.BridgeMicEnabled, settings.BridgeKeyboardEnabled));
+        // Falha de escrita não derruba o app: sem semear, permissão nula nega tudo e o próximo início tenta de novo.
+        try
+        {
+            _tokens.SeedPermissions(new DevicePermissions(settings.BridgeCameraEnabled, settings.BridgePcFilesEnabled,
+                settings.BridgeScreenEnabled, settings.BridgeControlEnabled, settings.BridgeMicEnabled, settings.BridgeKeyboardEnabled));
+        }
+        catch (Exception ex) { Log.Warning(ex, "Tokens: não semeou as permissões"); }
         _push.MigrateTokenRefs(_tokens.List());
         _settings = settings;
         // Serviços de fundo (rodam com a ilha recolhida e alimentam a pílula).
@@ -202,7 +207,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 return Task.CompletedTask;
             },
             GetClipboard = () => ui.InvokeAsync(() =>
-                System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "").Task,
+                !ClipboardReader.IsPrivateNow() && System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "").Task,
             SetClipboardImage = bytes => ui.InvokeAsync(() =>
             {
                 try { return ClipboardReader.SetImage(PhotoDecoder.Decode(bytes)); }
@@ -432,7 +437,8 @@ public sealed partial class IslandViewModel : ObservableObject
         string[]? files = null;
         try { if (System.Windows.Clipboard.ContainsFileDropList()) files = SendToDevice.FilesFrom(System.Windows.Clipboard.GetFileDropList().Cast<string>()); }
         catch (Exception ex) { Log.Warning(ex, "Mandar clipboard: não leu os arquivos"); }
-        var snap = files is { Length: > 0 } ? null : ClipboardReader.Read();
+        // com arquivos não decodifica nada, mas o marcador de privado vale igual
+        var snap = files is { Length: > 0 } ? (ClipboardReader.IsPrivateNow() ? new ClipSnapshot(null, null, true) : null) : ClipboardReader.Read();
         switch (DecideClip(files, snap?.IsPrivate == true, snap?.Image is not null, snap?.Text))
         {
             case ClipSend.Files:

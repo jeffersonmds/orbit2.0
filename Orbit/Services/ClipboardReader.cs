@@ -17,6 +17,21 @@ public sealed record ClipSnapshot(string? Text, BitmapSource? Image, bool IsPriv
 // Sempre na UI thread (o clipboard do WPF exige STA).
 public static class ClipboardReader
 {
+    // Só o marcador de privado (senha de gerenciador), sem ler conteúdo: vale também com lista de arquivos.
+    public static bool IsPrivateNow()
+    {
+        try
+        {
+            var data = System.Windows.Clipboard.GetDataObject();
+            return data is not null && ClipHistory.IsPrivate(data.GetFormats(), ReadDword(data, "CanIncludeInClipboardHistory"));
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Clipboard: não checou o marcador de privado");
+            return true; // na dúvida, nada sai do PC
+        }
+    }
+
     public static ClipSnapshot? Read()
     {
         // Uma tentativa só: o WPF já refaz internamente por cerca de 1 s.
