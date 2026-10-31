@@ -24,10 +24,10 @@ public partial class App : Application
             return;
         }
 
-        // Explorer → Enviar para → "iPhone (Orbit)": repassa os arquivos pro Orbit aberto e sai.
-        if (e.Args.Length > 0 && e.Args[0] == SendToIPhone.Arg)
+        // Explorer → Enviar para → "Dispositivo (Orbit)": repassa os arquivos pro Orbit aberto e sai.
+        if (e.Args.Length > 0 && e.Args[0] == SendToDevice.Arg)
         {
-            SendToIPhone.SendToRunning(SendToIPhone.FilesFrom(e.Args));
+            SendToDevice.SendToRunning(SendToDevice.FilesFrom(e.Args));
             Shutdown();
             return;
         }

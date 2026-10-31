@@ -142,13 +142,13 @@ public sealed partial class ClipsViewModel : TabViewModel
         PasteRequested?.Invoke();
     }
 
-    // A ilha manda pro iPhone (caixa de saída + aviso). Imagem vai como arquivo, texto como texto.
-    public event Action<ClipItem>? SendToIPhoneRequested;
+    // A ilha manda pro dispositivo (caixa de saída + aviso). Imagem vai como arquivo, texto como texto.
+    public event Action<ClipItem>? SendToDeviceRequested;
 
     [RelayCommand]
-    private void SendToIPhone()
+    private void SendToDevice()
     {
-        if (Selected is { } item) SendToIPhoneRequested?.Invoke(item);
+        if (Selected is { } item) SendToDeviceRequested?.Invoke(item);
     }
 
     [RelayCommand]

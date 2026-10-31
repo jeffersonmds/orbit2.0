@@ -577,21 +577,40 @@ public static class Program
         Check("saída: aviso de vários", IslandViewModel.OutboxAnnouncement(new[] { new OutboxItem("1", "a.txt", 1, "1.txt", null, t0), new OutboxItem("2", "b.txt", 1, "2.txt", null, t0) })
             == ("2 arquivos do PC", "a.txt, b.txt"));
 
-        Check("clip→iPhone: privado nunca sai", IslandViewModel.DecideClip(new[] { "a" }, true, true, "senha") == IslandViewModel.ClipToIPhone.Private);
-        Check("clip→iPhone: arquivos do Explorer primeiro", IslandViewModel.DecideClip(new[] { "a" }, false, true, "x") == IslandViewModel.ClipToIPhone.Files);
-        Check("clip→iPhone: imagem, depois texto, depois vazio", IslandViewModel.DecideClip(null, false, true, "x") == IslandViewModel.ClipToIPhone.Image
-            && IslandViewModel.DecideClip(Array.Empty<string>(), false, false, "oi") == IslandViewModel.ClipToIPhone.Text
-            && IslandViewModel.DecideClip(null, false, false, "  ") == IslandViewModel.ClipToIPhone.Empty);
+        Check("clip→dispositivo: privado nunca sai", IslandViewModel.DecideClip(new[] { "a" }, true, true, "senha") == IslandViewModel.ClipSend.Private);
+        Check("clip→dispositivo: arquivos do Explorer primeiro", IslandViewModel.DecideClip(new[] { "a" }, false, true, "x") == IslandViewModel.ClipSend.Files);
+        Check("clip→dispositivo: imagem, depois texto, depois vazio", IslandViewModel.DecideClip(null, false, true, "x") == IslandViewModel.ClipSend.Image
+            && IslandViewModel.DecideClip(Array.Empty<string>(), false, false, "oi") == IslandViewModel.ClipSend.Text
+            && IslandViewModel.DecideClip(null, false, false, "  ") == IslandViewModel.ClipSend.Empty);
+        var ipad = new TokenInfo("iPad", new string('1', 64), t0);
+        var iphone = new TokenInfo("iPhone", new string('2', 64), t0.AddDays(1));
+        Check("destino: nenhum", IslandViewModel.DecideChoice(0, false) == DeviceChoice.None);
+        Check("destino: um vai direto", IslandViewModel.DecideChoice(1, false) == DeviceChoice.Direct);
+        Check("destino: um vai direto até em tela cheia", IslandViewModel.DecideChoice(1, true) == DeviceChoice.Direct);
+        Check("destino: dois perguntam", IslandViewModel.DecideChoice(2, false) == DeviceChoice.Ask);
+        Check("destino: tela cheia não pergunta", IslandViewModel.DecideChoice(2, true) == DeviceChoice.Blocked);
+        IReadOnlyList<TokenInfo>? sentTo = null;
+        var acts = IslandViewModel.DeviceActions(new[] { ipad, iphone }, d => sentTo = d);
+        Check("destino: botões", acts.Select(a => a.Label).SequenceEqual(new[] { "iPad", "iPhone", "Todos" }));
+        acts[2].Run();
+        Check("destino: Todos manda aos dois", sentTo!.Count == 2);
+        acts[0].Run();
+        Check("destino: botão manda só a um", sentTo!.Count == 1 && sentTo[0] == ipad);
+        Check("destino: um aparelho não tem Todos", IslandViewModel.DeviceActions(new[] { ipad }, _ => { }).Select(a => a.Label).SequenceEqual(new[] { "iPad" }));
+        Check("destino: revogado sai da lista", IslandViewModel.LiveRecipients(new[] { ipad, iphone }, new[] { ipad }).SequenceEqual(new[] { ipad.Hash }));
+        var mDest = new IslandMachine();
+        mDest.Expand(); mDest.Collapse(); mDest.RaisePeek(new Peek("Mandar para…", "x", "iphone"));
+        Check("destino: seletor aparece com o painel aberto", mDest.Mode == IslandMode.Alerta);
         var link = new OutboxItem("1", "x", 1, null, "https://example.com/a", t0);
         var txt = new OutboxItem("2", "x", 1, null, new string('a', 200), t0);
-        Check("clip→iPhone: link abre direto no iPhone", IslandViewModel.OutboxPushUrl(new[] { link }) == "https://example.com/a"
+        Check("clip→dispositivo: link abre direto no iPhone", IslandViewModel.OutboxPushUrl(new[] { link }) == "https://example.com/a"
             && IslandViewModel.OutboxAnnouncement(new[] { link }) == ("Link do PC", "https://example.com/a"));
-        Check("clip→iPhone: texto abre Recebidos, aviso resumido", IslandViewModel.OutboxPushUrl(new[] { txt }) == "./#recebidos"
+        Check("clip→dispositivo: texto abre Recebidos, aviso resumido", IslandViewModel.OutboxPushUrl(new[] { txt }) == "./#recebidos"
             && IslandViewModel.OutboxAnnouncement(new[] { txt }).Body.Length == 161);
 
         var f1 = Path.Combine(dir, "um.txt");
         File.WriteAllText(f1, "x");
-        Check("enviar para: só arquivos que existem", SendToIPhone.FilesFrom(new[] { "--send-iphone", f1, dir, Path.Combine(dir, "sumiu.txt"), f1 })
+        Check("enviar para: só arquivos que existem", SendToDevice.FilesFrom(new[] { "--send-iphone", f1, dir, Path.Combine(dir, "sumiu.txt"), f1 })
             .SequenceEqual(new[] { f1 }));
 
         Check("foto: EXIF 6 = 90°, 3 = 180°, 8 = 270°", PhotoDecoder.Rotation(6) == 90 && PhotoDecoder.Rotation(3) == 180 && PhotoDecoder.Rotation(8) == 270 && PhotoDecoder.Rotation(1) == 0);

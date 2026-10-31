@@ -10,18 +10,22 @@ using Serilog;
 
 namespace Orbit.Services;
 
-// Botão direito → Enviar para → "iPhone (Orbit)" chama `Orbit.exe --send-iphone <arquivos…>`.
+// Botão direito → Enviar para → "Dispositivo (Orbit)" chama `Orbit.exe --send-device <arquivos…>`.
 // Esse processo curto repassa os caminhos pro Orbit aberto por um pipe só do usuário atual e sai.
-public static class SendToIPhone
+public static class SendToDevice
 {
-    public const string Arg = "--send-iphone";
-    public const string PipeName = "Orbit2SendToIPhone";
-    public const string ShortcutName = "iPhone (Orbit).lnk";
+    public const string Arg = "--send-device";
+    public const string PipeName = "Orbit2SendToDevice";
+    public const string ShortcutName = "Dispositivo (Orbit).lnk";
 
     public static string ShortcutPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.SendTo), ShortcutName);
 
-    // Só arquivos que existem (pasta não vai: o iPhone recebe arquivo).
+    // Atalho da versão anterior (só iPhone): sai quando o novo é criado/removido.
+    private static string OldShortcutPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.SendTo), "iPhone (Orbit).lnk");
+
+    // Só arquivos que existem (pasta não vai: o dispositivo recebe arquivo).
     public static string[] FilesFrom(IEnumerable<string> args) =>
         args.Where(a => !a.StartsWith("--", StringComparison.Ordinal) && File.Exists(a)).Distinct().ToArray();
 
@@ -56,7 +60,7 @@ public static class SendToIPhone
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Enviar pro iPhone: falha no pipe");
+                Log.Warning(ex, "Enviar pro dispositivo: falha no pipe");
                 try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { }
             }
         }
@@ -73,15 +77,20 @@ public static class SendToIPhone
             lnk.TargetPath = exePath;
             lnk.Arguments = Arg;
             lnk.IconLocation = exePath + ",0";
-            lnk.Description = "Mandar pro iPhone pelo Orbit";
+            lnk.Description = "Mandar pro dispositivo pelo Orbit";
             lnk.Save();
+            if (File.Exists(OldShortcutPath)) File.Delete(OldShortcutPath);
         }
-        catch (Exception ex) { Log.Warning(ex, "Enviar pro iPhone: não criou o atalho do Enviar para"); }
+        catch (Exception ex) { Log.Warning(ex, "Enviar pro dispositivo: não criou o atalho do Enviar para"); }
     }
 
     public static void RemoveShortcut()
     {
-        try { if (File.Exists(ShortcutPath)) File.Delete(ShortcutPath); }
-        catch (Exception ex) { Log.Warning(ex, "Enviar pro iPhone: não removeu o atalho"); }
+        try
+        {
+            if (File.Exists(ShortcutPath)) File.Delete(ShortcutPath);
+            if (File.Exists(OldShortcutPath)) File.Delete(OldShortcutPath);
+        }
+        catch (Exception ex) { Log.Warning(ex, "Enviar pro dispositivo: não removeu o atalho"); }
     }
 }

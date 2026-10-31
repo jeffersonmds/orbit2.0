@@ -145,7 +145,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
             await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers, _codes, _camera, _tickets));
             Status = $"Ligada · 127.0.0.1:{Server.Port}";
             // "Enviar para → iPhone (Orbit)" só existe com a ponte ligada
-            if (Environment.ProcessPath is { } exe) SendToIPhone.EnsureShortcut(exe);
+            if (Environment.ProcessPath is { } exe) SendToDevice.EnsureShortcut(exe);
         }
         catch (Exception ex)
         {
@@ -165,7 +165,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         catch (Exception ex) { Log.Warning(ex, "Ponte: falha ao desligar"); }
         Status = "Desligada";
         _camera.Dispose();
-        SendToIPhone.RemoveShortcut();
+        SendToDevice.RemoveShortcut();
     }
 
     public override void SetActive(bool active)

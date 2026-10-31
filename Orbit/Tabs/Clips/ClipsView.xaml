@@ -140,10 +140,10 @@
                         <Button Style="{StaticResource AccentButton}" Content="Colar" Command="{Binding PasteCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource SmallButton}" Content="{Binding PinLabel}" Command="{Binding TogglePinCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource SmallButton}" Content="Remover" Command="{Binding RemoveCommand}" Margin="0,0,6,0"/>
-                        <Button Style="{StaticResource SmallButton}" Content="iPhone" ToolTip="Mandar pro iPhone"
-                                Command="{Binding SendToIPhoneCommand}"/>
+                        <Button Style="{StaticResource SmallButton}" Content="Dispositivo" ToolTip="Mandar pro dispositivo"
+                                Command="{Binding SendToDeviceCommand}"/>
                     </StackPanel>
-                    <TextBlock Text="Enter cola · Ctrl+P fixa · Del remove · Ctrl+Alt+I manda a seleção pro iPhone" FontSize="10.5"
+                    <TextBlock Text="Enter cola · Ctrl+P fixa · Del remove · Ctrl+Alt+I manda a seleção pro dispositivo" FontSize="10.5"
                                Foreground="{StaticResource InkLo}" Margin="0,8,0,0"/>
                 </StackPanel>
                 <Grid DataContext="{Binding Selected}">

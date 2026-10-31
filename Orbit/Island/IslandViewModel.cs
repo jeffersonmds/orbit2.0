@@ -28,6 +28,8 @@ using Serilog;
 
 namespace Orbit.Island;
 
+public enum DeviceChoice { None, Direct, Ask, Blocked }
+
 // Orquestra a máquina de estados, as abas e os serviços de fundo que alimentam a pílula.
 // A janela observa Mode/Peek/ActivityText.
 public sealed partial class IslandViewModel : ObservableObject
@@ -133,13 +135,15 @@ public sealed partial class IslandViewModel : ObservableObject
         Clips = new ClipsViewModel(ClipboardStore.FilePath, ClipboardStore.ImagesDir,
             () => !settings.HiddenTabs.Contains("clipboard"));
         Register(Clips);
-        Clips.SendToIPhoneRequested += item =>
+        Clips.SendToDeviceRequested += item =>
         {
-            if (item.Kind == ClipKind.Image && item.ImagePath is { } img) SendFilesToIPhone(new[] { img }, $"imagem-{item.CopiedAt:yyyyMMdd-HHmmss}.png");
-            else if (item.Text is { } text) SendTextToIPhone(text);
+            if (item.Kind == ClipKind.Image && item.ImagePath is { } img)
+                ChooseDevice("imagem", d => SendFiles(new[] { img }, d, $"imagem-{item.CopiedAt:yyyyMMdd-HHmmss}.png"));
+            else if (item.Text is { } text) ChooseDevice("texto", d => SendText(text, d));
         };
-        // Explorer → Enviar para → "iPhone (Orbit)" chega por pipe (thread do pool).
-        SendToIPhone.Listen(files => Application.Current?.Dispatcher.BeginInvoke(() => SendFilesToIPhone(files)), _sendToCts.Token);
+        // Explorer → Enviar para → "Dispositivo (Orbit)" chega por pipe (thread do pool).
+        SendToDevice.Listen(files => Application.Current?.Dispatcher.BeginInvoke(() =>
+            ChooseDevice(files.Length == 1 ? Path.GetFileName(files[0]) : $"{files.Length} arquivos", d => SendFiles(files, d))), _sendToCts.Token);
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
         // Ponte com o iPhone: desligada até o usuário ligar na aba (BridgeEnabled).
         IPhone = new IPhoneViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
@@ -165,7 +169,7 @@ public sealed partial class IslandViewModel : ObservableObject
         _signals.Start();
         _screenshots.Captured += path => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            if (_settings.ScreenshotOfferEnabled) RaisePeek(ScreenshotPeek(path, _settings.BridgeEnabled));
+            if (_settings.ScreenshotOfferEnabled) RaisePeek(ScreenshotPeek(path, _settings.BridgeEnabled ? Devices() : Array.Empty<TokenInfo>()));
         });
         _screenshots.Start();
         // "Vai chover": a cada 20 min (1ª checagem 1 min depois de abrir, pra não disputar o começo).
@@ -332,64 +336,113 @@ public sealed partial class IslandViewModel : ObservableObject
     public static bool ShouldToast(bool fullscreen, bool preferToast) => fullscreen && preferToast;
 
     // Indicador de privacidade na pílula: tudo que o iPhone está usando agora.
-    // Caixa de saída pro iPhone: copia (fora da UI thread — pode ser arquivo grande), confirma na pílula
-    // e avisa o iPhone, cujo toque abre "Recebidos do PC". name: nome amigável (só com 1 arquivo).
-    public void SendFilesToIPhone(IReadOnlyList<string> files, string? name = null)
+    // 2+ aparelhos em tela cheia: o seletor não pode ir pra fila (apareceria muito depois, sem contexto).
+    public static DeviceChoice DecideChoice(int devices, bool fullscreen) =>
+        devices == 0 ? DeviceChoice.None
+        : devices == 1 ? DeviceChoice.Direct
+        : fullscreen ? DeviceChoice.Blocked
+        : DeviceChoice.Ask;
+
+    // Um botão por aparelho (na ordem dada) e "Todos" com 2 ou mais. Quem chama ordena por CreatedAt.
+    public static List<PeekAction> DeviceActions(IReadOnlyList<TokenInfo> devices, Action<IReadOnlyList<TokenInfo>> send)
+    {
+        var acts = devices.Select(d => new PeekAction(d.Name, () => send(new[] { d }))).ToList();
+        if (devices.Count >= 2) acts.Add(new PeekAction("Todos", () => send(devices)));
+        return acts;
+    }
+
+    // Hashes escolhidos que ainda existem (o aparelho pode ter sido revogado entre a escolha e o envio).
+    public static List<string> LiveRecipients(IEnumerable<TokenInfo> chosen, IReadOnlyList<TokenInfo> current) =>
+        chosen.Select(c => c.Hash).Where(h => current.Any(t => t.Hash == h)).ToList();
+
+    private List<TokenInfo> Devices() => _tokens.List().OrderBy(t => t.CreatedAt).ToList();
+
+    // Todo envio PC → dispositivo passa por aqui. what: o que vai (aparece no seletor).
+    public void ChooseDevice(string what, Action<IReadOnlyList<TokenInfo>> send)
+    {
+        if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte", "Aba iPhone → Ponte ligada", "iphone")); return; }
+        var devices = Devices();
+        switch (DecideChoice(devices.Count, _machine.Fullscreen))
+        {
+            case DeviceChoice.None:
+                RaisePeek(new Peek("Pareie um dispositivo", "Aba iPhone → Parear", "iphone"));
+                break;
+            case DeviceChoice.Direct:
+                send(devices);
+                break;
+            case DeviceChoice.Blocked:
+                ToastNotifier.Notify("Não mandei", "Saia da tela cheia para escolher o dispositivo", false);
+                break;
+            default:
+                Collapse(); // o alerta fica atrás do painel aberto
+                RaisePeek(new Peek("Mandar para…", what, "iphone")
+                {
+                    Key = "escolher-dispositivo",
+                    Duration = TimeSpan.FromSeconds(10),
+                    Actions = DeviceActions(devices, send),
+                });
+                break;
+        }
+    }
+
+    // Caixa de saída: copia (fora da UI thread — pode ser arquivo grande), confirma na pílula e avisa
+    // os dispositivos escolhidos, cujo toque abre "Recebidos do PC". name: nome amigável (só com 1 arquivo).
+    public void SendFiles(IReadOnlyList<string> files, IReadOnlyList<TokenInfo> to, string? name = null)
     {
         if (files.Count == 0) return;
-        if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte do iPhone", "Aba iPhone → Ponte ligada", "iphone")); return; }
-        var to = ValidTokenHashes().ToList();
-        if (to.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Nenhum aparelho pareado", "iphone")); return; }
+        var live = LiveRecipients(to, _tokens.List());
+        if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "iphone")); return; }
         _ = Task.Run(() =>
         {
             var added = files.Select(f =>
             {
-                try { return _outbox.AddFile(f, DateTime.Now, to, files.Count == 1 ? name : null); }
-                catch (Exception ex) { Log.Warning(ex, "Mandar pro iPhone: não copiou {Arquivo}", f); return null; }
+                try { return _outbox.AddFile(f, DateTime.Now, live, files.Count == 1 ? name : null); }
+                catch (Exception ex) { Log.Warning(ex, "Mandar pro dispositivo: não copiou {Arquivo}", f); return null; }
             }).OfType<OutboxItem>().ToList();
-            Application.Current?.Dispatcher.BeginInvoke(() => AnnounceToIPhone(added, files.Count));
+            Application.Current?.Dispatcher.BeginInvoke(() => Announce(added, files.Count, to));
         });
     }
 
-    public enum ClipToIPhone { Files, Image, Text, Private, Empty }
+    public enum ClipSend { Files, Image, Text, Private, Empty }
 
     // O que mandar do clipboard: arquivos copiados no Explorer vão como os originais; senha copiada
     // de gerenciador (privado) nunca sai do PC.
-    public static ClipToIPhone DecideClip(string[]? files, bool isPrivate, bool hasImage, string? text) =>
-        isPrivate ? ClipToIPhone.Private
-        : files is { Length: > 0 } ? ClipToIPhone.Files
-        : hasImage ? ClipToIPhone.Image
-        : !string.IsNullOrWhiteSpace(text) ? ClipToIPhone.Text
-        : ClipToIPhone.Empty;
+    public static ClipSend DecideClip(string[]? files, bool isPrivate, bool hasImage, string? text) =>
+        isPrivate ? ClipSend.Private
+        : files is { Length: > 0 } ? ClipSend.Files
+        : hasImage ? ClipSend.Image
+        : !string.IsNullOrWhiteSpace(text) ? ClipSend.Text
+        : ClipSend.Empty;
 
-    // Ctrl+Alt+I / bandeja: manda o que estiver no clipboard agora.
-    public void SendClipboardToIPhone()
+    // Ctrl+Alt+I / bandeja: manda o que estiver no clipboard agora (só escolhe o destino com conteúdo válido).
+    public void SendClipboard()
     {
         string[]? files = null;
-        try { if (System.Windows.Clipboard.ContainsFileDropList()) files = SendToIPhone.FilesFrom(System.Windows.Clipboard.GetFileDropList().Cast<string>()); }
+        try { if (System.Windows.Clipboard.ContainsFileDropList()) files = SendToDevice.FilesFrom(System.Windows.Clipboard.GetFileDropList().Cast<string>()); }
         catch (Exception ex) { Log.Warning(ex, "Mandar clipboard: não leu os arquivos"); }
         var snap = files is { Length: > 0 } ? null : ClipboardReader.Read();
         switch (DecideClip(files, snap?.IsPrivate == true, snap?.Image is not null, snap?.Text))
         {
-            case ClipToIPhone.Files:
-                SendFilesToIPhone(files!);
+            case ClipSend.Files:
+                ChooseDevice(files!.Length == 1 ? Path.GetFileName(files[0]) : $"{files.Length} arquivos", d => SendFiles(files, d));
                 break;
-            case ClipToIPhone.Image:
+            case ClipSend.Image:
                 var png = Path.Combine(Path.GetTempPath(), $"orbit-clip-{Guid.NewGuid():N}.png");
                 try
                 {
                     var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
                     enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(snap!.Image!));
                     using (var fs = File.Create(png)) enc.Save(fs);
-                    SendFilesToIPhone(new[] { png }, $"imagem-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+                    ChooseDevice("imagem", d => SendFiles(new[] { png }, d, $"imagem-{DateTime.Now:yyyyMMdd-HHmmss}.png"));
                 }
                 catch (Exception ex) { Log.Warning(ex, "Mandar clipboard: não salvou a imagem"); }
                 break;
-            case ClipToIPhone.Text:
-                SendTextToIPhone(snap!.Text!);
+            case ClipSend.Text:
+                var text = snap!.Text!;
+                ChooseDevice("texto", d => SendText(text, d));
                 break;
-            case ClipToIPhone.Private:
-                RaisePeek(new Peek("Não mandei pro iPhone", "Conteúdo privado (senha?) fica só no PC", "clipboard"));
+            case ClipSend.Private:
+                RaisePeek(new Peek("Não mandei", "Conteúdo privado (senha?) fica só no PC", "clipboard"));
                 break;
             default:
                 RaisePeek(new Peek("Nada pra mandar", "Selecione algo e aperte Ctrl+Alt+I", "clipboard"));
@@ -397,21 +450,34 @@ public sealed partial class IslandViewModel : ObservableObject
         }
     }
 
-    public void SendTextToIPhone(string text)
+    public void SendText(string text, IReadOnlyList<TokenInfo> to)
     {
-        if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte do iPhone", "Aba iPhone → Ponte ligada", "iphone")); return; }
-        var to = ValidTokenHashes().ToList();
-        if (to.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Nenhum aparelho pareado", "iphone")); return; }
-        var item = _outbox.AddText(text, DateTime.Now, to);
-        AnnounceToIPhone(item is null ? new() : new() { item }, 1);
+        var live = LiveRecipients(to, _tokens.List());
+        if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "iphone")); return; }
+        var item = _outbox.AddText(text, DateTime.Now, live);
+        Announce(item is null ? new() : new() { item }, 1, to);
     }
 
-    private void AnnounceToIPhone(List<OutboxItem> added, int asked)
+    private void Announce(List<OutboxItem> added, int asked, IReadOnlyList<TokenInfo> to)
     {
         if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "iphone")); return; }
         var (title, body) = OutboxAnnouncement(added);
-        RaisePeek(new Peek("Mandado pro iPhone", body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
+        var dest = to.Count == 1 ? $"Mandado para {to[0].Name}" : $"Mandado para {to.Count} dispositivos";
+        RaisePeek(new Peek(dest, body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
         _ = _push.SendAsync(title, body, ValidTokenHashes(), onlyTokens: added.SelectMany(i => i.Recipients ?? Array.Empty<string>()).ToHashSet(), url: OutboxPushUrl(added));
+    }
+
+    public sealed record DropTarget(string Label, IReadOnlyList<TokenInfo> Devices);
+    public ObservableCollection<DropTarget> DropTargets { get; } = new();
+
+    // Zonas de soltar: uma por aparelho + "Todos"; com um aparelho, zona única com o nome dele.
+    public void BuildDropTargets()
+    {
+        DropTargets.Clear();
+        var devices = Devices();
+        if (devices.Count == 1) { DropTargets.Add(new DropTarget(devices[0].Name, devices)); return; }
+        foreach (var d in devices) DropTargets.Add(new DropTarget(d.Name, new[] { d }));
+        if (devices.Count >= 2) DropTargets.Add(new DropTarget("Todos", devices));
     }
 
     public static (string Title, string Body) OutboxAnnouncement(IReadOnlyList<OutboxItem> added)
@@ -492,11 +558,10 @@ public sealed partial class IslandViewModel : ObservableObject
             Notify(new Peek(RainAlert.Text(minutes), _rainLocation.City, "hoje"), false); // Notify: vai pro iPhone também
     }
 
-    // Print novo: 6 s com "iPhone" (se a ponte estiver ligada) e "Abrir". Print seguido substitui o anterior.
-    public Peek ScreenshotPeek(string path, bool bridge)
+    // Print novo: 6 s com um botão por aparelho (+ "Todos") e "Abrir"; sem aparelhos, só "Abrir".
+    public Peek ScreenshotPeek(string path, IReadOnlyList<TokenInfo> devices)
     {
-        var actions = new List<PeekAction>();
-        if (bridge) actions.Add(new PeekAction("iPhone", () => SendFilesToIPhone(new[] { path })));
+        var actions = DeviceActions(devices, d => SendFiles(new[] { path }, d));
         actions.Add(new PeekAction("Abrir", () =>
         {
             try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }

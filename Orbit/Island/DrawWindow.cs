@@ -12,7 +12,7 @@ using System.Windows.Media.Imaging;
 namespace Orbit.Island;
 
 // Desenhar na tela (Ctrl+Alt+D): rabiscos sobre a tela congelada, com barra de ferramentas.
-// Copiar põe a tela rabiscada no clipboard; iPhone manda pela caixa de saída. Esc fecha.
+// Copiar põe a tela rabiscada no clipboard; Dispositivo manda pela caixa de saída. Esc fecha.
 // ponytail: só traço livre (caneta/marca-texto); setas e formas se fizerem falta.
 public sealed class DrawWindow : FrozenScreen
 {
@@ -28,8 +28,8 @@ public sealed class DrawWindow : FrozenScreen
     private Color _color = Palette[0].Cor;
     private Border? _penChip, _markChip, _eraseChip;
 
-    // A tela rabiscada salva em PNG pra mandar pro iPhone (a ilha cuida do envio).
-    public event Action<string>? SendToIPhone;
+    // A tela rabiscada salva em PNG pra mandar pro dispositivo (a ilha cuida do envio).
+    public event Action<string>? SendToDeviceRequested;
 
     public DrawWindow()
     {
@@ -64,7 +64,7 @@ public sealed class DrawWindow : FrozenScreen
         bar.Children.Add(Chip("Limpar", () => _ink.Strokes.Clear()));
         bar.Children.Add(Separator());
         bar.Children.Add(Chip("Copiar", () => Finish(img => Orbit.Services.ClipboardReader.SetImage(img))));
-        bar.Children.Add(Chip("iPhone", () => Finish(img =>
+        bar.Children.Add(Chip("Dispositivo", () => Finish(img =>
         {
             var png = Path.Combine(Path.GetTempPath(), $"orbit-desenho-{Guid.NewGuid():N}.png");
             Task.Run(() => // PNG fora da UI thread (a imagem está congelada)
@@ -72,7 +72,7 @@ public sealed class DrawWindow : FrozenScreen
                 var enc = new PngBitmapEncoder();
                 enc.Frames.Add(BitmapFrame.Create(img));
                 using (var fs = File.Create(png)) enc.Save(fs);
-            }).ContinueWith(_ => SendToIPhone?.Invoke(png), TaskScheduler.FromCurrentSynchronizationContext());
+            }).ContinueWith(_ => SendToDeviceRequested?.Invoke(png), TaskScheduler.FromCurrentSynchronizationContext());
         })));
         bar.Children.Add(Chip("Fechar (Esc)", Close));
 
@@ -142,7 +142,7 @@ public sealed class DrawWindow : FrozenScreen
         if (chip is not null) chip.Background = new SolidColorBrush(on ? Color.FromRgb(0x0A, 0x84, 0xFF) : Color.FromArgb(40, 255, 255, 255));
     }
 
-    // Copiar/iPhone: a janela (que cobre todos os monitores por cima de tudo) some e FECHA antes de
+    // Copiar/Dispositivo: a janela (que cobre todos os monitores por cima de tudo) some e FECHA antes de
     // entregar a imagem. Pôr imagem no clipboard pode demorar (o Windows converte formatos e o próprio
     // Orbit lê o clipboard): com a janela aberta isso prendia a tela inteira.
     private async void Finish(Action<BitmapSource> use)

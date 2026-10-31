@@ -55,8 +55,9 @@ Filename: "powershell.exe"; Parameters: "{#KillOrbit}"; Flags: runhidden; RunOnc
 ; Remove dados do usuário (settings, tokens da ponte, histórico do clipboard, logs).
 ; O %AppData%\Orbit do 1.0 não é tocado.
 [UninstallDelete]
-; Atalho do Explorer "Enviar para → iPhone (Orbit)" (o Orbit cria com a ponte ligada).
+; Atalho do Explorer "Enviar para → Dispositivo (Orbit)" (o Orbit cria com a ponte ligada).
 Type: files; Name: "{usersendto}\iPhone (Orbit).lnk"
+Type: files; Name: "{usersendto}\Dispositivo (Orbit).lnk"
 Type: filesandordirs; Name: "{userappdata}\Orbit2"
 Type: filesandordirs; Name: "{app}"
 

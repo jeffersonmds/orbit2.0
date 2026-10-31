@@ -95,7 +95,7 @@ public partial class IslandWindow : Window
             Activate();
         };
         _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };
-        _tray.SendClipboardToIPhone += () => _vm.SendClipboardToIPhone();
+        _tray.SendClipboard += () => _vm.SendClipboard();
         _tray.UpdateRequested += () => _ = _vm.UpdateNowAsync();
         _vm.ExitForUpdate += () => { _exiting = true; Application.Current.Shutdown(); };
         _vm.Clips.PasteRequested += PasteIntoPrevious;
@@ -152,7 +152,7 @@ public partial class IslandWindow : Window
         _sendHotKey.Pressed += async () =>
         {
             await Input.CopySelectionAsync((ushort)GlobalHotKey.VK_I);
-            _vm.SendClipboardToIPhone();
+            _vm.SendClipboard();
         };
 
         // Ctrl+Alt+C conta-gotas, Ctrl+Alt+D desenhar: tela congelada por cima de tudo.
@@ -173,7 +173,7 @@ public partial class IslandWindow : Window
         _drawHotKey.Pressed += () => OpenOverlay(() =>
         {
             var w = new DrawWindow();
-            w.SendToIPhone += png => _vm.SendFilesToIPhone(new[] { png }, $"desenho-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+            w.SendToDeviceRequested += png => _vm.ChooseDevice("desenho", d => _vm.SendFiles(new[] { png }, d, $"desenho-{DateTime.Now:yyyyMMdd-HHmmss}.png"));
             return w;
         });
 
@@ -446,7 +446,7 @@ public partial class IslandWindow : Window
         else if (_vm.Mode != IslandMode.Expandida) ExpandFocused();
     }
 
-    // Arquivo arrastado pra pílula: expande (vira alvo grande) e, ao soltar, manda pro iPhone.
+    // Arquivo arrastado pra pílula: expande (vira alvo grande) e, ao soltar, manda pro dispositivo.
     // Preview*: nenhum campo do painel engole o arquivo. DragLeave dispara a cada filho cruzado,
     // então só agenda o recolher; o próximo DragEnter cancela.
     private void OnPillDragEnter(object sender, DragEventArgs e)
@@ -455,6 +455,7 @@ public partial class IslandWindow : Window
         e.Effects = DragDropEffects.Copy;
         e.Handled = true;
         _leave.Stop();
+        _vm.BuildDropTargets();
         DropHint.Visibility = Visibility.Visible;
         if (_vm.Mode != IslandMode.Expandida) _vm.Expand();
     }
@@ -477,8 +478,13 @@ public partial class IslandWindow : Window
         DropHint.Visibility = Visibility.Collapsed;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
         e.Handled = true;
+        var files = SendToDevice.FilesFrom(paths);
+        var target = (e.OriginalSource as FrameworkElement)?.DataContext as IslandViewModel.DropTarget;
         _vm.Collapse();
-        _vm.SendFilesToIPhone(SendToIPhone.FilesFrom(paths));
+        if (files.Length == 0) return;
+        // Soltou fora das zonas: pergunta, pro arquivo nunca se perder.
+        if (target is not null) _vm.SendFiles(files, target.Devices);
+        else _vm.ChooseDevice(files.Length == 1 ? System.IO.Path.GetFileName(files[0]) : $"{files.Length} arquivos", d => _vm.SendFiles(files, d));
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e)
