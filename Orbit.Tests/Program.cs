@@ -7,6 +7,7 @@ using System.Net;
 using Orbit.Bridge;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using System.Linq;
 using System.Windows.Media;
 using Orbit.Island;
@@ -66,6 +67,7 @@ public static class Program
         AppIconTests();
         BridgeRulesTests();
         TokenAuditTests();
+        DeviceStoreTests();
         BridgeServerTests();
         IPhoneTests();
         TailscaleTests();
@@ -1773,6 +1775,35 @@ public static class Program
         try { return BridgeRules.SafeFileName(n); } catch { return null; }
     }
 
+    private static void DeviceStoreTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "tokens.json");
+        var s = new TokenStore(path);
+        var a = s.Create("iPhone"); var b = s.Create("iPad");
+        var ha = s.Verify(a)!.Hash; var hb = s.Verify(b)!.Hash;
+        Check("device: novo nasce sem permissão", !s.Allows(ha, Capability.Screen) && s.Verify(a)!.Permissions == DevicePermissions.None);
+        s.SetPermissions(ha, DevicePermissions.None with { Screen = true });
+        Check("device: permissão é por aparelho", s.Allows(ha, Capability.Screen) && !s.Allows(hb, Capability.Screen));
+        Check("device: renomear mantém o hash", s.Rename(ha, "  Meu iPhone  ") && s.Find(ha)!.Name == "Meu iPhone");
+        Check("device: nome vazio é recusado", !s.Rename(ha, "   ") && s.Find(ha)!.Name == "Meu iPhone");
+        Check("device: nome longo é cortado", s.Rename(ha, new string('x', 50)) && s.Find(ha)!.Name.Length == TokenStore.MaxNameLength);
+        Check("device: visto agora", s.LastSeen(ha) is not null && new TokenStore(path).LastSeen(ha) is null);
+        s.Revoke(ha);
+        Check("device: revogado não tem permissão", !s.Allows(ha, Capability.Screen));
+        // tokens.json antigo, sem Permissions
+        File.WriteAllText(path, JsonSerializer.Serialize(new[] { new { Name = "velho", Hash = new string('A', 64), CreatedAt = DateTime.Now } }));
+        var old = new TokenStore(path);
+        var h = new string('A', 64);
+        Check("device: não semeado nega", !old.Allows(h, Capability.Camera));
+        old.SeedPermissions(DevicePermissions.None with { Camera = true });
+        Check("device: legado herda e persiste", new TokenStore(path).Allows(h, Capability.Camera));
+        old.SetPermissions(h, DevicePermissions.None);
+        old.SeedPermissions(DevicePermissions.None with { Camera = true });
+        Check("device: semear não sobrescreve", !old.Allows(h, Capability.Camera));
+    }
+
     private static void TokenAuditTests()
     {
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-tests-" + Guid.NewGuid().ToString("N"));
@@ -1782,13 +1813,13 @@ public static class Program
         var t1 = store.Create("iPhone");
         var t2 = store.Create("Atalhos");
         Check("token: longo e diferente", t1.Length >= 40 && t1 != t2);
-        Check("token: verifica e devolve o nome", store.Verify(t1) == "iPhone" && store.Verify(t2) == "Atalhos");
+        Check("token: verifica e devolve o nome", store.Verify(t1)?.Name == "iPhone" && store.Verify(t2)?.Name == "Atalhos");
         Check("token: errado/vazio não passa", store.Verify("x") is null && store.Verify("") is null && store.Verify(null) is null);
         Check("token: arquivo não guarda o token", !File.ReadAllText(path).Contains(t1));
         var reloaded = new TokenStore(path);
-        Check("token: persiste", reloaded.Verify(t1) == "iPhone" && reloaded.List().Count == 2);
+        Check("token: persiste", reloaded.Verify(t1)?.Name == "iPhone" && reloaded.List().Count == 2);
         reloaded.Revoke(reloaded.List().First(t => t.Name == "iPhone").Hash);
-        Check("token: revogado não passa", reloaded.Verify(t1) is null && reloaded.Verify(t2) == "Atalhos");
+        Check("token: revogado não passa", reloaded.Verify(t1) is null && reloaded.Verify(t2)?.Name == "Atalhos");
         File.WriteAllText(path, "{ quebrado");
         Check("token: arquivo corrompido = nenhum token", new TokenStore(path).List().Count == 0);
         File.WriteAllText(path, "[{\"Name\":\"x\",\"Hash\":\"" + new string('Z', 64) + "\",\"CreatedAt\":\"2026-01-01T00:00:00\"}]");
@@ -1802,7 +1833,7 @@ public static class Program
         File.WriteAllText(Path.Combine(lockedPath, "x"), "x"); // File.Move por cima de pasta não vazia falha
         bool threw = false;
         try { locked.Revoke(locked.List()[0].Hash); } catch { threw = true; }
-        Check("token: revogar com disco travado lança e mantém consistência", threw && locked.Verify(tl) == "a" && locked.List().Count == 1);
+        Check("token: revogar com disco travado lança e mantém consistência", threw && locked.Verify(tl)?.Name == "a" && locked.List().Count == 1);
 
         var auditPath = Path.Combine(dir, "audit.jsonl");
         var audit = new AuditLog(auditPath);

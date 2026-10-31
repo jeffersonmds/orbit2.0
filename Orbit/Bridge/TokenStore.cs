@@ -10,7 +10,26 @@ using Orbit.Services;
 
 namespace Orbit.Bridge;
 
-public sealed record TokenInfo(string Name, string Hash, DateTime CreatedAt);
+public enum Capability { Camera, PcFiles, Screen, Control, Mic, Keyboard }
+
+public sealed record DevicePermissions(bool Camera, bool PcFiles, bool Screen, bool Control, bool Mic, bool Keyboard)
+{
+    public static readonly DevicePermissions None = new(false, false, false, false, false, false);
+
+    public bool Has(Capability c) => c switch
+    {
+        Capability.Camera => Camera,
+        Capability.PcFiles => PcFiles,
+        Capability.Screen => Screen,
+        Capability.Control => Control,
+        Capability.Mic => Mic,
+        Capability.Keyboard => Keyboard,
+        _ => false,
+    };
+}
+
+// Permissions nulo = tokens.json antigo, ainda não semeado (nega tudo até o SeedPermissions).
+public sealed record TokenInfo(string Name, string Hash, DateTime CreatedAt, DevicePermissions? Permissions = null);
 
 // Tokens da ponte. O arquivo guarda só o SHA-256 (o token em si aparece uma vez, no pareamento).
 // Verify roda em threads do Kestrel; Create/Revoke na UI: tudo sob lock.
@@ -22,6 +41,8 @@ public sealed class TokenStore
     private readonly string _path;
     private readonly object _gate = new();
     private readonly List<TokenInfo> _tokens;
+    private readonly Dictionary<string, DateTime> _lastSeen = new(); // só em memória
+    public const int MaxNameLength = 24;
 
     public TokenStore(string path)
     {
@@ -40,14 +61,14 @@ public sealed class TokenStore
         var token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
         lock (_gate)
         {
-            _tokens.Add(new TokenInfo(name, Hash(token), DateTime.Now));
+            _tokens.Add(new TokenInfo(name, Hash(token), DateTime.Now, DevicePermissions.None));
             Save();
         }
         return token;
     }
 
-    // Nome do token, ou null. Comparação em tempo constante.
-    public string? Verify(string? token)
+    // Dispositivo do token, ou null. Comparação em tempo constante.
+    public TokenInfo? Verify(string? token)
     {
         if (string.IsNullOrEmpty(token)) return null;
         var candidate = Convert.FromHexString(Hash(token));
@@ -55,9 +76,72 @@ public sealed class TokenStore
         {
             foreach (var t in _tokens)
                 if (CryptographicOperations.FixedTimeEquals(candidate, Convert.FromHexString(t.Hash)))
-                    return t.Name;
+                {
+                    _lastSeen[t.Hash] = DateTime.Now;
+                    return t;
+                }
         }
         return null;
+    }
+
+    public TokenInfo? Find(string hash)
+    {
+        lock (_gate) return _tokens.FirstOrDefault(t => t.Hash == hash);
+    }
+
+    public bool Allows(string hash, Capability c) => Find(hash)?.Permissions?.Has(c) == true;
+
+    public DateTime? LastSeen(string hash)
+    {
+        lock (_gate) return _lastSeen.TryGetValue(hash, out var d) ? d : null;
+    }
+
+    // Nome aparado e cortado; vazio é recusado.
+    public bool Rename(string hash, string name)
+    {
+        name = (name ?? "").Trim();
+        if (name.Length > MaxNameLength) name = name[..MaxNameLength].TrimEnd();
+        if (name.Length == 0) return false;
+        return Update(hash, t => t with { Name = name });
+    }
+
+    public void SetPermissions(string hash, DevicePermissions p) => Update(hash, t => t with { Permissions = p });
+
+    // Tokens antigos (sem Permissions) herdam as permissões globais de antes; os demais ficam como estão.
+    public void SeedPermissions(DevicePermissions legacy)
+    {
+        lock (_gate)
+        {
+            var before = _tokens.ToList();
+            for (var i = 0; i < _tokens.Count; i++)
+                if (_tokens[i].Permissions is null) _tokens[i] = _tokens[i] with { Permissions = legacy };
+            if (before.SequenceEqual(_tokens)) return;
+            try { Save(rethrow: true); }
+            catch
+            {
+                _tokens.Clear();
+                _tokens.AddRange(before);
+                throw;
+            }
+        }
+    }
+
+    private bool Update(string hash, Func<TokenInfo, TokenInfo> change)
+    {
+        lock (_gate)
+        {
+            var i = _tokens.FindIndex(t => t.Hash == hash);
+            if (i < 0) return false;
+            var old = _tokens[i];
+            _tokens[i] = change(old);
+            try { Save(rethrow: true); }
+            catch
+            {
+                _tokens[i] = old;
+                throw;
+            }
+            return true;
+        }
     }
 
     public void Revoke(string hash)

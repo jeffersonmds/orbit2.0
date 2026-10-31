@@ -100,7 +100,7 @@ public sealed class BridgeServer : IAsyncDisposable
                     || ctx.Request.Path.Equals("/api/keyboard/input", StringComparison.OrdinalIgnoreCase));
             if (ctx.Request.Path.StartsWithSegments("/api") && !ticketRoute)
             {
-                var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()));
+                var name = tokens.Verify(BridgeRules.BearerToken(ctx.Request.Headers.Authorization.ToString()))?.Name;
                 if (name is null)
                 {
                     // flood sem token não vira escrita em disco por requisição
