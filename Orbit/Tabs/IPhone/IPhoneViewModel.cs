@@ -355,9 +355,11 @@ public sealed partial class IPhoneViewModel : TabViewModel
 
     private void OnDevicePermissions(DeviceRow row)
     {
+        var before = _tokens.Find(row.Hash)?.Permissions ?? DevicePermissions.None;
+        var after = row.ToPermissions();
         try
         {
-            _tokens.SetPermissions(row.Hash, row.ToPermissions());
+            _tokens.SetPermissions(row.Hash, after);
         }
         catch (Exception ex)
         {
@@ -366,9 +368,13 @@ public sealed partial class IPhoneViewModel : TabViewModel
             RefreshTokens();
             return;
         }
-        // Tirou algo: derruba a sessão ao vivo (a Task 7 troca por StopDevice).
-        Server.StopRemote();
+        // Só derruba a sessão ao vivo se alguma permissão foi desligada (a Task 7 troca por StopDevice).
+        if (RevokedAny(before, after)) Server.StopRemote();
     }
+
+    public static bool RevokedAny(DevicePermissions before, DevicePermissions after) =>
+        (before.Camera && !after.Camera) || (before.PcFiles && !after.PcFiles) || (before.Screen && !after.Screen)
+        || (before.Control && !after.Control) || (before.Mic && !after.Mic) || (before.Keyboard && !after.Keyboard);
 
     private void OnDeviceRename(DeviceRow row)
     {

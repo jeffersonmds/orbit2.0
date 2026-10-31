@@ -173,6 +173,11 @@ public static class Program
         Check("aba: nunca visto", Orbit.Tabs.IPhone.DeviceRow.SeenText(null, agoraAba) == "sem acesso desde que abriu");
         Check("aba: agora", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddSeconds(-30), agoraAba) == "online");
         Check("aba: minutos", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddMinutes(-12), agoraAba) == "há 12 min");
+        var semPerm = Orbit.Bridge.DevicePermissions.None;
+        var comCam = semPerm with { Camera = true };
+        Check("aba: ligar não derruba", !Orbit.Tabs.IPhone.IPhoneViewModel.RevokedAny(semPerm, comCam));
+        Check("aba: desligar derruba", Orbit.Tabs.IPhone.IPhoneViewModel.RevokedAny(comCam, semPerm));
+        Check("aba: sem mudança não derruba", !Orbit.Tabs.IPhone.IPhoneViewModel.RevokedAny(comCam, comCam));
         Check("aba: horas", Orbit.Tabs.IPhone.DeviceRow.SeenText(agoraAba.AddHours(-2), agoraAba) == "há 2 h");
 
         // Rotas
