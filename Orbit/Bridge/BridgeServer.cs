@@ -138,18 +138,19 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             var req = ctx.HttpContext.Request;
             var action = $"{req.Method} {req.Path}";
-            var name = (ctx.HttpContext.Items["device"] as TokenInfo)?.Name ?? "?";
+            // Lido depois do handler: rotas por tíquete só conhecem o aparelho após o claim.
+            string Name() => (ctx.HttpContext.Items["device"] as TokenInfo)?.Name ?? "?";
             try
             {
                 var result = await next(ctx);
                 if (BridgeRules.ShouldAudit(req.Method, req.Path))
-                    audit.Write(name, action, ((result as IStatusCodeHttpResult)?.StatusCode ?? ctx.HttpContext.Response.StatusCode).ToString());
+                    audit.Write(Name(), action, ((result as IStatusCodeHttpResult)?.StatusCode ?? ctx.HttpContext.Response.StatusCode).ToString());
                 return result;
             }
             catch (Exception ex) when (ex is not BadHttpRequestException)
             {
                 Log.Warning(ex, "Ponte: falha em {Acao}", action);
-                audit.Write(name, action, "erro");
+                audit.Write(Name(), action, "erro");
                 return Results.Problem("Falha no PC.", statusCode: StatusCodes.Status500InternalServerError);
             }
         });
@@ -364,6 +365,7 @@ public sealed class BridgeServer : IAsyncDisposable
         api.MapGet("/pcfiles/download", (HttpContext ctx, string? ticket) =>
         {
             if (tickets.Find(ticket, DateTime.Now) is not { } found) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            ctx.Items["device"] = tokens.Find(found.Owner); // a auditoria mostra o aparelho do tíquete
             if (!TicketOwnerAllowed(tokens, found.Owner, ctx.Request.Path)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             var file = found.Path;
             if (!File.Exists(file)) return Results.NotFound();

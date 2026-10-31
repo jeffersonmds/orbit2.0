@@ -48,6 +48,7 @@ public static class OutboxRoutes
         api.MapGet("/outbox/download", (HttpContext ctx, string? ticket) =>
         {
             if (tickets.Find(ticket, DateTime.Now) is not { } found) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            ctx.Items["device"] = tokens.Find(found.Owner); // a auditoria mostra o aparelho do tíquete
             if (!BridgeServer.TicketOwnerAllowed(tokens, found.Owner, ctx.Request.Path)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             var path = found.Path;
             // nome bonito do item (o arquivo guardado é id.ext); dono que já não é destinatário = 404
