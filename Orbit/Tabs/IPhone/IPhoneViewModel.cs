@@ -71,8 +71,11 @@ public sealed partial class IPhoneViewModel : TabViewModel
     public bool HasQr => QrImage is not null;
     partial void OnQrImageChanged(BitmapSource? value) => OnPropertyChanged(nameof(HasQr));
 
-    public IPhoneViewModel(OrbitSettings settings, TokenStore tokens, AuditLog audit, Func<BridgeHandlers> handlers, string webRoot)
+    private readonly Action<string> _onRevoked;
+
+    public IPhoneViewModel(OrbitSettings settings, TokenStore tokens, AuditLog audit, Func<BridgeHandlers> handlers, string webRoot, Action<string> onRevoked)
     {
+        _onRevoked = onRevoked;
         _settings = settings;
         _tokens = tokens;
         _audit = audit;
@@ -335,6 +338,7 @@ public sealed partial class IPhoneViewModel : TabViewModel
         try
         {
             _tokens.Revoke(token.Hash);
+            _onRevoked(token.Hash);
         }
         catch (Exception ex)
         {

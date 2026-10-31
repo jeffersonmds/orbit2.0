@@ -556,19 +556,21 @@ public static class Program
         var boxDir = Path.Combine(dir, "box");
         var box = new Outbox(boxDir);
         var t0 = new DateTime(2026, 10, 17, 10, 0, 0);
-        var a = box.AddFile(src, t0);
+        var all = new[] { "D" };
+        var a = box.AddFile(src, t0, all);
         var srcLen = new FileInfo(src).Length;
-        Check("saída: arquivo copiado", a is { Name: "relatório final.pdf" } && a.Size == srcLen && File.Exists(box.PathOf(a.Id, t0)!));
+        Check("saída: arquivo copiado", a is { Name: "relatório final.pdf" } && a.Size == srcLen && File.Exists(box.PathOf(a.Id, t0, "D")!));
         File.Delete(src);
-        Check("saída: original apagado não quebra", File.ReadAllText(box.PathOf(a!.Id, t0)!) == "conteúdo do pdf");
-        var b = box.AddText("https://example.com/x", t0.AddMinutes(1));
+        Check("saída: original apagado não quebra", File.ReadAllText(box.PathOf(a!.Id, t0, "D")!) == "conteúdo do pdf");
+        var b = box.AddText("https://example.com/x", t0.AddMinutes(1), all);
         Check("saída: texto", b is { Text: "https://example.com/x", File: null });
-        Check("saída: mais novo primeiro", box.List(t0.AddMinutes(2)).Select(i => i.Id).SequenceEqual(new[] { b!.Id, a.Id }));
-        Check("saída: nome seguro", box.AddFile(Path.Combine(dir, "nao-existe.bin"), t0) is null && box.AddText("   ", t0) is null);
-        Check("saída: sobrevive a reiniciar", new Outbox(boxDir).List(t0.AddMinutes(2)).Count == 2);
-        var stored = box.PathOf(a.Id, t0)!;
-        Check("saída: vence em 24 h e apaga o arquivo", box.List(t0.AddHours(24).AddMinutes(1)).Count == 1 && !File.Exists(stored));
-        Check("saída: remover", box.Remove(b.Id) && box.List(t0.AddMinutes(3)).Count == 0 && !box.Remove(b.Id));
+        Check("saída: mais novo primeiro", box.List(t0.AddMinutes(2), "D").Select(i => i.Id).SequenceEqual(new[] { b!.Id, a.Id }));
+        Check("saída: nome seguro", box.AddFile(Path.Combine(dir, "nao-existe.bin"), t0, all) is null && box.AddText("   ", t0, all) is null && box.AddText("x", t0, Array.Empty<string>()) is null);
+        Check("saída: sobrevive a reiniciar", new Outbox(boxDir).List(t0.AddMinutes(2), "D").Count == 2);
+        var stored = box.PathOf(a.Id, t0, "D")!;
+        Check("saída: vence em 24 h e apaga o arquivo", box.List(t0.AddHours(24).AddMinutes(1), "D").Count == 1 && !File.Exists(stored));
+        Check("saída: remover", box.Remove(b.Id, "D") && box.List(t0.AddMinutes(3), "D").Count == 0 && !box.Remove(b.Id, "D"));
+        OutboxPerDeviceTests(dir, t0);
 
         Check("saída: aviso de 1 arquivo", IslandViewModel.OutboxAnnouncement(new[] { new OutboxItem("1", "foto.jpg", 2 * 1024 * 1024, "1.jpg", null, t0) })
             == ("Arquivo do PC", "foto.jpg · 2 MB"));
@@ -612,7 +614,7 @@ public static class Program
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("iPhone teste");
         var box2 = new Outbox(Path.Combine(dir, "box2"));
-        var item = box2.AddFile(f1, DateTime.Now, "nome bonito.txt")!;
+        var item = box2.AddFile(f1, DateTime.Now, new[] { TokenStore.Hash(token) }, "nome bonito.txt")!;
         byte[]? clip = null;
         var handlers = new BridgeHandlers
         {
@@ -633,8 +635,22 @@ public static class Program
         Check("saída: download por tíquete com o nome bonito", down.StatusCode == HttpStatusCode.OK && down.Content.ReadAsStringAsync().Result == "x"
             && down.Content.Headers.ContentDisposition?.FileNameStar == "nome bonito.txt");
         Check("saída: tíquete errado = 401", anon.GetAsync("/api/outbox/download?ticket=errado").Result.StatusCode == HttpStatusCode.Unauthorized);
+        tokens.Rename(TokenStore.Hash(token), "iPhone renomeado");
+        Check("saída: renomear não perde o item", http.GetStringAsync("/api/outbox").Result.Contains("nome bonito.txt"));
+        var other = tokens.Create("iPad");
+        using var http2 = new HttpClient { BaseAddress = http.BaseAddress };
+        http2.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", other);
+        var shared = box2.AddFile(f1, DateTime.Now, new[] { TokenStore.Hash(token), TokenStore.Hash(other) }, "dividido.txt")!;
+        Check("saída: item de outro aparelho não aparece nem emite tíquete", !http2.GetStringAsync("/api/outbox").Result.Contains("nome bonito.txt")
+            && http2.PostAsJsonAsync("/api/outbox/ticket", new { id = item.Id }).Result.StatusCode == HttpStatusCode.NotFound);
+        var tk2 = http2.PostAsJsonAsync("/api/outbox/ticket", new { id = shared.Id }).Result
+            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
+        Check("saída: iPad apaga o seu, o tíquete emitido morre (404) e o iPhone segue vendo", http2.DeleteAsync($"/api/outbox/{shared.Id}").Result.StatusCode == HttpStatusCode.NoContent
+            && anon.GetAsync($"/api/outbox/download?ticket={tk2}").Result.StatusCode == HttpStatusCode.NotFound
+            && http.GetStringAsync("/api/outbox").Result.Contains("dividido.txt"));
+        Check("saída: apagar o que não é meu = 404", http2.DeleteAsync($"/api/outbox/{item.Id}").Result.StatusCode == HttpStatusCode.NotFound);
         Check("saída: apagar pelo iPhone", http.DeleteAsync($"/api/outbox/{item.Id}").Result.StatusCode == HttpStatusCode.NoContent
-            && box2.List(DateTime.Now).Count == 0);
+            && box2.List(DateTime.Now, TokenStore.Hash(token)).All(i => i.Id != item.Id));
 
         using (var form = new MultipartFormDataContent { { new ByteArrayContent(png), "file", "foto.png" } })
             Check("foto: vai pro clipboard", http.PostAsync("/api/clipboard/image", form).Result.StatusCode == HttpStatusCode.NoContent && clip!.Length == png.Length);
@@ -642,6 +658,37 @@ public static class Program
             Check("foto: não-imagem = 400", http.PostAsync("/api/clipboard/image", form).Result.StatusCode == HttpStatusCode.BadRequest);
         server.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
+    }
+
+    // Caixa de saída por destinatário: cada aparelho vê, apaga e perde só o seu.
+    private static void OutboxPerDeviceTests(string dir, DateTime t0)
+    {
+        var f = Path.Combine(dir, "dividido.txt");
+        File.WriteAllText(f, "x");
+        var box = new Outbox(Path.Combine(dir, "box-dev"));
+        var a = box.AddFile(f, t0, new[] { "A", "B" })!;
+        var c = box.AddText("só do B", t0, new[] { "B" })!;
+        Check("saída: cada um vê o seu", box.List(t0, "A").Count == 1 && box.List(t0, "B").Count == 2);
+        Check("saída: tíquete de outro aparelho não acha", box.PathOf(c.Id, t0, "A") is null);
+        Check("saída: apagar é só meu", box.Remove(a.Id, "A") && box.List(t0, "B").Any(i => i.Id == a.Id) && File.Exists(box.PathOf(a.Id, t0, "B")!));
+        Check("saída: apagar de novo = não é meu", !box.Remove(a.Id, "A") && !box.Remove(c.Id, "A"));
+        var path = box.PathOf(a.Id, t0, "B")!;
+        box.Remove(a.Id, "B");
+        Check("saída: último apaga o arquivo", !File.Exists(path));
+        var d = box.AddFile(f, t0, new[] { "B" })!;
+        var dPath = box.PathOf(d.Id, t0, "B")!;
+        box.RemoveDevice("B");
+        Check("saída: revogar limpa destinatário e o arquivo", box.List(t0, "B").Count == 0 && !File.Exists(dPath));
+
+        var legDir = Path.Combine(dir, "box-leg");
+        Directory.CreateDirectory(legDir);
+        File.WriteAllText(Path.Combine(legDir, "outbox.json"),
+            "[{\"Id\":\"old1\",\"Name\":\"velho\",\"Size\":1,\"File\":null,\"Text\":\"oi\",\"CreatedAt\":\"" + t0.ToString("s") + "\"}]");
+        var legacy = new Outbox(legDir);
+        Check("saída: item antigo é de todos", legacy.List(t0, "qualquer").Count == 1 && legacy.List(t0, "outro").Count == 1);
+        legacy.RemoveDevice("qualquer");
+        Check("saída: revogar não mexe em item antigo", legacy.List(t0, "outro").Count == 1);
+        Check("saída: item antigo apagado por um some pra todos", legacy.Remove("old1", "qualquer") && legacy.List(t0, "outro").Count == 0);
     }
 
     // Microfone: conversão pra PCM mono 16 bits e o WebSocket com um microfone falso (nenhum teste abre o de verdade).

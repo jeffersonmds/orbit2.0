@@ -143,7 +143,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
         // Ponte com o iPhone: desligada até o usuário ligar na aba (BridgeEnabled).
         IPhone = new IPhoneViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
-            BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"));
+            BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"), _outbox.RemoveDevice);
         Register(IPhone);
         _ = IPhone.StartIfEnabledAsync();
         Register(Notas);
@@ -338,11 +338,13 @@ public sealed partial class IslandViewModel : ObservableObject
     {
         if (files.Count == 0) return;
         if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte do iPhone", "Aba iPhone → Ponte ligada", "iphone")); return; }
+        var to = ValidTokenHashes().ToList();
+        if (to.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Nenhum aparelho pareado", "iphone")); return; }
         _ = Task.Run(() =>
         {
             var added = files.Select(f =>
             {
-                try { return _outbox.AddFile(f, DateTime.Now, files.Count == 1 ? name : null); }
+                try { return _outbox.AddFile(f, DateTime.Now, to, files.Count == 1 ? name : null); }
                 catch (Exception ex) { Log.Warning(ex, "Mandar pro iPhone: não copiou {Arquivo}", f); return null; }
             }).OfType<OutboxItem>().ToList();
             Application.Current?.Dispatcher.BeginInvoke(() => AnnounceToIPhone(added, files.Count));
@@ -398,7 +400,9 @@ public sealed partial class IslandViewModel : ObservableObject
     public void SendTextToIPhone(string text)
     {
         if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte do iPhone", "Aba iPhone → Ponte ligada", "iphone")); return; }
-        var item = _outbox.AddText(text, DateTime.Now);
+        var to = ValidTokenHashes().ToList();
+        if (to.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Nenhum aparelho pareado", "iphone")); return; }
+        var item = _outbox.AddText(text, DateTime.Now, to);
         AnnounceToIPhone(item is null ? new() : new() { item }, 1);
     }
 
@@ -407,7 +411,7 @@ public sealed partial class IslandViewModel : ObservableObject
         if (added.Count == 0) { RaisePeek(new Peek("Não deu pra mandar", "Arquivo sumiu ou passa de 2 GB", "iphone")); return; }
         var (title, body) = OutboxAnnouncement(added);
         RaisePeek(new Peek("Mandado pro iPhone", body + (added.Count < asked ? $" ({asked - added.Count} falharam)" : ""), "iphone"));
-        _ = _push.SendAsync(title, body, ValidTokenHashes(), url: OutboxPushUrl(added));
+        _ = _push.SendAsync(title, body, ValidTokenHashes(), onlyTokens: added.SelectMany(i => i.Recipients ?? Array.Empty<string>()).ToHashSet(), url: OutboxPushUrl(added));
     }
 
     public static (string Title, string Body) OutboxAnnouncement(IReadOnlyList<OutboxItem> added)

@@ -9,7 +9,8 @@ using Serilog;
 namespace Orbit.Bridge;
 
 // Item mandado do PC pro iPhone. Arquivo: File = nome na pasta da caixa de saída. Texto: Text.
-public sealed record OutboxItem(string Id, string Name, long Size, string? File, string? Text, DateTime CreatedAt);
+// Recipients = hashes dos aparelhos que ainda veem o item; null (outbox.json antigo) = todos.
+public sealed record OutboxItem(string Id, string Name, long Size, string? File, string? Text, DateTime CreatedAt, IReadOnlyList<string>? Recipients = null);
 
 // "Recebidos do PC" no iPhone: o que o usuário mandou do PC (Enviar para, arrastar pra ilha, aba
 // Clipboard). Arquivos são copiados pra pasta própria (mover/apagar o original não quebra o envio) e
@@ -34,28 +35,31 @@ public sealed class Outbox
         _items = Load();
     }
 
-    public IReadOnlyList<OutboxItem> List(DateTime now)
+    private static bool Sees(OutboxItem i, string device) => i.Recipients is null || i.Recipients.Contains(device);
+
+    public IReadOnlyList<OutboxItem> List(DateTime now, string device)
     {
         lock (_gate)
         {
             Expire(now);
-            return _items.OrderByDescending(i => i.CreatedAt).ToList();
+            return _items.Where(i => Sees(i, device)).OrderByDescending(i => i.CreatedAt).ToList();
         }
     }
 
-    // Caminho do arquivo de um item ainda válido, ou null.
-    public string? PathOf(string id, DateTime now)
+    // Caminho do arquivo de um item ainda válido e visível a esse aparelho, ou null.
+    public string? PathOf(string id, DateTime now, string device)
     {
         lock (_gate)
         {
             Expire(now);
-            return _items.FirstOrDefault(i => i.Id == id)?.File is { } f ? Path.Combine(_dir, f) : null;
+            return _items.FirstOrDefault(i => i.Id == id && Sees(i, device))?.File is { } f ? Path.Combine(_dir, f) : null;
         }
     }
 
     // Copia um arquivo do PC pra caixa de saída. null = não dá (pasta, sumiu, grande demais).
-    public OutboxItem? AddFile(string path, DateTime now, string? displayName = null)
+    public OutboxItem? AddFile(string path, DateTime now, IReadOnlyList<string> recipients, string? displayName = null)
     {
+        if (recipients.Count == 0) return null;
         var info = new FileInfo(path);
         if (!info.Exists || info.Length > MaxFileBytes) return null;
         var id = NewId();
@@ -63,26 +67,47 @@ public sealed class Outbox
         var stored = id + Path.GetExtension(name);
         Directory.CreateDirectory(_dir);
         System.IO.File.Copy(path, Path.Combine(_dir, stored));
-        return Add(new OutboxItem(id, name, info.Length, stored, null, now), now);
+        return Add(new OutboxItem(id, name, info.Length, stored, null, now, recipients.ToList()), now);
     }
 
-    public OutboxItem? AddText(string text, DateTime now)
+    public OutboxItem? AddText(string text, DateTime now, IReadOnlyList<string> recipients)
     {
-        if (string.IsNullOrWhiteSpace(text) || text.Length > MaxTextChars) return null;
-        return Add(new OutboxItem(NewId(), BridgeRules.Preview(text), text.Length, null, text, now), now);
+        if (recipients.Count == 0 || string.IsNullOrWhiteSpace(text) || text.Length > MaxTextChars) return null;
+        return Add(new OutboxItem(NewId(), BridgeRules.Preview(text), text.Length, null, text, now, recipients.ToList()), now);
     }
 
-    public bool Remove(string id)
+    // Apagar é só do aparelho: o item some pra ele; o arquivo (compartilhado) só quando ninguém mais vê.
+    // Item antigo (sem destinatários) é de todos: apagar por um apaga de vez. false = não é desse aparelho.
+    public bool Remove(string id, string device)
     {
         lock (_gate)
         {
-            var item = _items.FirstOrDefault(i => i.Id == id);
+            var item = _items.FirstOrDefault(i => i.Id == id && Sees(i, device));
             if (item is null) return false;
-            _items.Remove(item);
-            DeleteFile(item);
+            Drop(item, device);
             Save();
             return true;
         }
+    }
+
+    // Aparelho revogado: sai de todos os destinatários; item que fica sem ninguém some com o arquivo.
+    public void RemoveDevice(string device)
+    {
+        lock (_gate)
+        {
+            var mine = _items.Where(i => i.Recipients is not null && i.Recipients.Contains(device)).ToList();
+            if (mine.Count == 0) return;
+            foreach (var i in mine) Drop(i, device);
+            Save();
+        }
+    }
+
+    private void Drop(OutboxItem item, string device)
+    {
+        var left = item.Recipients?.Where(r => r != device).ToList();
+        if (left is { Count: > 0 }) { _items[_items.IndexOf(item)] = item with { Recipients = left }; return; }
+        _items.Remove(item);
+        DeleteFile(item);
     }
 
     private OutboxItem Add(OutboxItem item, DateTime now)
