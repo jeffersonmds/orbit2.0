@@ -40,25 +40,42 @@ public static class Power
     // shutdown /s /t N. Atenção: com N > 0 o Windows implica /f (fecha programas sem perguntar).
     public static string ScheduleArgs(TimeSpan delay) => $"/s /t {(int)Math.Clamp(delay.TotalSeconds, 1, 315_360_000)}";
 
-    public static void Schedule(TimeSpan delay)
+    public enum CancelResult { Cancelled, NothingScheduled, Failed }
+
+    // shutdown.exe: 0 = ok; 1116 = nenhum desligamento em andamento (ERROR_NO_SHUTDOWN_IN_PROGRESS).
+    public const int NoShutdownInProgress = 1116;
+
+    public static CancelResult ReadCancel(int? exitCode) => exitCode switch
+    {
+        0 => CancelResult.Cancelled,
+        NoShutdownInProgress => CancelResult.NothingScheduled,
+        _ => CancelResult.Failed,
+    };
+
+    // true só se o Windows confirmou o agendamento. Bloqueia até ~10 s: chamar fora da UI thread.
+    public static bool Schedule(TimeSpan delay)
     {
         RunShutdown("/a", wait: true); // já havia um agendado? o Windows recusaria o novo
-        RunShutdown(ScheduleArgs(delay), wait: true);
+        return RunShutdown(ScheduleArgs(delay), wait: true) == 0;
     }
 
-    public static void CancelScheduled() => RunShutdown("/a", wait: true);
+    public static CancelResult CancelScheduled() => ReadCancel(RunShutdown("/a", wait: true));
 
     // Apaga o monitor (mexer o mouse/teclado acende). PostMessage: não trava se alguma janela estiver presa.
     public static void ScreenOff() => PostMessage(new IntPtr(0xFFFF), 0x0112, new IntPtr(0xF170), new IntPtr(2));
 
-    private static void RunShutdown(string args, bool wait)
+    // Código de saída (null = não esperou, não abriu ou passou do tempo).
+    private static int? RunShutdown(string args, bool wait)
     {
         using var p = Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "shutdown.exe"), args)
         {
             CreateNoWindow = true,
             UseShellExecute = false,
         });
-        if (wait) p?.WaitForExit(5000);
+        if (!wait || p is null) return null;
+        if (!p.WaitForExit(5000)) { Log.Warning("shutdown {Args}: não respondeu em 5 s", args); return null; }
+        if (p.ExitCode != 0) Log.Warning("shutdown {Args}: código {Codigo}", args, p.ExitCode);
+        return p.ExitCode;
     }
 
     [DllImport("user32.dll")]

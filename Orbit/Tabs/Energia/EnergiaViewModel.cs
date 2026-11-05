@@ -45,6 +45,7 @@ public sealed partial class EnergiaViewModel : TabViewModel
     private readonly DispatcherTimer _disarm = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromSeconds(30) }; // só com a aba aberta
     private DateTime? _shutdownAt; // ponytail: só em memória; reiniciar o Orbit esquece (o Windows não)
+    private string? _scheduleError; // a última ação falhou no Windows: aparece no lugar do texto até a próxima
 
     [ObservableProperty] private string _batteryText = "—";
     [ObservableProperty] private string _batteryDetail = "";
@@ -72,31 +73,44 @@ public sealed partial class EnergiaViewModel : TabViewModel
             IsScheduled = false;
             ScheduleText = "Nada agendado";
         }
+        if (_scheduleError is { } err) ScheduleText = err;
     }
 
+    // shutdown.exe fora da UI thread (espera até 5 s cada); a tela só muda com a confirmação do Windows.
     [RelayCommand]
-    private void Schedule(string minutes)
+    private async System.Threading.Tasks.Task Schedule(string minutes)
     {
         if (!int.TryParse(minutes, out var m) || m <= 0) return;
-        try
+        bool ok;
+        try { ok = await System.Threading.Tasks.Task.Run(() => Power.Schedule(TimeSpan.FromMinutes(m))); }
+        catch (Exception ex) { Log.Error(ex, "Falha ao agendar desligamento"); ok = false; }
+        if (ok)
         {
-            Power.Schedule(TimeSpan.FromMinutes(m));
             _shutdownAt = DateTime.Now.AddMinutes(m);
+            _scheduleError = null;
             Log.Information("Energia: desligamento agendado em {Minutos} min", m);
         }
-        catch (Exception ex)
+        else
         {
-            Log.Error(ex, "Falha ao agendar desligamento");
+            _shutdownAt = null; // o /a antes do agendamento já tirou o anterior
+            _scheduleError = "Não consegui agendar o desligamento";
         }
         RefreshInfo();
     }
 
     [RelayCommand]
-    private void CancelSchedule()
+    private async System.Threading.Tasks.Task CancelSchedule()
     {
-        try { Power.CancelScheduled(); }
-        catch (Exception ex) { Log.Error(ex, "Falha ao cancelar desligamento"); }
-        _shutdownAt = null;
+        Power.CancelResult r;
+        try { r = await System.Threading.Tasks.Task.Run(Power.CancelScheduled); }
+        catch (Exception ex) { Log.Error(ex, "Falha ao cancelar desligamento"); r = Power.CancelResult.Failed; }
+        if (r == Power.CancelResult.Failed)
+            _scheduleError = "Não consegui cancelar — o desligamento pode continuar agendado";
+        else
+        {
+            _shutdownAt = null;
+            _scheduleError = null;
+        }
         RefreshInfo();
     }
 

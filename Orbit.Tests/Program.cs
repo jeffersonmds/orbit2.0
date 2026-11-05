@@ -40,6 +40,9 @@ public static class Program
         IslandMachineTests();
         IslandGeometryTests();
         AtomicFileTests();
+        Check("energia: cancelar ok", Orbit.Services.Power.ReadCancel(0) == Orbit.Services.Power.CancelResult.Cancelled);
+        Check("energia: nada agendado não é erro", Orbit.Services.Power.ReadCancel(1116) == Orbit.Services.Power.CancelResult.NothingScheduled);
+        Check("energia: sem resposta é falha", Orbit.Services.Power.ReadCancel(null) == Orbit.Services.Power.CancelResult.Failed && Orbit.Services.Power.ReadCancel(5) == Orbit.Services.Power.CancelResult.Failed);
         NotasSaveErrorTests();
         FreshnessLabelTests();
         TempSweepTests();
