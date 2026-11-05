@@ -132,6 +132,9 @@ public sealed partial class PomodoroViewModel : ObservableObject
         UpdateActivity();
     }
 
+    public TimeSpan Elapsed => _phaseTotal - _remaining;
+    public double ElapsedFraction => _phaseTotal.TotalSeconds > 0 ? Elapsed.TotalSeconds / _phaseTotal.TotalSeconds : 0;
+
     private void UpdateActivity() => ActivityText = BuildActivity(IsRunning, Mode, Display);
 
     // --- Lógica pura testável ---

@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace Orbit.Island;
 
-// Discreta: só mídia tocando — pílula fininha com as barrinhas, pra não cobrir as abas do navegador.
+// Discreta: a atividade da vez é "quieta" (mídia, Pomodoro já em curso) — pílula fininha, pra não cobrir as abas do navegador.
 public enum IslandMode { Repouso, Atividade, Discreta, Alerta, Expandida, Oculta }
 
 // Valor maior = prioridade maior na pílula.
@@ -40,6 +40,9 @@ public sealed class Peek
     public bool HasActions => Actions.Count > 0;
     // Uma linha só (ex.: título da música): pílula baixinha em vez do alerta de duas linhas.
     public bool Compact { get; init; }
+    // Miniatura à esquerda do título (ex.: capa da música; ImageSource, object pra máquina ficar sem WPF).
+    public object? Image { get; init; }
+    public string Bullet => Image is null ? "● " : "";
 }
 
 public sealed record PeekAction(string Label, System.Action Run);
@@ -48,6 +51,7 @@ public sealed record PeekAction(string Label, System.Action Run);
 public sealed class IslandMachine
 {
     private readonly Dictionary<ActivityKind, string> _activities = new();
+    private readonly HashSet<ActivityKind> _quiet = new();
     private readonly List<Peek> _pending = new();
 
     public bool Expanded { get; private set; }
@@ -58,7 +62,7 @@ public sealed class IslandMachine
         Fullscreen ? IslandMode.Oculta
         : Expanded ? IslandMode.Expandida
         : CurrentPeek is not null ? IslandMode.Alerta
-        : CurrentActivity == ActivityKind.Midia ? IslandMode.Discreta
+        : CurrentActivity is { } a && _quiet.Contains(a) ? IslandMode.Discreta
         : _activities.Count > 0 ? IslandMode.Atividade
         : IslandMode.Repouso;
 
@@ -100,11 +104,12 @@ public sealed class IslandMachine
         }
     }
 
-    // text null/vazio remove a atividade daquele tipo.
-    public void SetActivity(ActivityKind kind, string? text)
+    // text null/vazio remove a atividade daquele tipo. quiet: na pílula vira a versão fininha (Discreta).
+    public void SetActivity(ActivityKind kind, string? text, bool quiet = false)
     {
         if (string.IsNullOrEmpty(text)) _activities.Remove(kind);
         else _activities[kind] = text;
+        if (quiet) _quiet.Add(kind); else _quiet.Remove(kind);
     }
 
     public void RaisePeek(Peek peek)

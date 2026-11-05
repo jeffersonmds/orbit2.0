@@ -74,6 +74,8 @@ public sealed partial class IslandViewModel : ObservableObject
     private string? _lastTrack;
     // Câmera/microfone em uso: a pílula troca o texto pelo desenho próprio (bolinha, nome, ícones, tempo).
     [ObservableProperty] private bool _showCameraMic;
+    [ObservableProperty] private bool _showPomodoroBar;
+    [ObservableProperty] private double _pomodoroProgress;
     [ObservableProperty] private CameraMicDisplay? _cameraMicView;
 
     // Monitor da ilha (Ajustes). A janela escuta MonitorChanged e se reposiciona.
@@ -106,18 +108,22 @@ public sealed partial class IslandViewModel : ObservableObject
         Pomodoro.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(PomodoroViewModel.ActivityText))
-                SetActivity(ActivityKind.Pomodoro, Pomodoro.ActivityText);
+            {
+                // Primeiro minuto da fase com a pílula cheia (dá pra ver o tempo); depois só a barrinha.
+                SetActivity(ActivityKind.Pomodoro, Pomodoro.ActivityText, quiet: Pomodoro.Elapsed >= TimeSpan.FromMinutes(1));
+                PomodoroProgress = Pomodoro.ElapsedFraction;
+            }
         };
         NowPlaying.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(NowPlayingViewModel.ActivityText))
             {
                 var text = NowPlaying.ActivityText;
-                SetActivity(ActivityKind.Midia, text);
+                SetActivity(ActivityKind.Midia, text, quiet: true);
                 // Pílula discreta não mostra o título: avisa por alguns segundos quando começa a tocar ou troca.
                 if (text is not null && text != _lastTrack)
                 {
-                    _machine.RaiseAmbientPeek(new Peek(text.TrimStart('▶', ' '), null, "controles") { Key = "midia", Duration = TimeSpan.FromSeconds(4), Compact = true });
+                    _machine.RaiseAmbientPeek(new Peek(text.TrimStart('▶', ' '), null, "controles") { Key = "midia", Duration = TimeSpan.FromSeconds(4), Compact = true, Image = NowPlaying.Thumbnail });
                     Refresh();
                 }
                 _lastTrack = text;
@@ -334,7 +340,7 @@ public sealed partial class IslandViewModel : ObservableObject
     public void Expand() { _machine.Expand(); Refresh(); }
     public void Collapse() { _machine.Collapse(); Refresh(); }
     public void SetFullscreen(bool on) { _machine.SetFullscreen(on); Refresh(); }
-    public void SetActivity(ActivityKind kind, string? text) { _machine.SetActivity(kind, text); Refresh(); }
+    public void SetActivity(ActivityKind kind, string? text, bool quiet = false) { _machine.SetActivity(kind, text, quiet); Refresh(); }
     public void RaisePeek(Peek peek) { _machine.RaisePeek(peek); Refresh(); }
     public void PeekExpired() { _machine.PeekDone(); Refresh(); }
 
@@ -663,7 +669,8 @@ public sealed partial class IslandViewModel : ObservableObject
         var before = Mode;
         ActivityText = _machine.ActivityText ?? "";
         Peek = _machine.CurrentPeek;
-        ShowAudioBars = _machine.Mode == IslandMode.Discreta;
+        ShowAudioBars = _machine.Mode == IslandMode.Discreta && _machine.CurrentActivity == ActivityKind.Midia;
+        ShowPomodoroBar = _machine.Mode == IslandMode.Discreta && _machine.CurrentActivity == ActivityKind.Pomodoro;
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);

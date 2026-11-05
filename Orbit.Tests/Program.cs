@@ -1695,8 +1695,13 @@ public static class Program
         var m = new IslandMachine();
         Check("ilha: começa em Repouso", m.Mode == IslandMode.Repouso && m.ActivityText is null);
 
-        m.SetActivity(ActivityKind.Midia, "▶ lofi");
-        Check("ilha: só mídia → Discreta", m.Mode == IslandMode.Discreta && m.ActivityText == "▶ lofi");
+        m.SetActivity(ActivityKind.Midia, "▶ lofi", quiet: true);
+        Check("ilha: atividade quieta → Discreta", m.Mode == IslandMode.Discreta && m.ActivityText == "▶ lofi");
+        m.SetActivity(ActivityKind.Pomodoro, "Foco 24:30");
+        Check("ilha: atividade da vez não quieta → Atividade", m.Mode == IslandMode.Atividade);
+        m.SetActivity(ActivityKind.Pomodoro, "Foco 23:59", quiet: true);
+        Check("ilha: Pomodoro quieto → Discreta", m.Mode == IslandMode.Discreta && m.CurrentActivity == ActivityKind.Pomodoro);
+        m.SetActivity(ActivityKind.Pomodoro, null);
 
         m.SetActivity(ActivityKind.Claude, "Claude aguardando você");
         m.SetActivity(ActivityKind.Pomodoro, "Foco 12:04");

@@ -36,7 +36,6 @@ public sealed partial class NowPlayingViewModel : ObservableObject
     private void Apply(NowPlayingInfo? info)
     {
         HasSession = info != null;
-        ActivityText = BuildActivity(info);
         if (info == null)
         {
             Title = "";
@@ -44,6 +43,7 @@ public sealed partial class NowPlayingViewModel : ObservableObject
             PlayPauseGlyph = PlayPauseGlyphFor(false);
             Thumbnail = null;
             ThumbnailBytes = null;
+            ActivityText = null;
             return;
         }
         Title = DisplayTitle(info.Title);
@@ -51,6 +51,7 @@ public sealed partial class NowPlayingViewModel : ObservableObject
         PlayPauseGlyph = PlayPauseGlyphFor(info.IsPlaying);
         Thumbnail = info.Thumbnail == null ? null : BuildThumbnail(info.Thumbnail);
         ThumbnailBytes = Thumbnail == null ? null : info.Thumbnail; // só se decodificou: formato válido
+        ActivityText = BuildActivity(info); // por último: quem escuta lê Title/Thumbnail já desta música
     }
 
     private static BitmapImage? BuildThumbnail(byte[] bytes)
