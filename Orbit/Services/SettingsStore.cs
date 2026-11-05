@@ -45,11 +45,11 @@ public static class SettingsStore
         try
         {
             var p = path ?? FilePath;
-            Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            File.WriteAllText(p, JsonSerializer.Serialize(s, WriteOptions));
+            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(s, WriteOptions));
         }
-        catch
+        catch (Exception ex)
         {
+            Serilog.Log.Warning(ex, "Ajustes: não salvou");
             // disco cheio / sem permissão: não vale crashar a ilha por causa de settings.
         }
     }

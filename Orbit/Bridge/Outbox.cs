@@ -148,7 +148,7 @@ public sealed class Outbox
         try
         {
             Directory.CreateDirectory(_dir);
-            System.IO.File.WriteAllText(_index, JsonSerializer.Serialize(_items, WriteOptions));
+            Orbit.Services.AtomicFile.WriteAllText(_index, JsonSerializer.Serialize(_items, WriteOptions));
         }
         catch (Exception ex) { Log.Warning(ex, "Caixa de saída: não salvou o índice"); }
     }

@@ -28,11 +28,11 @@ public sealed partial class NotasViewModel : TabViewModel
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, value);
+            AtomicFile.WriteAllText(_path, value);
         }
-        catch
+        catch (System.Exception ex)
         {
+            Serilog.Log.Warning(ex, "Notas: não salvou");
             // disco cheio / sem permissão: não vale crashar a ilha por causa de nota.
         }
     }

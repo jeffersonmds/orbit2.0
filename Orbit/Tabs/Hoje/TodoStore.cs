@@ -34,12 +34,12 @@ public static class TodoStore
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var dtos = items.Select(i => new TodoDto(i.Text, i.Done)).ToList();
-            File.WriteAllText(path, JsonSerializer.Serialize(dtos, WriteOptions));
+            AtomicFile.WriteAllText(path, JsonSerializer.Serialize(dtos, WriteOptions));
         }
-        catch
+        catch (System.Exception ex)
         {
+            Serilog.Log.Warning(ex, "Tarefas: não salvou");
             // disco cheio / sem permissão: não vale crashar a ilha por causa de to-do.
         }
     }

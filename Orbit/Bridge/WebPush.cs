@@ -242,8 +242,7 @@ public sealed class WebPush
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_subsPath)!);
-            File.WriteAllText(_subsPath, JsonSerializer.Serialize(_subs, WriteOptions));
+            Orbit.Services.AtomicFile.WriteAllText(_subsPath, JsonSerializer.Serialize(_subs, WriteOptions));
         }
         catch (Exception ex) { Log.Warning(ex, "Push: não salvou as inscrições"); }
     }

@@ -39,6 +39,7 @@ public static class Program
         SettingsTests();
         IslandMachineTests();
         IslandGeometryTests();
+        AtomicFileTests();
         AccentTests();
         PowerTests();
         EnergiaExtrasTests();
@@ -1773,6 +1774,17 @@ public static class Program
         m.RaiseAmbientPeek(musica);
         m.SetFullscreen(false);
         Check("ilha: aviso de música em tela cheia é descartado", m.CurrentPeek is null);
+    }
+
+    private static void AtomicFileTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit-atomic-" + Guid.NewGuid().ToString("N"));
+        var f = Path.Combine(dir, "sub", "a.json");
+        Orbit.Services.AtomicFile.WriteAllText(f, "um");
+        Orbit.Services.AtomicFile.WriteAllText(f, "dois");
+        Check("atômico: sobrescreve e cria a pasta", File.ReadAllText(f) == "dois");
+        Check("atômico: não sobra .tmp", !File.Exists(f + ".tmp"));
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void IslandGeometryTests()

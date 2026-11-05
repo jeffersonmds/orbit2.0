@@ -106,8 +106,7 @@ public static class ClaudeHookInstaller
 
             MergeHooks(root, $"\"{exePath}\" --claude-hook");
 
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-            File.WriteAllText(SettingsPath, root.ToJsonString(WriteOptions));
+            AtomicFile.WriteAllText(SettingsPath, root.ToJsonString(WriteOptions)); // settings.json do Claude: nunca pela metade
         }
         catch (Exception ex)
         {
