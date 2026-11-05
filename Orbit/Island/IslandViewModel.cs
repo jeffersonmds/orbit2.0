@@ -114,14 +114,13 @@ public sealed partial class IslandViewModel : ObservableObject
             {
                 var text = NowPlaying.ActivityText;
                 SetActivity(ActivityKind.Midia, text);
-                // Pílula discreta não mostra o título: avisa por alguns segundos quando a música muda
-                // (pausar/voltar a mesma música não repete o aviso).
+                // Pílula discreta não mostra o título: avisa por alguns segundos quando começa a tocar ou troca.
                 if (text is not null && text != _lastTrack)
                 {
                     _machine.RaiseAmbientPeek(new Peek(text.TrimStart('▶', ' '), null, "controles") { Key = "midia", Duration = TimeSpan.FromSeconds(4) });
                     Refresh();
                 }
-                if (text is not null) _lastTrack = text;
+                _lastTrack = text;
             }
         };
         NowPlaying.Start();

@@ -342,7 +342,7 @@ public partial class IslandWindow : Window
         _barsLevel = peak > _barsLevel ? peak : _barsLevel * 0.82 + peak * 0.18;
         var heights = AudioMeter.Bars(_barsLevel, _barsClock.Elapsed.TotalSeconds, AudioBars.Children.Count);
         for (int i = 0; i < heights.Length; i++)
-            ((FrameworkElement)AudioBars.Children[i]).Height = 2 + heights[i] * 8; // cabe na pílula discreta (14)
+            ((FrameworkElement)AudioBars.Children[i]).Height = 2 + heights[i] * 6; // cabe na pílula discreta (10)
     }
 
     private void UpdateVisibility() =>
