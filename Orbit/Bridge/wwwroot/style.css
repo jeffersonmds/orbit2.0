@@ -4,7 +4,8 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* manipulation: toque duplo não dá zoom na página (o zoom da tela remota é a pinça) */
-html { touch-action: manipulation; }
+/* touch-action não é herdado no Safari: em todo elemento, senão o toque duplo ainda dá zoom */
+*, *::before, *::after { touch-action: manipulation; }
 html, body { margin: 0; background: var(--bg); color: var(--ink);
   font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
 body { padding: calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 24px); }
