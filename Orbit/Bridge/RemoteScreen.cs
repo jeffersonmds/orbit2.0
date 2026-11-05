@@ -177,7 +177,13 @@ public static class RemoteScreen
         var video = new OneShotTickets<(string Screen, ScreenQuality Quality)>();
         var input = new OneShotTickets<string>();
 
-        ScreenInfo? Find(string? id) { var all = h.Screens(); return all.FirstOrDefault(s => s.Id == id) ?? all.FirstOrDefault(); }
+        // Sem id: o primeiro monitor. Id que sumiu (monitor desconectado entre o /open e o stream) NÃO cai
+        // em outro: transmitiria um conteúdo que ninguém escolheu.
+        ScreenInfo? Find(string? id)
+        {
+            var all = h.Screens();
+            return string.IsNullOrEmpty(id) ? all.FirstOrDefault() : all.FirstOrDefault(s => s.Id == id);
+        }
 
         api.MapGet("/screen/list", () => Results.Ok(h.Screens().Select(s => new { id = s.Id, name = s.Name })));
 

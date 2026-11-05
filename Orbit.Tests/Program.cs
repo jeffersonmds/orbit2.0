@@ -251,6 +251,7 @@ public static class Program
         Check("tela: controle desligado = 403", http.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result.StatusCode == HttpStatusCode.Forbidden);
         using var anon = new HttpClient { BaseAddress = http.BaseAddress };
         Check("tela: stream sem tíquete = 401", anon.GetAsync("/api/screen/stream").Result.StatusCode == HttpStatusCode.Unauthorized);
+        Check("tela: monitor que sumiu = 404, não cai em outro", http.PostAsJsonAsync("/api/screen/open", new { screen = "DISPLAY9" }).Result.StatusCode == HttpStatusCode.NotFound);
         var vt = http.PostAsJsonAsync("/api/screen/open", new { screen = "DISPLAY1", quality = "leve" }).Result
             .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
         using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5)))

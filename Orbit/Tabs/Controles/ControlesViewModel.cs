@@ -43,15 +43,18 @@ public sealed partial class ControlesViewModel : TabViewModel
     [ObservableProperty] private string _wifiQrPassword = "";
     private string? _wifiPassword;
     private bool _wifiPasswordShown;
+    private int _wifiGen; // fechar o painel/aba invalida a leitura do netsh que ainda não voltou
 
     [RelayCommand]
     private async System.Threading.Tasks.Task ShareWifi()
     {
+        var gen = ++_wifiGen;
         ShowWifiQr = true;
         WifiQr = null;
         WifiQrTitle = "Lendo a rede…";
         WifiQrPassword = "";
         var info = await System.Threading.Tasks.Task.Run(WifiShare.Current); // netsh fora da UI thread
+        if (gen != _wifiGen) return;
         if (info is null) { WifiQrTitle = "Sem Wi-Fi conectado"; return; }
         try
         {
@@ -82,6 +85,7 @@ public sealed partial class ControlesViewModel : TabViewModel
     [RelayCommand]
     private void CloseWifiQr()
     {
+        _wifiGen++;
         ShowWifiQr = false;
         WifiQr = null;
         _wifiPassword = null; // não guarda a senha à toa
@@ -124,6 +128,7 @@ public sealed partial class ControlesViewModel : TabViewModel
             _volume?.Dispose();
             _volume = null;
             ShowMixer = false; // reabrir a aba volta pros controles; para o medidor
+            CloseWifiQr(); // a senha do Wi-Fi não fica na tela esperando a aba reabrir
             return;
         }
         _ = RefreshRadiosAsync();

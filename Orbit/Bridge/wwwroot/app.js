@@ -544,7 +544,10 @@ async function scrStart() {
     scrConnectControl(screen, gen);
     clearInterval(scr.watch);
     scr.watch = setInterval(scrCheckOwner, 5000);
-  } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba Dispositivos do PC.' : e.message); }
+  } catch (e) {
+    if (/404/.test(e.message)) { scr.loaded = false; scrLoad(); scrSay('Esse monitor não está mais conectado — escolha de novo.'); return; }
+    scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba Dispositivos do PC.' : e.message);
+  }
 }
 
 // Controle é opcional: sem a permissão "Controle", fica só olhando.
