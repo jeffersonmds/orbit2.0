@@ -221,7 +221,8 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             if (req.Text is null || req.Text.Length > BridgeRules.MaxClipboardChars)
                 return Results.BadRequest(new { erro = "Nota grande demais." });
-            await h.SetNotes(req.Text);
+            try { await h.SetNotes(req.Text); }
+            catch (IOException) { return Results.StatusCode(StatusCodes.Status507InsufficientStorage); }
             return Results.NoContent();
         });
 

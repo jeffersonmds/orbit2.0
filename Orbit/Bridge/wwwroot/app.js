@@ -216,17 +216,22 @@ async function refreshMedia() {
 // --- Notas ---
 // Carrega ao entrar na página (não no loop de 5 s, que apagaria o que está sendo digitado);
 // com edição não salva, só o "Recarregar" explícito sobrescreve.
-let notesDirty = false;
-async function loadNotes() {
+// notesRev sobe a cada tecla: resposta que chega depois de você digitar não apaga nem marca como salvo.
+let notesDirty = false, notesRev = 0;
+async function loadNotes(force = false) {
+  const rev = notesRev;
   const { text } = await api('/notes');
+  if (rev !== notesRev && !force) return; // digitou enquanto carregava: o que está no campo vence
   $('#notes').value = text;
   notesDirty = false;
 }
-$('#notes').oninput = () => { notesDirty = true; };
-$('#loadNotes').onclick = () => run(loadNotes, 'Notas do PC');
+$('#notes').oninput = () => { notesDirty = true; notesRev++; };
+$('#loadNotes').onclick = () => run(() => loadNotes(true), 'Notas do PC');
 $('#saveNotes').onclick = () => run(async () => {
-  await api('/notes', { method: 'PUT', json: { text: $('#notes').value } });
-  notesDirty = false;
+  const rev = notesRev;
+  try { await api('/notes', { method: 'PUT', json: { text: $('#notes').value } }); }
+  catch (e) { throw /507/.test(e.message) ? new Error('O PC não conseguiu gravar as notas no disco') : e; }
+  if (rev === notesRev) notesDirty = false; // editou durante o envio: continua pendente
 }, 'Notas salvas no PC');
 
 // --- Stats ---

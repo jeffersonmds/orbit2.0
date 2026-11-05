@@ -15,6 +15,8 @@ public sealed partial class NotasViewModel : TabViewModel
     public override string Title => "Notas";
 
     [ObservableProperty] private string _text;
+    // Última gravação falhou (disco cheio, arquivo bloqueado): a aba avisa e a ponte responde erro.
+    [ObservableProperty] private string? _saveError;
 
     public NotasViewModel(string path)
     {
@@ -29,11 +31,13 @@ public sealed partial class NotasViewModel : TabViewModel
         try
         {
             AtomicFile.WriteAllText(_path, value);
+            SaveError = null;
         }
         catch (System.Exception ex)
         {
             Serilog.Log.Warning(ex, "Notas: não salvou");
-            // disco cheio / sem permissão: não vale crashar a ilha por causa de nota.
+            // disco cheio / sem permissão: não vale crashar a ilha por causa de nota, mas avisa.
+            SaveError = "Não consegui salvar as notas no disco — o texto está só na memória.";
         }
     }
 }

@@ -241,7 +241,12 @@ public sealed partial class IslandViewModel : ObservableObject
                 if (!ClipboardReader.SetText(text)) throw new InvalidOperationException("Clipboard ocupado");
             }).Task,
             GetNotes = () => ui.InvokeAsync(() => Notas.Text).Task,
-            SetNotes = text => ui.InvokeAsync(() => Notas.Text = text).Task,
+            // Gravou só na memória: a ponte responde erro em vez de "salvas no PC".
+            SetNotes = text => ui.InvokeAsync(() =>
+            {
+                Notas.Text = text;
+                if (Notas.SaveError is { } err) throw new IOException(err);
+            }).Task,
             Power = action =>
             {
                 // Responde antes: suspender só retorna quando o PC acorda; desligar mataria a resposta.

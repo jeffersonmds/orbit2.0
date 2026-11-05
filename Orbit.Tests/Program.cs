@@ -40,6 +40,7 @@ public static class Program
         IslandMachineTests();
         IslandGeometryTests();
         AtomicFileTests();
+        NotasSaveErrorTests();
         FreshnessLabelTests();
         TempSweepTests();
         HeldButtonsTests();
@@ -1888,6 +1889,20 @@ public static class Program
         gate.SetResult();
         Orbit.Services.Freshness.Once(ref inFlight, () => { started++; return Task.CompletedTask; });
         Check("frescor: terminada, a próxima começa", started == 2);
+    }
+
+    private static void NotasSaveErrorTests()
+    {
+        var blocker = Path.Combine(Path.GetTempPath(), "orbit-notas-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(blocker, ""); // um arquivo no lugar da pasta: gravar falha
+        var vm = new Orbit.Tabs.Notas.NotasViewModel(Path.Combine(blocker, "notas.txt"));
+        vm.Text = "algo";
+        Check("notas: falha ao gravar vira aviso", vm.SaveError is not null);
+        File.Delete(blocker);
+        Directory.CreateDirectory(blocker);
+        vm.Text = "algo de novo";
+        Check("notas: gravou de novo, aviso some", vm.SaveError is null);
+        Directory.Delete(blocker, recursive: true);
     }
 
     private static void AtomicFileTests()
