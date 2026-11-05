@@ -917,14 +917,30 @@ async function kbSend(o) {
   return true;
 }
 
-// Quebra de linha vira Enter de verdade; pedaços de até 400 caracteres sem partir emoji ao meio.
+// Pedaços de até 400 unidades UTF-16 (o limite do PC conta assim: emoji vale 2) sem partir emoji ao meio.
+function kbChunks(line, max = 400) {
+  const out = [];
+  let cur = '';
+  for (const c of line) {
+    if (cur.length + c.length > max) { out.push(cur); cur = ''; }
+    cur += c;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// Quebra de linha vira Enter de verdade. O PC descarta acima de 300 mensagens/s: texto longo vai
+// em lotes de 50 com uma pausa, senão linhas sumiriam caladas.
 async function kbTypeText(text) {
+  const msgs = [];
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  for (let l = 0; l < lines.length; l++) {
-    const chars = Array.from(lines[l]);
-    for (let i = 0; i < chars.length; i += 400)
-      if (!(await kbSend({ t: 'text', s: chars.slice(i, i + 400).join('') }))) return false;
-    if (l < lines.length - 1 && !(await kbSend({ t: 'key', k: 'enter' }))) return false;
+  lines.forEach((line, l) => {
+    for (const s of kbChunks(line)) msgs.push({ t: 'text', s });
+    if (l < lines.length - 1) msgs.push({ t: 'key', k: 'enter' });
+  });
+  for (let i = 0; i < msgs.length; i++) {
+    if (i > 0 && i % 50 === 0) await new Promise(r => setTimeout(r, 400));
+    if (!(await kbSend(msgs[i]))) return false;
   }
   return true;
 }
