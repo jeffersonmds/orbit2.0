@@ -13,6 +13,26 @@ public enum RemoteKind { Abs, Move, Down, Up, Click, Scroll, Text, Key }
 public sealed record RemoteCommand(RemoteKind Kind, double X = 0, double Y = 0, bool Right = false, int Count = 1,
     string Text = "", ushort Vk = 0, ushort[]? Mods = null);
 
+// Botões que o aparelho apertou e ainda não soltou: ao fim da sessão (rede caiu no meio de um arraste,
+// revogação) são soltos, senão o PC fica "segurando" o clique.
+public sealed class HeldButtons
+{
+    private readonly HashSet<bool> _right = new();
+
+    public void Track(RemoteCommand cmd)
+    {
+        if (cmd.Kind == RemoteKind.Down) _right.Add(cmd.Right);
+        else if (cmd.Kind == RemoteKind.Up) _right.Remove(cmd.Right);
+    }
+
+    public RemoteCommand[] ReleaseAll()
+    {
+        var ups = _right.Select(r => new RemoteCommand(RemoteKind.Up, Right: r)).ToArray();
+        _right.Clear();
+        return ups;
+    }
+}
+
 // Mouse e teclado vindos do aparelho (WebSocket da tela remota). Parse é puro e recusa tudo que não
 // conhece; Execute injeta com SendInput/SetCursorPos. Apps elevados ignoram (UIPI) — limite do Windows.
 public static class RemoteInput

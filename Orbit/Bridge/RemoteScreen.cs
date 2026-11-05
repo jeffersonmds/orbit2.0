@@ -326,21 +326,33 @@ public static class RemoteScreen
         }
         var window = Stopwatch.StartNew();
         int inWindow = 0;
-        while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
+        var held = new HeldButtons();
+        try
         {
-            var res = await Receive(buf);
-            if (res.MessageType == WebSocketMessageType.Close) break;
-            if (!res.EndOfMessage)
+            while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
-                // mensagem grande demais: descarta até o fim dela
-                while (!(await Receive(buf)).EndOfMessage) { }
-                continue;
+                var res = await Receive(buf);
+                if (res.MessageType == WebSocketMessageType.Close) break;
+                if (!res.EndOfMessage)
+                {
+                    // mensagem grande demais: descarta até o fim dela
+                    while (!(await Receive(buf)).EndOfMessage) { }
+                    continue;
+                }
+                if (window.ElapsedMilliseconds >= 1000) { window.Restart(); inWindow = 0; }
+                if (++inWindow > MaxMessagesPerSecond) continue;
+                ct.ThrowIfCancellationRequested(); // sessão encerrada/assumida: nada de comando atrasado
+                if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, res.Count)) is { } cmd && allow(cmd))
+                {
+                    held.Track(cmd);
+                    h.RemoteInput(cmd, bounds);
+                }
             }
-            if (window.ElapsedMilliseconds >= 1000) { window.Restart(); inWindow = 0; }
-            if (++inWindow > MaxMessagesPerSecond) continue;
-            ct.ThrowIfCancellationRequested(); // sessão encerrada/assumida: nada de comando atrasado
-            if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, res.Count)) is { } cmd && allow(cmd))
-                h.RemoteInput(cmd, bounds);
+        }
+        finally
+        {
+            foreach (var up in held.ReleaseAll())
+                try { h.RemoteInput(up, bounds); } catch { }
         }
     }
 }

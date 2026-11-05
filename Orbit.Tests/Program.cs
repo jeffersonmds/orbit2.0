@@ -40,6 +40,7 @@ public static class Program
         IslandMachineTests();
         IslandGeometryTests();
         AtomicFileTests();
+        HeldButtonsTests();
         AccentTests();
         PowerTests();
         EnergiaExtrasTests();
@@ -1774,6 +1775,17 @@ public static class Program
         m.RaiseAmbientPeek(musica);
         m.SetFullscreen(false);
         Check("ilha: aviso de música em tela cheia é descartado", m.CurrentPeek is null);
+    }
+
+    private static void HeldButtonsTests()
+    {
+        var h = new Orbit.Services.HeldButtons();
+        h.Track(new Orbit.Services.RemoteCommand(Orbit.Services.RemoteKind.Down));
+        h.Track(new Orbit.Services.RemoteCommand(Orbit.Services.RemoteKind.Down, Right: true));
+        h.Track(new Orbit.Services.RemoteCommand(Orbit.Services.RemoteKind.Up, Right: true));
+        var ups = h.ReleaseAll();
+        Check("mouse remoto: solta só o que ficou apertado", ups.Length == 1 && ups[0].Kind == Orbit.Services.RemoteKind.Up && !ups[0].Right);
+        Check("mouse remoto: soltar duas vezes não repete", h.ReleaseAll().Length == 0);
     }
 
     private static void AtomicFileTests()
