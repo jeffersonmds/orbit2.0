@@ -54,11 +54,14 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-                <Button Style="{StaticResource SmallButton}" Content="Limpar (mantém fixados)" Command="{Binding ClearCommand}"/>
-                <Button Style="{StaticResource SmallButton}" Content="{Binding ClearAllLabel}" Command="{Binding ClearAllCommand}" Margin="6,0,0,0"/>
-                <Button Style="{StaticResource SmallButton}" Content="{Binding PauseLabel}" Command="{Binding TogglePauseCommand}" Margin="6,0,0,0"/>
-            </StackPanel>
+            <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <Button Style="{StaticResource SmallButton}" Content="Limpar" ToolTip="Apaga o histórico, mantém os fixados"
+                        Command="{Binding ClearCommand}" Margin="0,0,6,4"/>
+                <Button Style="{StaticResource SmallButton}" Content="{Binding ClearAllLabel}" ToolTip="Apaga tudo, inclusive os fixados"
+                        Command="{Binding ClearAllCommand}" Margin="0,0,6,4"/>
+                <Button Style="{StaticResource SmallButton}" Content="{Binding PauseLabel}" ToolTip="Para de guardar o que for copiado"
+                        Command="{Binding TogglePauseCommand}" Margin="0,0,0,4"/>
+            </WrapPanel>
             <Grid>
                 <TextBlock Text="Nada copiado ainda" Foreground="{StaticResource InkLo}" FontSize="13"
                            HorizontalAlignment="Center" VerticalAlignment="Center"

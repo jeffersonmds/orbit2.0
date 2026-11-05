@@ -76,6 +76,7 @@ public sealed partial class IslandViewModel : ObservableObject
     // Câmera/microfone em uso: a pílula troca o texto pelo desenho próprio (bolinha, nome, ícones, tempo).
     [ObservableProperty] private bool _showCameraMic;
     [ObservableProperty] private bool _showPomodoroBar;
+    [ObservableProperty] private bool _showUpdating;
     [ObservableProperty] private double _pomodoroProgress;
     [ObservableProperty] private CameraMicDisplay? _cameraMicView;
 
@@ -764,6 +765,7 @@ public sealed partial class IslandViewModel : ObservableObject
         ShowAudioBars = _machine.Mode == IslandMode.Discreta && _machine.CurrentActivity == ActivityKind.Midia;
         ShowPomodoroBar = _machine.Mode == IslandMode.Discreta && _machine.CurrentActivity == ActivityKind.Pomodoro;
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
+        ShowUpdating = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Atualizacao;
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);
         if (before == IslandMode.Expandida && Mode != IslandMode.Expandida) SafeSetActive(SelectedTab, false);

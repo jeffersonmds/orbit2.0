@@ -1349,7 +1349,7 @@ public static class Program
 
         reloaded.TogglePauseCommand.Execute(null);
         reloaded.IngestAsync(new ClipSnapshot("durante a pausa", null, false)).GetAwaiter().GetResult();
-        Check("clips: pausado não captura", reloaded.Visible.Count == 1 && reloaded.PauseLabel == "Retomar captura");
+        Check("clips: pausado não captura", reloaded.Visible.Count == 1 && reloaded.PauseLabel == "Retomar");
         reloaded.TogglePauseCommand.Execute(null);
         reloaded.ClearAllCommand.Execute(null);
         Check("clips: apagar tudo pede segundo toque", reloaded.Visible.Count == 1 && reloaded.ConfirmClearAll);

@@ -37,10 +37,10 @@ public sealed partial class ClipsViewModel : TabViewModel
     [ObservableProperty] private string _detailCopied = "";
     // Pausa até religar ou reiniciar o Orbit: copiar algo sensível sem esconder a aba.
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(PauseLabel))] private bool _paused;
-    public string PauseLabel => Paused ? "Retomar captura" : "Pausar captura";
+    public string PauseLabel => Paused ? "Retomar" : "Pausar";
     // "Apagar tudo" pede um segundo toque (leva os fixados junto).
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ClearAllLabel))] private bool _confirmClearAll;
-    public string ClearAllLabel => ConfirmClearAll ? "Toque de novo: apaga tudo" : "Apagar tudo";
+    public string ClearAllLabel => ConfirmClearAll ? "Confirmar?" : "Apagar tudo";
 
     public bool HasQuery => Query.Length > 0;
     public bool ShowNothingCopied => _items.Count == 0;

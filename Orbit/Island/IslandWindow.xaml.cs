@@ -71,6 +71,7 @@ public partial class IslandWindow : Window
             if (e.PropertyName == nameof(IslandViewModel.Mode)) OnModeChanged();
             else if (e.PropertyName == nameof(IslandViewModel.ShowAudioBars)) OnAudioBarsChanged();
             else if (e.PropertyName == nameof(IslandViewModel.ShowCameraMic)) OnCameraMicChanged();
+            else if (e.PropertyName == nameof(IslandViewModel.ShowUpdating)) OnUpdatingChanged();
             // Próximo alerta da fila: o modo continua Alerta, então reinicia o timer aqui.
             else if (e.PropertyName == nameof(IslandViewModel.Peek) && _vm.Mode == IslandMode.Alerta && !_userHidden)
             {
@@ -330,6 +331,15 @@ public partial class IslandWindow : Window
             { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
         else
             CameraMicDot.BeginAnimation(OpacityProperty, null);
+    }
+
+    // Anel do "Atualizando Orbit…": gira só enquanto aparece.
+    private void OnUpdatingChanged()
+    {
+        bool on = _vm.ShowUpdating;
+        UpdateSpinner.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSpinner.RenderTransform.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty,
+            on ? new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.1)) { RepeatBehavior = RepeatBehavior.Forever } : null);
     }
 
     private void OnAudioBarsChanged()
