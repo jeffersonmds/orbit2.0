@@ -21,6 +21,11 @@ public sealed class NowPlayingWatcher
     private GlobalSystemMediaTransportControlsSession? _session;
     private bool _active;
     private int _generation;
+    // Eventos do SMTC chegam em threads do WinRT, várias leituras ao mesmo tempo: só a mais nova da
+    // sessão atual publica (senão uma leitura lenta da faixa anterior terminaria por último e voltaria
+    // capa/título velhos). _gate protege _session e _readSeq; o Invoke roda dentro dele pra manter a ordem.
+    private readonly object _gate = new();
+    private int _readSeq;
 
     public void Start()
     {
@@ -81,20 +86,27 @@ public sealed class NowPlayingWatcher
 
     private void Attach(GlobalSystemMediaTransportControlsSession? session)
     {
-        Detach();
-        _session = session;
-        if (_session == null) { SessionChanged?.Invoke(null); return; }
-        _session.MediaPropertiesChanged += OnMediaPropertiesChanged;
-        _session.PlaybackInfoChanged += OnPlaybackInfoChanged;
+        lock (_gate)
+        {
+            Detach();
+            _session = session;
+            if (_session == null) { _readSeq++; SessionChanged?.Invoke(null); return; } // invalida leitura em voo
+            _session.MediaPropertiesChanged += OnMediaPropertiesChanged;
+            _session.PlaybackInfoChanged += OnPlaybackInfoChanged;
+        }
         _ = RefreshAsync();
     }
 
     private void Detach()
     {
-        if (_session == null) return;
-        _session.MediaPropertiesChanged -= OnMediaPropertiesChanged;
-        _session.PlaybackInfoChanged -= OnPlaybackInfoChanged;
-        _session = null;
+        lock (_gate)
+        {
+            if (_session == null) return;
+            _session.MediaPropertiesChanged -= OnMediaPropertiesChanged;
+            _session.PlaybackInfoChanged -= OnPlaybackInfoChanged;
+            _session = null;
+            _readSeq++;
+        }
     }
 
     private void OnMediaPropertiesChanged(
@@ -107,15 +119,22 @@ public sealed class NowPlayingWatcher
 
     private async Task RefreshAsync()
     {
-        var session = _session;
+        GlobalSystemMediaTransportControlsSession? session;
+        int seq;
+        lock (_gate) { session = _session; seq = ++_readSeq; }
         if (session == null) return;
         try
         {
             var props = await session.TryGetMediaPropertiesAsync();
+            byte[]? thumb = props.Thumbnail == null ? null : await ReadThumbnailAsync(props.Thumbnail);
+            // estado de reprodução lido por último: o mais recente possível pra esta publicação
             bool isPlaying = session.GetPlaybackInfo().PlaybackStatus
                 == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-            byte[]? thumb = props.Thumbnail == null ? null : await ReadThumbnailAsync(props.Thumbnail);
-            SessionChanged?.Invoke(new NowPlayingInfo(props.Title, props.Artist, thumb, isPlaying));
+            lock (_gate)
+            {
+                if (seq != _readSeq || session != _session) return; // chegou leitura mais nova ou trocou o player
+                SessionChanged?.Invoke(new NowPlayingInfo(props.Title, props.Artist, thumb, isPlaying));
+            }
         }
         catch (Exception ex)
         {

@@ -28,6 +28,11 @@ public sealed partial class StatsViewModel : TabViewModel
     private readonly NetStats _net = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private bool _busy;
+    // Fechar a aba não reseta GPU/rede na UI thread (a amostra em background pode estar lendo os mesmos
+    // campos): marca e o reset roda na próxima amostra, em sequência com a leitura. _gen descarta a
+    // amostra que terminar depois de a aba fechar.
+    private bool _resetPending;
+    private int _gen;
 
     public override string Id => "stats";
     public override string Title => "Stats";
@@ -52,8 +57,8 @@ public sealed partial class StatsViewModel : TabViewModel
         if (!active)
         {
             _timer.Stop();
-            _net.Reset();
-            _gpu.Reset();
+            _resetPending = true;
+            _gen++;
             return;
         }
         _ = SampleAsync();
@@ -66,13 +71,21 @@ public sealed partial class StatsViewModel : TabViewModel
     {
         if (_busy) return;
         _busy = true;
+        var gen = _gen;
+        var reset = _resetPending;
+        _resetPending = false;
         try
         {
-            var r = await Task.Run(() => (
-                Sys: _sys.Read(),
-                Gpu: _gpu.Read(),
-                Net: _net.Read(),
-                Top: TopByMemory(ReadProcesses(), 5)));
+            var r = await Task.Run(() =>
+            {
+                if (reset) { _net.Reset(); _gpu.Reset(); }
+                return (
+                    Sys: _sys.Read(),
+                    Gpu: _gpu.Read(),
+                    Net: _net.Read(),
+                    Top: TopByMemory(ReadProcesses(), 5));
+            });
+            if (gen != _gen) return; // a aba fechou enquanto lia
 
             var s = r.Sys;
             CpuText = $"{s.CpuPercent:0}%";
