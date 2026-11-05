@@ -35,6 +35,12 @@ public sealed class Outbox
         _items = Load();
     }
 
+    // Limpeza periódica: sem isto o "24 h" só valia quando alguém consultava a caixa.
+    public void Sweep(DateTime now)
+    {
+        lock (_gate) Expire(now);
+    }
+
     private static bool Sees(OutboxItem i, string device) => i.Recipients is null || i.Recipients.Contains(device);
 
     public IReadOnlyList<OutboxItem> List(DateTime now, string device)

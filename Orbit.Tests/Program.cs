@@ -40,6 +40,7 @@ public static class Program
         IslandMachineTests();
         IslandGeometryTests();
         AtomicFileTests();
+        TempSweepTests();
         HeldButtonsTests();
         AccentTests();
         PowerTests();
@@ -635,6 +636,12 @@ public static class Program
         var stored = box.PathOf(a.Id, t0, "D")!;
         Check("saída: vence em 24 h e apaga o arquivo", box.List(t0.AddHours(24).AddMinutes(1), "D").Count == 1 && !File.Exists(stored));
         Check("saída: remover", box.Remove(b.Id, "D") && box.List(t0.AddMinutes(3), "D").Count == 0 && !box.Remove(b.Id, "D"));
+        var swept = new Outbox(Path.Combine(dir, "box-sweep"));
+        File.WriteAllText(src, "x");
+        var sw = swept.AddFile(src, t0, all)!;
+        var swPath = swept.PathOf(sw.Id, t0, "D")!;
+        swept.Sweep(t0.AddHours(25));
+        Check("saída: faxina periódica apaga o vencido sem ninguém consultar", !File.Exists(swPath));
         OutboxPerDeviceTests(dir, t0);
 
         Check("saída: aviso de 1 arquivo", IslandViewModel.OutboxAnnouncement(new[] { new OutboxItem("1", "foto.jpg", 2 * 1024 * 1024, "1.jpg", null, t0) })
@@ -1801,6 +1808,21 @@ public static class Program
         var ups = h.ReleaseAll();
         Check("mouse remoto: solta só o que ficou apertado", ups.Length == 1 && ups[0].Kind == Orbit.Services.RemoteKind.Up && !ups[0].Right);
         Check("mouse remoto: soltar duas vezes não repete", h.ReleaseAll().Length == 0);
+    }
+
+    private static void TempSweepTests()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "orbit-sweep-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var old = Path.Combine(dir, "orbit-clip-a.png"); File.WriteAllText(old, "");
+        File.SetLastWriteTime(old, DateTime.Now.AddHours(-2));
+        var fresh = Path.Combine(dir, "orbit-desenho-b.png"); File.WriteAllText(fresh, "");
+        var other = Path.Combine(dir, "outro.png"); File.WriteAllText(other, "");
+        File.SetLastWriteTime(other, DateTime.Now.AddHours(-2));
+        IslandViewModel.DeleteOldTemp(dir, DateTime.Now);
+        Check("faxina: PNG temporário velho some", !File.Exists(old));
+        Check("faxina: recente e de outros apps ficam", File.Exists(fresh) && File.Exists(other));
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void AtomicFileTests()

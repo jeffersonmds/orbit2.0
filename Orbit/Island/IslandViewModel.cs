@@ -53,6 +53,7 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly ScreenshotWatcher _screenshots = new();
     private readonly RainAlert _rain = new();
     private readonly System.Windows.Threading.DispatcherTimer _rainTimer = new() { Interval = TimeSpan.FromMinutes(20) };
+    private readonly System.Windows.Threading.DispatcherTimer _sweepTimer = new() { Interval = TimeSpan.FromMinutes(30) };
     private LocationResult? _rainLocation;
     private IReadOnlyList<CameraMicUse> _cameraMicUses = Array.Empty<CameraMicUse>();
     // só pra atualizar o "· 12 min" enquanto algo está em uso
@@ -201,6 +202,10 @@ public sealed partial class IslandViewModel : ObservableObject
         _rainTimer.Tick += async (_, _) => { _rainTimer.Interval = TimeSpan.FromMinutes(20); await CheckRainAsync(); };
         _rainTimer.Interval = TimeSpan.FromMinutes(1);
         _rainTimer.Start();
+        // Faxina: itens vencidos da caixa de saída e PNGs temporários de print/desenho pra aparelho.
+        Sweep();
+        _sweepTimer.Tick += (_, _) => Sweep();
+        _sweepTimer.Start();
         // novas abas/serviços entram acima desta linha
         // Guarda antes: ApplyTabVisibility seleciona a 1ª aba e isso sobrescreveria LastTab.
         var last = settings.LastTab;
@@ -491,6 +496,21 @@ public sealed partial class IslandViewModel : ObservableObject
         if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "dispositivos")); return; }
         var item = _outbox.AddText(text, DateTime.Now, live);
         Announce(item is null ? new() : new() { item }, 1, live);
+    }
+
+    private void Sweep()
+    {
+        _outbox.Sweep(DateTime.Now);
+        DeleteOldTemp(Path.GetTempPath(), DateTime.Now);
+    }
+
+    // PNGs que a ilha cria pra mandar ao aparelho (já copiados pra caixa de saída, ou envio cancelado).
+    // Uma hora de folga: um envio em andamento ainda lê o arquivo.
+    public static void DeleteOldTemp(string dir, DateTime now)
+    {
+        foreach (var pattern in new[] { "orbit-clip-*.png", "orbit-desenho-*.png" })
+            foreach (var f in Directory.EnumerateFiles(dir, pattern))
+                try { if (now - File.GetLastWriteTime(f) > TimeSpan.FromHours(1)) File.Delete(f); } catch { }
     }
 
     private void Announce(List<OutboxItem> added, int asked, IReadOnlyList<string> live)
