@@ -29,6 +29,8 @@ async function api(path, { method = 'GET', json, body } = {}) {
   catch { setOnline(false); throw new Error('PC fora do ar'); }
   if (r.status === 401) { showPair(true); throw new Error('Token inválido — pareie de novo'); }
   if (r.status === 429) throw new Error('Calma: muitas ações seguidas');
+  const perm = r.status === 403 && [['/clipboard', 'Clipboard'], ['/notes', 'Notas'], ['/power', 'Energia']].find(([p]) => path.startsWith(p));
+  if (perm) throw new Error(`Ligue "${perm[1]}" na aba Dispositivos do PC (403)`);
   if (!r.ok) throw new Error(`O PC respondeu ${r.status}`);
   setOnline(true);
   return r.status === 204 ? null : r.json();
@@ -840,6 +842,7 @@ async function photoToClipboard(input) {
   form.append('file', f, f.name || 'foto.jpg');
   const r = await fetch('/api/clipboard/image', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
   if (r.status === 401) { showPair(true); throw new Error('Token inválido — pareie de novo'); }
+  if (r.status === 403) throw new Error('Ligue "Clipboard" na aba Dispositivos do PC (403)');
   if (!r.ok) throw new Error(r.status === 413 ? 'Foto grande demais (máx. 40 MB)' : 'O PC não aceitou a foto');
 }
 ['#photoCam', '#photoLib'].forEach(id => $(id).onchange = e => run(() => photoToClipboard(e.target), 'Foto no clipboard do PC'));

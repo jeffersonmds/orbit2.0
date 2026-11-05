@@ -10,11 +10,14 @@ using Orbit.Services;
 
 namespace Orbit.Bridge;
 
-public enum Capability { Camera, PcFiles, Screen, Control, Mic, Keyboard }
+public enum Capability { Camera, PcFiles, Screen, Control, Mic, Keyboard, Clipboard, Notes, Power }
 
-public sealed record DevicePermissions(bool Camera, bool PcFiles, bool Screen, bool Control, bool Mic, bool Keyboard)
+// Clipboard/Notas/Energia vieram depois: tokens.json antigo não tem os campos e o padrão true mantém
+// o acesso que esses aparelhos já tinham. Aparelho novo nasce com None (tudo desligado).
+public sealed record DevicePermissions(bool Camera, bool PcFiles, bool Screen, bool Control, bool Mic, bool Keyboard,
+    bool Clipboard = true, bool Notes = true, bool Power = true)
 {
-    public static readonly DevicePermissions None = new(false, false, false, false, false, false);
+    public static readonly DevicePermissions None = new(false, false, false, false, false, false, false, false, false);
 
     public bool Has(Capability c) => c switch
     {
@@ -24,6 +27,9 @@ public sealed record DevicePermissions(bool Camera, bool PcFiles, bool Screen, b
         Capability.Control => Control,
         Capability.Mic => Mic,
         Capability.Keyboard => Keyboard,
+        Capability.Clipboard => Clipboard,
+        Capability.Notes => Notes,
+        Capability.Power => Power,
         _ => false,
     };
 }

@@ -22,6 +22,9 @@ public sealed partial class DeviceRow : ObservableObject
     [ObservableProperty] private bool _control;
     [ObservableProperty] private bool _mic;
     [ObservableProperty] private bool _keyboard;
+    [ObservableProperty] private bool _clipboard;
+    [ObservableProperty] private bool _notes;
+    [ObservableProperty] private bool _power;
 
     public DeviceRow(TokenInfo info, DateTime? seen, DateTime now, Action<DeviceRow> onChanged, Action<DeviceRow> onRename)
     {
@@ -34,10 +37,11 @@ public sealed partial class DeviceRow : ObservableObject
         var p = info.Permissions ?? DevicePermissions.None;
         Camera = p.Camera; PcFiles = p.PcFiles; Screen = p.Screen;
         Control = p.Control; Mic = p.Mic; Keyboard = p.Keyboard;
+        Clipboard = p.Clipboard; Notes = p.Notes; Power = p.Power;
         _loading = false;
     }
 
-    public DevicePermissions ToPermissions() => new(Camera, PcFiles, Screen, Control, Mic, Keyboard);
+    public DevicePermissions ToPermissions() => new(Camera, PcFiles, Screen, Control, Mic, Keyboard, Clipboard, Notes, Power);
 
     // Restaura o nome sem disparar nada (Rename recusado).
     public void ResetName(string name)
@@ -57,6 +61,9 @@ public sealed partial class DeviceRow : ObservableObject
     partial void OnControlChanged(bool value) => Changed();
     partial void OnMicChanged(bool value) => Changed();
     partial void OnKeyboardChanged(bool value) => Changed();
+    partial void OnClipboardChanged(bool value) => Changed();
+    partial void OnNotesChanged(bool value) => Changed();
+    partial void OnPowerChanged(bool value) => Changed();
 
     public static string SeenText(DateTime? seen, DateTime now)
     {

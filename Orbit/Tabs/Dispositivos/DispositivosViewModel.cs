@@ -369,8 +369,7 @@ public sealed partial class DispositivosViewModel : TabViewModel
     }
 
     public static bool RevokedAny(DevicePermissions before, DevicePermissions after) =>
-        (before.Camera && !after.Camera) || (before.PcFiles && !after.PcFiles) || (before.Screen && !after.Screen)
-        || (before.Control && !after.Control) || (before.Mic && !after.Mic) || (before.Keyboard && !after.Keyboard);
+        Enum.GetValues<Capability>().Any(c => before.Has(c) && !after.Has(c));
 
     private void OnDeviceRename(DeviceRow row)
     {

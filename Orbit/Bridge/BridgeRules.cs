@@ -138,6 +138,9 @@ public static class BridgeRules
         if (path.StartsWithSegments("/api/remote")) return new[] { Capability.Screen, Capability.Control };
         if (path.StartsWithSegments("/api/mic")) return new[] { Capability.Mic };
         if (path.StartsWithSegments("/api/keyboard")) return new[] { Capability.Keyboard };
+        if (path.StartsWithSegments("/api/clipboard")) return new[] { Capability.Clipboard };
+        if (path.StartsWithSegments("/api/notes")) return new[] { Capability.Notes };
+        if (path.StartsWithSegments("/api/power")) return new[] { Capability.Power };
         return Array.Empty<Capability>();
     }
 

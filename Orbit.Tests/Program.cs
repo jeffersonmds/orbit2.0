@@ -434,14 +434,22 @@ public static class Program
 
     private static DevicePermissions Only(params Capability[] caps) =>
         new(caps.Contains(Capability.Camera), caps.Contains(Capability.PcFiles), caps.Contains(Capability.Screen),
-            caps.Contains(Capability.Control), caps.Contains(Capability.Mic), caps.Contains(Capability.Keyboard));
+            caps.Contains(Capability.Control), caps.Contains(Capability.Mic), caps.Contains(Capability.Keyboard),
+            caps.Contains(Capability.Clipboard), caps.Contains(Capability.Notes), caps.Contains(Capability.Power));
 
     // Permissão é do aparelho: a mesma URL responde diferente por token, e o tíquete herda o dono —
     // desligar ou revogar depois do tíquete emitido derruba o uso dele.
     private static void DevicePermissionRouteTests()
     {
         Check("regra: remote exige tela e controle", BridgeRules.RequiredCapabilities("/api/remote/ticket").SequenceEqual(new[] { Capability.Screen, Capability.Control }));
-        Check("regra: rota comum não exige nada", BridgeRules.RequiredCapabilities("/api/clipboard").Length == 0);
+        Check("regra: rota comum não exige nada", BridgeRules.RequiredCapabilities("/api/media").Length == 0);
+        Check("regra: clipboard, notas e energia", BridgeRules.RequiredCapabilities("/api/clipboard/image").SequenceEqual(new[] { Capability.Clipboard })
+            && BridgeRules.RequiredCapabilities("/api/notes").SequenceEqual(new[] { Capability.Notes })
+            && BridgeRules.RequiredCapabilities("/api/power/lock").SequenceEqual(new[] { Capability.Power }));
+        var legacyPerms = System.Text.Json.JsonSerializer.Deserialize<DevicePermissions>("{\"Camera\":false,\"PcFiles\":false,\"Screen\":false,\"Control\":false,\"Mic\":false,\"Keyboard\":false}")!;
+        Check("permissão: tokens antigos mantêm clipboard, notas e energia", legacyPerms.Clipboard && legacyPerms.Notes && legacyPerms.Power);
+        Check("permissão: aparelho novo nasce sem clipboard, notas e energia", !DevicePermissions.None.Has(Capability.Clipboard)
+            && !DevicePermissions.None.Has(Capability.Notes) && !DevicePermissions.None.Has(Capability.Power));
         Check("regra: câmera, arquivos, mic e teclado",
             BridgeRules.RequiredCapabilities("/api/camera/devices").SequenceEqual(new[] { Capability.Camera })
             && BridgeRules.RequiredCapabilities("/api/pcfiles/list").SequenceEqual(new[] { Capability.PcFiles })
@@ -715,6 +723,7 @@ public static class Program
         // Rotas
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("iPhone teste");
+        tokens.SetPermissions(TokenStore.Hash(token), Only(Capability.Clipboard)); // foto vai pro clipboard
         var box2 = new Outbox(Path.Combine(dir, "box2"));
         var item = box2.AddFile(f1, DateTime.Now, new[] { TokenStore.Hash(token) }, "nome bonito.txt")!;
         byte[]? clip = null;
@@ -2308,6 +2317,9 @@ public static class Program
         Check("alerta: com origem", IslandViewModel.PeekTitle(new BridgeEvent("Link aberto no PC", "x", null, "iPad")) == "iPad · Link aberto no PC");
         Check("alerta: sem origem", IslandViewModel.PeekTitle(new BridgeEvent("Autorize o microfone", "x")) == "Autorize o microfone");
 
+        Check("ponte: aparelho novo sem permissão de clipboard = 403", http.GetAsync("/api/clipboard").Result.StatusCode == HttpStatusCode.Forbidden
+            && http.GetAsync("/api/notes").Result.StatusCode == HttpStatusCode.Forbidden);
+        tokens.SetPermissions(TokenStore.Hash(token), Only(Capability.Clipboard, Capability.Notes, Capability.Power));
         var put = http.PutAsJsonAsync("/api/clipboard", new { text = "do iPhone" }).Result;
         Check("ponte: PUT clipboard", put.StatusCode == HttpStatusCode.NoContent && clip == "do iPhone");
         Check("ponte: GET clipboard", http.GetStringAsync("/api/clipboard").Result.Contains("do pc"));

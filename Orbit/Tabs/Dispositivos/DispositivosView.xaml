@@ -83,6 +83,12 @@
                                                   Content="Microfone" ToolTip="Permite ouvir o microfone do PC"/>
                                         <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Keyboard}"
                                                   Content="Teclado" ToolTip="Permite digitar (e ditar) no app em foco do PC"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Clipboard}"
+                                                  Content="Clipboard" ToolTip="Permite ler e trocar o clipboard do PC (inclui mandar foto pro clipboard e Colar do teclado)"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Notes}"
+                                                  Content="Notas" ToolTip="Permite ler e editar as notas do PC"/>
+                                        <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding Power}"
+                                                  Content="Energia" ToolTip="Permite bloquear, suspender, desligar ou agendar o desligamento do PC"/>
                                     </WrapPanel>
                                 </StackPanel>
                             </Border>
