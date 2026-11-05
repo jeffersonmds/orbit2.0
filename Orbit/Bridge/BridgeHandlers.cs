@@ -48,6 +48,9 @@ public sealed class BridgeHandlers
     public Func<IReadOnlyList<ScreenInfo>> Screens { get; init; } = () => Array.Empty<ScreenInfo>();
     public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
     public Action<RemoteCommand, System.Drawing.Rectangle> RemoteInput { get; init; } = (_, _) => { };
+    // Janelas abertas no PC (trocar de janela pelo aparelho) e trazer uma pra frente.
+    public Func<IReadOnlyList<Orbit.Services.OpenWindow>> Windows { get; init; } = () => Array.Empty<Orbit.Services.OpenWindow>();
+    public Func<long, bool> FocusWindow { get; init; } = _ => false;
     // Microfone. OpenMic devolve a taxa do PCM e quem para a captura.
     public Func<IReadOnlyList<MicDevice>> MicDevices { get; init; } = () => Array.Empty<MicDevice>();
     public Func<string?, Action<byte[]>, (int Rate, IDisposable Stop)> OpenMic { get; init; } =

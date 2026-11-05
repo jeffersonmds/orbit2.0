@@ -500,7 +500,8 @@ async function pfDownload(root, path) {
 // Vídeo: MJPEG por tíquete (como a câmera). Controle: WebSocket por tíquete, mensagens JSON pequenas.
 // Modo toque: tocar clica ali, arrastar arrasta, segurar = botão direito, dois dedos rolam.
 // Modo trackpad: o dedo move o cursor (relativo), toque clica, toque com dois dedos = botão direito.
-const scr = { live: false, loaded: false, ws: null, mode: 'touch', ctrl: false, gen: 0 };
+const scr = { live: false, loaded: false, ws: null, mode: 'touch', mods: new Set(), gen: 0, lastTap: null, rx: 0, ry: 0,
+  speed: +(localStorage.getItem('scrSpeed') || 2) };
 const scrImg = $('#scrImg'), scrView = $('#scrView'), scrTouch = $('#scrTouch');
 const TAKEN = 4001; // o PC fechou porque outro aparelho assumiu (reason = nome dele)
 const scrSay = msg => { $('#scrMsg').textContent = msg || ''; $('#scrMsg').classList.toggle('hidden', !msg); };
@@ -643,6 +644,20 @@ function applyView() {
 function resetView() { view.z = 1; view.tx = 0; view.ty = 0; applyView(); }
 $('#scrZoomReset').onclick = resetView;
 
+// Rolagem com dois dedos continua um pouco depois de soltar, freando (como no trackpad do notebook).
+let inertia = 0;
+function scrStopInertia() { cancelAnimationFrame(inertia); inertia = 0; }
+function scrInertia(v) {
+  let { dx, dy } = v;
+  const step = () => {
+    dx *= 0.9; dy *= 0.9;
+    if (Math.abs(dx) + Math.abs(dy) < 1) { inertia = 0; return; }
+    scrSend({ t: 'scroll', dy: Math.round(dy * 4), dx: Math.round(-dx * 4) });
+    inertia = requestAnimationFrame(step);
+  };
+  inertia = requestAnimationFrame(step);
+}
+
 // --- Gestos ---
 // Um dedo: toque/trackpad (ver acima). Dois dedos: pinça = zoom (ancorado nos dedos);
 // arrastar = move a imagem se houver zoom, senão rola no PC. Toque rápido de dois dedos = botão direito.
@@ -652,6 +667,8 @@ const dist = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[
 
 scrTouch.addEventListener('touchstart', e => {
   e.preventDefault();
+  scrStopInertia();
+  if (e.touches.length >= 3 && gesture?.two) { gesture.three = true; return; } // 3º dedo: vira clique do meio
   if (e.touches.length >= 2) {
     if (gesture?.drag) scrSend({ t: 'up' });
     clearTimeout(gesture?.timer);
@@ -700,6 +717,7 @@ scrTouch.addEventListener('touchmove', e => {
       const dy = m.y - g.last.y, dx = m.x - g.last.x;
       if (Math.abs(dy) + Math.abs(dx) > 2) {
         scrSend({ t: 'scroll', dy: Math.round(dy * 4), dx: Math.round(-dx * 4) });
+        g.v = { dx, dy };
         g.last = m;
       }
     }
@@ -708,7 +726,12 @@ scrTouch.addEventListener('touchmove', e => {
   const t = e.touches[0];
   if (Math.hypot(t.clientX - g.x0, t.clientY - g.y0) > 8) { g.moved = true; clearTimeout(g.timer); }
   if (scr.mode === 'pad') {
-    scrSend({ t: 'move', dx: Math.round((t.clientX - g.x) * 2), dy: Math.round((t.clientY - g.y) * 2) });
+    const dx = t.clientX - g.x, dy = t.clientY - g.y;
+    // devagar = preciso; rápido = atravessa a tela (até 2,5× a mais)
+    const k = scr.speed * Math.min(2.5, 1 + Math.hypot(dx, dy) / 15);
+    scr.rx += dx * k; scr.ry += dy * k;
+    const mx = Math.trunc(scr.rx), my = Math.trunc(scr.ry);
+    if (mx || my) { scrSend({ t: 'move', dx: mx, dy: my }); scr.rx -= mx; scr.ry -= my; }
   } else if (g.moved && !g.done && g.p0) {
     if (!g.drag) { scrSend({ t: 'abs', ...g.p0 }); scrSend({ t: 'down' }); g.drag = true; }
     const p = scrPoint(t);
@@ -723,11 +746,20 @@ scrTouch.addEventListener('touchend', e => {
   if (!g || e.touches.length) return;
   clearTimeout(g.timer);
   const quick = Date.now() - g.at < 300;
-  if (g.two) { if (!g.moved && quick) scrSend({ t: 'click', b: 'right' }); }
+  if (g.two) {
+    if (!g.moved && quick) scrSend({ t: 'click', b: g.three ? 'middle' : 'right' });
+    else if (g.kind === 'scroll' && g.v) scrInertia(g.v);
+  }
   else if (g.drag) scrSend({ t: 'up' });
   else if (!g.moved && !g.done) {
     if (scr.mode === 'pad') scrSend({ t: 'click' });
-    else if (g.p0) { scrSend({ t: 'abs', ...g.p0 }); scrSend({ t: 'click' }); }
+    else if (g.p0) {
+      // 2º toque rápido perto do 1º: mesmo ponto no PC, senão o Windows não reconhece o clique duplo
+      const now = Date.now(), last = scr.lastTap;
+      const p = last && now - last.at < 450 && Math.hypot(g.x0 - last.x, g.y0 - last.y) < 30 ? last.p : g.p0;
+      scr.lastTap = { at: now, x: g.x0, y: g.y0, p };
+      scrSend({ t: 'abs', ...p }); scrSend({ t: 'click' });
+    }
   }
   gesture = null;
 }, { passive: false });
@@ -749,13 +781,64 @@ $('#scrMode').onclick = () => {
   scr.mode = scr.mode === 'touch' ? 'pad' : 'touch';
   $('#scrMode').textContent = scr.mode === 'touch' ? 'Toque' : 'Trackpad';
   $('#scrMode').classList.toggle('on', scr.mode === 'pad');
+  $('#scrSpeed').classList.toggle('hidden', scr.mode !== 'pad');
 };
 
-// Ctrl "grudento": vale pra próxima tecla (Ctrl+C, Ctrl+V…) e solta.
-$('#scrCtrl').onclick = () => { scr.ctrl = !scr.ctrl; $('#scrCtrl').classList.toggle('on', scr.ctrl); };
+// Velocidade do trackpad (fica salva no aparelho).
+const SPEEDS = [1, 1.5, 2, 3, 4];
+const speedLabel = () => `Vel ${String(scr.speed).replace('.', ',')}×`;
+$('#scrSpeed').textContent = speedLabel();
+$('#scrSpeed').onclick = () => {
+  scr.speed = SPEEDS[(SPEEDS.indexOf(scr.speed) + 1) % SPEEDS.length] || 2;
+  try { localStorage.setItem('scrSpeed', scr.speed); } catch {}
+  $('#scrSpeed').textContent = speedLabel();
+};
+
+// Teclas soltas ↔ atalhos prontos.
+$('#scrGroup').onclick = () => {
+  const combos = $('#scrCombos').classList.toggle('hidden') === false;
+  $('#scrKeys').classList.toggle('hidden', combos);
+  $('#scrGroup').classList.toggle('on', combos);
+};
+document.querySelectorAll('[data-combo]').forEach(b => b.onclick = () => {
+  const parts = b.dataset.combo.split('+');
+  scrSend({ t: 'key', k: parts.pop(), mods: parts });
+});
+
+// Trocar de janela: lista as janelas do PC; tocar traz pra frente.
+async function scrWindows() {
+  const list = $('#scrWinsList');
+  list.replaceChildren();
+  $('#scrWins').classList.remove('hidden');
+  try {
+    const wins = await api('/remote/windows');
+    if (!wins.length) { list.textContent = 'Nenhuma janela aberta.'; return; }
+    list.replaceChildren(...wins.map(w => {
+      const b = document.createElement('button');
+      b.textContent = w.title;
+      if (w.app) { const s = document.createElement('small'); s.textContent = w.app; b.append(s); }
+      b.onclick = async () => {
+        $('#scrWins').classList.add('hidden');
+        try { await api('/remote/focus', { method: 'POST', json: { id: w.id } }); }
+        catch (e) { scrSay(/404/.test(e.message) ? 'Essa janela já foi fechada.' : e.message); }
+      };
+      return b;
+    }));
+  } catch (e) { list.textContent = e.message; }
+}
+$('#scrWinsBtn').onclick = scrWindows;
+$('#scrWinsClose').onclick = () => $('#scrWins').classList.add('hidden');
+
+// Ctrl/Shift/Alt "grudentos": valem pra próxima tecla (Ctrl+C, Shift+Tab…) e soltam.
+document.querySelectorAll('[data-mod]').forEach(b => b.onclick = () => {
+  const m = b.dataset.mod;
+  scr.mods.has(m) ? scr.mods.delete(m) : scr.mods.add(m);
+  b.classList.toggle('on', scr.mods.has(m));
+});
 function scrKey(k) {
-  scrSend({ t: 'key', k, mods: scr.ctrl ? ['ctrl'] : [] });
-  if (scr.ctrl) { scr.ctrl = false; $('#scrCtrl').classList.remove('on'); }
+  scrSend({ t: 'key', k, mods: [...scr.mods] });
+  scr.mods.clear();
+  document.querySelectorAll('[data-mod]').forEach(b => b.classList.remove('on'));
 }
 document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => scrKey(b.dataset.key));
 
@@ -766,7 +849,7 @@ $('#scrInput').addEventListener('beforeinput', e => {
   if (e.inputType === 'insertLineBreak') scrKey('enter');
   else if (e.inputType === 'deleteContentBackward') scrKey('backspace');
   else if (e.data) {
-    if (scr.ctrl && /^[a-z0-9]$/i.test(e.data)) scrKey(e.data.toLowerCase());
+    if (scr.mods.size && /^[a-z0-9]$/i.test(e.data)) scrKey(e.data.toLowerCase());
     else scrSend({ t: 'text', s: e.data });
   }
 });

@@ -236,6 +236,11 @@
         </div>
         <img id="scrImg" alt="">
         <div class="scr-touch" id="scrTouch"></div>
+        <!-- Janelas abertas no PC: tocar traz pra frente -->
+        <div class="scr-wins hidden" id="scrWins">
+          <div class="scr-wins-head"><b>Janelas no PC</b><button id="scrWinsClose">Fechar</button></div>
+          <div id="scrWinsList"></div>
+        </div>
         <div class="scr-float">
           <button id="scrZoomReset" class="hidden">1×</button>
           <button id="scrFs" aria-label="Tela cheia">
@@ -246,17 +251,34 @@
       <!-- Teclas e modo: só aparecem com o controle conectado -->
       <div class="scr-bar hidden" id="scrBar">
         <button id="scrMode">Toque</button>
+        <button id="scrSpeed" class="hidden">Vel 2×</button>
         <button id="scrKbd">Teclado</button>
-        <button id="scrCtrl">Ctrl</button>
-        <button data-key="esc">Esc</button>
-        <button data-key="tab">Tab</button>
-        <button data-key="win">Win</button>
-        <button data-key="enter">⏎</button>
-        <button data-key="backspace">⌫</button>
-        <button data-key="left">←</button>
-        <button data-key="up">↑</button>
-        <button data-key="down">↓</button>
-        <button data-key="right">→</button>
+        <button id="scrWinsBtn">Janelas</button>
+        <button id="scrGroup">Atalhos</button>
+        <span class="scr-group" id="scrKeys">
+          <button data-mod="ctrl">Ctrl</button>
+          <button data-mod="shift">Shift</button>
+          <button data-mod="alt">Alt</button>
+          <button data-key="esc">Esc</button>
+          <button data-key="tab">Tab</button>
+          <button data-key="win">Win</button>
+          <button data-key="enter">⏎</button>
+          <button data-key="backspace">⌫</button>
+          <button data-key="left">←</button>
+          <button data-key="up">↑</button>
+          <button data-key="down">↓</button>
+          <button data-key="right">→</button>
+        </span>
+        <span class="scr-group hidden" id="scrCombos">
+          <button data-combo="ctrl+c">Copiar</button>
+          <button data-combo="ctrl+v">Colar</button>
+          <button data-combo="ctrl+z">Desfazer</button>
+          <button data-combo="ctrl+a">Tudo</button>
+          <button data-combo="alt+tab">Alt+Tab</button>
+          <button data-combo="win+d">Área de trabalho</button>
+          <button data-combo="ctrl+w">Fechar aba</button>
+          <button data-combo="alt+f4">Fechar janela</button>
+        </span>
       </div>
       <input id="scrInput" class="scr-input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Teclado do PC">
       <button class="primary hidden" id="scrResume">Retomar</button>

@@ -314,6 +314,8 @@ public sealed partial class IslandViewModel : ObservableObject
             Screens = ScreenCapture.Screens,
             CaptureScreen = ScreenCapture.Capture,
             RemoteInput = Orbit.Services.RemoteInput.Execute,
+            Windows = OpenWindows.List,
+            FocusWindow = OpenWindows.Focus,
             MicDevices = MicCapture.Devices,
             OpenMic = MicCapture.Open,
             RemoteChanged = state => ui.BeginInvoke(() =>

@@ -23,6 +23,7 @@ public sealed record RemoteState(bool Viewing, bool Controlling, bool Listening,
 // Quem segura uma vaga: Hash identifica o aparelho, Name é o que aparece pra pessoa.
 public sealed record SessionOwner(string Hash, string Name);
 public sealed record RemoteTicketRequest(string? Screen);
+public sealed record FocusRequest(long Id);
 
 // Tíquete de uso único (30 s pra conectar) com um valor junto. Vários em aberto (vídeo + controle).
 public sealed class OneShotTickets<T>
@@ -281,6 +282,10 @@ public static class RemoteScreen
 
         // Teclado remoto (ditado): mesmo canal da tela, mas só texto e teclas — mouse é descartado.
         var keyboard = new OneShotTickets<bool>();
+
+        // Trocar de janela pelo aparelho (exige Tela + Controle, como o resto de /remote).
+        api.MapGet("/remote/windows", () => Results.Ok(h.Windows().Select(w => new { id = w.Id, title = w.Title, app = w.App })));
+        api.MapPost("/remote/focus", (FocusRequest req) => h.FocusWindow(req.Id) ? Results.NoContent() : Results.NotFound());
         api.MapPost("/keyboard/ticket", (HttpContext ctx) => Results.Ok(new { ticket = keyboard.Issue(BridgeServer.DeviceOf(ctx).Hash, true, DateTime.Now) }));
         api.MapGet("/keyboard/input", async (HttpContext ctx, string? ticket) =>
         {

@@ -10,8 +10,9 @@ namespace Orbit.Services;
 public enum RemoteKind { Abs, Move, Down, Up, Click, Scroll, Text, Key }
 
 // Um comando já validado. X/Y: Abs = 0..1 no monitor; Move = delta em px; Scroll = delta da roda.
+// Middle: só no Click (toque com três dedos no aparelho).
 public sealed record RemoteCommand(RemoteKind Kind, double X = 0, double Y = 0, bool Right = false, int Count = 1,
-    string Text = "", ushort Vk = 0, ushort[]? Mods = null);
+    string Text = "", ushort Vk = 0, ushort[]? Mods = null, bool Middle = false);
 
 // Botões que o aparelho apertou e ainda não soltou: ao fim da sessão (rede caiu no meio de um arraste,
 // revogação) são soltos, senão o PC fica "segurando" o clique.
@@ -80,7 +81,8 @@ public static class RemoteInput
                 "down" => new RemoteCommand(RemoteKind.Down, Right: RightButton()),
                 "up" => new RemoteCommand(RemoteKind.Up, Right: RightButton()),
                 "click" => new RemoteCommand(RemoteKind.Click, Right: RightButton(),
-                    Count: r.TryGetProperty("n", out var n) && n.TryGetInt32(out var c) && c == 2 ? 2 : 1),
+                    Count: r.TryGetProperty("n", out var n) && n.TryGetInt32(out var c) && c == 2 ? 2 : 1,
+                    Middle: r.TryGetProperty("b", out var mb) && mb.GetString() == "middle"),
                 "scroll" => new RemoteCommand(RemoteKind.Scroll, r.TryGetProperty("dx", out _) ? Num("dx", -MaxDelta, MaxDelta) : 0,
                     Num("dy", -MaxDelta, MaxDelta)),
                 "text" => r.GetProperty("s").GetString() is { Length: > 0 and <= MaxText } s ? new RemoteCommand(RemoteKind.Text, Text: s) : null,
@@ -130,7 +132,8 @@ public static class RemoteInput
                 Send(Mouse(cmd.Right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP));
                 break;
             case RemoteKind.Click:
-                var (down, up) = cmd.Right ? (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP) : (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
+                var (down, up) = cmd.Middle ? (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP)
+                    : cmd.Right ? (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP) : (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
                 Send(Enumerable.Range(0, cmd.Count).SelectMany(_ => new[] { Mouse(down), Mouse(up) }).ToArray());
                 break;
             case RemoteKind.Scroll:
@@ -153,7 +156,8 @@ public static class RemoteInput
 
     private const uint INPUT_MOUSE = 0, INPUT_KEYBOARD = 1;
     private const uint MOUSEEVENTF_MOVE = 0x1, MOUSEEVENTF_LEFTDOWN = 0x2, MOUSEEVENTF_LEFTUP = 0x4,
-        MOUSEEVENTF_RIGHTDOWN = 0x8, MOUSEEVENTF_RIGHTUP = 0x10, MOUSEEVENTF_WHEEL = 0x800, MOUSEEVENTF_HWHEEL = 0x1000;
+        MOUSEEVENTF_RIGHTDOWN = 0x8, MOUSEEVENTF_RIGHTUP = 0x10, MOUSEEVENTF_MIDDLEDOWN = 0x20, MOUSEEVENTF_MIDDLEUP = 0x40,
+        MOUSEEVENTF_WHEEL = 0x800, MOUSEEVENTF_HWHEEL = 0x1000;
     private const uint KEYEVENTF_KEYUP = 0x2, KEYEVENTF_UNICODE = 0x4, KEYEVENTF_EXTENDEDKEY = 0x1;
 
     private static INPUT Mouse(uint flags, int dx = 0, int dy = 0, int data = 0) =>

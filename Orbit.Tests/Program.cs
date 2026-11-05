@@ -153,6 +153,7 @@ public static class Program
         Check("remoto: move", RemoteInput.Parse("{\"t\":\"move\",\"dx\":-12,\"dy\":3.5}") is { Kind: RemoteKind.Move, X: -12, Y: 3.5 });
         Check("remoto: move gigante recusado", RemoteInput.Parse("{\"t\":\"move\",\"dx\":99999,\"dy\":0}") is null);
         Check("remoto: clique direito duplo", RemoteInput.Parse("{\"t\":\"click\",\"b\":\"right\",\"n\":2}") is { Kind: RemoteKind.Click, Right: true, Count: 2 });
+        Check("remoto: clique do meio", RemoteInput.Parse("{\"t\":\"click\",\"b\":\"middle\"}") is { Kind: RemoteKind.Click, Middle: true, Right: false });
         Check("remoto: clique padrão = esquerdo simples", RemoteInput.Parse("{\"t\":\"click\"}") is { Right: false, Count: 1 });
         Check("remoto: rolar", RemoteInput.Parse("{\"t\":\"scroll\",\"dy\":-120}") is { Kind: RemoteKind.Scroll, X: 0, Y: -120 });
         Check("remoto: texto", RemoteInput.Parse("{\"t\":\"text\",\"s\":\"olá ✓\"}") is { Kind: RemoteKind.Text, Text: "olá ✓" });
@@ -257,6 +258,8 @@ public static class Program
             CaptureScreen = (_, _) => jpeg,
             RemoteInput = (c, _) => received.Enqueue(c),
             RemoteChanged = st => states.Enqueue(st),
+            Windows = () => new[] { new Orbit.Services.OpenWindow(42, "Relatório.docx - Word", "Microsoft Word") },
+            FocusWindow = id => id == 42,
         };
         var server = new BridgeServer();
         server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
@@ -287,7 +290,11 @@ public static class Program
         }
         Check("tela: tíquete do stream é de uso único", anon.GetAsync($"/api/screen/stream?ticket={vt}").Result.StatusCode == HttpStatusCode.Unauthorized);
 
+        Check("janelas: sem Controle = 403", http.GetAsync("/api/remote/windows").Result.StatusCode == HttpStatusCode.Forbidden);
         tokens.SetPermissions(devHash, Only(Capability.Screen, Capability.Control));
+        Check("janelas: lista com título e app", http.GetStringAsync("/api/remote/windows").Result.Contains("Microsoft Word"));
+        Check("janelas: focar existente / inexistente", http.PostAsJsonAsync("/api/remote/focus", new { id = 42 }).Result.StatusCode == HttpStatusCode.NoContent
+            && http.PostAsJsonAsync("/api/remote/focus", new { id = 7 }).Result.StatusCode == HttpStatusCode.NotFound);
         var it = http.PostAsJsonAsync("/api/remote/ticket", new { screen = "DISPLAY1" }).Result
             .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
         using (var ws = new System.Net.WebSockets.ClientWebSocket())
