@@ -229,8 +229,16 @@ public static class RemoteScreen
                 byte[]? last = null;
                 var sent = Stopwatch.StartNew();
                 Stopwatch? failing = null; // desde a 1ª captura falha seguida
+                var recheck = Stopwatch.StartNew();
                 while (!ct.IsCancellationRequested)
                 {
+                    // Monitor desconectado ou rearranjado no meio: os mesmos Bounds passariam a pegar OUTRO
+                    // monitor (o Windows reposiciona). Confere a cada segundo e encerra se mudou.
+                    if (recheck.Elapsed >= TimeSpan.FromSeconds(1))
+                    {
+                        recheck.Restart();
+                        if (!h.Screens().Any(s => s.Id == screen.Id && s.Bounds == screen.Bounds)) break;
+                    }
                     var t0 = Stopwatch.GetTimestamp();
                     var jpeg = await Task.Run(() => h.CaptureScreen(screen.Bounds, req.Quality), ct);
                     if (jpeg is null) failing ??= Stopwatch.StartNew(); else failing = null;

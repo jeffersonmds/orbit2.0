@@ -46,6 +46,8 @@ public sealed partial class EnergiaViewModel : TabViewModel
     private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromSeconds(30) }; // só com a aba aberta
     private DateTime? _shutdownAt; // ponytail: só em memória; reiniciar o Orbit esquece (o Windows não)
     private string? _scheduleError; // a última ação falhou no Windows: aparece no lugar do texto até a próxima
+    // Agendar faz /a + /s: um Cancelar no meio podia cair entre os dois. Uma operação por vez.
+    private bool _powerBusy;
 
     [ObservableProperty] private string _batteryText = "—";
     [ObservableProperty] private string _batteryDetail = "";
@@ -80,10 +82,12 @@ public sealed partial class EnergiaViewModel : TabViewModel
     [RelayCommand]
     private async System.Threading.Tasks.Task Schedule(string minutes)
     {
-        if (!int.TryParse(minutes, out var m) || m <= 0) return;
+        if (!int.TryParse(minutes, out var m) || m <= 0 || _powerBusy) return;
+        _powerBusy = true;
         bool ok;
         try { ok = await System.Threading.Tasks.Task.Run(() => Power.Schedule(TimeSpan.FromMinutes(m))); }
         catch (Exception ex) { Log.Error(ex, "Falha ao agendar desligamento"); ok = false; }
+        finally { _powerBusy = false; }
         if (ok)
         {
             _shutdownAt = DateTime.Now.AddMinutes(m);
@@ -101,9 +105,12 @@ public sealed partial class EnergiaViewModel : TabViewModel
     [RelayCommand]
     private async System.Threading.Tasks.Task CancelSchedule()
     {
+        if (_powerBusy) return;
+        _powerBusy = true;
         Power.CancelResult r;
         try { r = await System.Threading.Tasks.Task.Run(Power.CancelScheduled); }
         catch (Exception ex) { Log.Error(ex, "Falha ao cancelar desligamento"); r = Power.CancelResult.Failed; }
+        finally { _powerBusy = false; }
         if (r == Power.CancelResult.Failed)
             _scheduleError = "Não consegui cancelar — o desligamento pode continuar agendado";
         else

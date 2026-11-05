@@ -26,7 +26,17 @@ public sealed partial class NotasViewModel : TabViewModel
     }
 
     // ponytail: grava a cada tecla (arquivo pequeno, nada se perde num crash); debounce se o texto ficar enorme.
-    partial void OnTextChanged(string value)
+    partial void OnTextChanged(string value) => Save(value);
+
+    // A ponte grava sempre, mesmo com o texto igual: depois de uma falha (disco cheio), reenviar
+    // o mesmo texto tem que tentar de novo (o setter ignora valor igual).
+    public void Write(string value)
+    {
+        if (Text == value) Save(value);
+        else Text = value;
+    }
+
+    private void Save(string value)
     {
         try
         {

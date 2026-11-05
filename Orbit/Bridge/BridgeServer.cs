@@ -264,20 +264,21 @@ public sealed class BridgeServer : IAsyncDisposable
                 // conexão caiu) apaga o parcial e para, em vez de deixar arquivos pela metade com outro nome.
                 FileStream? target = null;
                 string name = wanted;
-                for (int attempt = 0; target is null; attempt++)
-                {
-                    name = BridgeRules.UniqueName(dir, wanted, File.Exists);
-                    try { target = new FileStream(Path.Combine(dir, name), FileMode.CreateNew); } // nunca sobrescreve
-                    catch (IOException) when (attempt < 5 && File.Exists(Path.Combine(dir, name))) { }
-                }
                 try
                 {
+                    for (int attempt = 0; target is null; attempt++)
+                    {
+                        name = BridgeRules.UniqueName(dir, wanted, File.Exists);
+                        try { target = new FileStream(Path.Combine(dir, name), FileMode.CreateNew); } // nunca sobrescreve
+                        catch (IOException) when (attempt < 5 && File.Exists(Path.Combine(dir, name))) { }
+                    }
                     await using (target) await file.CopyToAsync(target);
                     saved.Add(name);
                 }
                 catch (Exception ex)
                 {
-                    try { File.Delete(Path.Combine(dir, name)); } catch { }
+                    // só apaga o que ESTE envio criou (falha ao criar não deixou arquivo nosso)
+                    if (target is not null) try { File.Delete(Path.Combine(dir, name)); } catch { }
                     Log.Warning(ex, "Ponte: upload de {Arquivo} falhou no meio", name);
                     if (saved.Count > 0)
                         h.Notify(new BridgeEvent($"{saved.Count} de {form.Files.Count} arquivos recebidos", string.Join(", ", saved),

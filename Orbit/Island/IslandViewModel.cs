@@ -244,7 +244,7 @@ public sealed partial class IslandViewModel : ObservableObject
             // Gravou só na memória: a ponte responde erro em vez de "salvas no PC".
             SetNotes = text => ui.InvokeAsync(() =>
             {
-                Notas.Text = text;
+                Notas.Write(text);
                 if (Notas.SaveError is { } err) throw new IOException(err);
             }).Task,
             Power = action =>

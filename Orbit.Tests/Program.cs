@@ -1931,8 +1931,8 @@ public static class Program
         Check("notas: falha ao gravar vira aviso", vm.SaveError is not null);
         File.Delete(blocker);
         Directory.CreateDirectory(blocker);
-        vm.Text = "algo de novo";
-        Check("notas: gravou de novo, aviso some", vm.SaveError is null);
+        vm.Write("algo"); // mesmo texto: a ponte reenvia depois de liberar o disco
+        Check("notas: reenviar o mesmo texto tenta gravar de novo", vm.SaveError is null && File.ReadAllText(Path.Combine(blocker, "notas.txt")) == "algo");
         Directory.Delete(blocker, recursive: true);
     }
 

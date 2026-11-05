@@ -223,15 +223,16 @@ async function refreshMedia() {
 // com edição não salva, só o "Recarregar" explícito sobrescreve.
 // notesRev sobe a cada tecla: resposta que chega depois de você digitar não apaga nem marca como salvo.
 let notesDirty = false, notesRev = 0;
-async function loadNotes(force = false) {
+// Recarregar descarta o que havia até o clique; o que for digitado durante a requisição vence.
+async function loadNotes() {
   const rev = notesRev;
   const { text } = await api('/notes');
-  if (rev !== notesRev && !force) return; // digitou enquanto carregava: o que está no campo vence
+  if (rev !== notesRev) return; // digitou enquanto carregava: o que está no campo vence
   $('#notes').value = text;
   notesDirty = false;
 }
 $('#notes').oninput = () => { notesDirty = true; notesRev++; };
-$('#loadNotes').onclick = () => run(() => loadNotes(true), 'Notas do PC');
+$('#loadNotes').onclick = () => run(loadNotes, 'Notas do PC');
 $('#saveNotes').onclick = () => run(async () => {
   const rev = notesRev;
   try { await api('/notes', { method: 'PUT', json: { text: $('#notes').value } }); }
