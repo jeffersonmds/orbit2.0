@@ -908,27 +908,29 @@ async function inLoad() {
 // Compor e mandar: o ditado do iOS corrige palavras enquanto você fala, então nada vai letra a letra.
 // "Digitar" manda o texto como teclas; "Colar" põe no clipboard do PC e dá Ctrl+V (texto longo,
 // editores de código com autocompletar). O WebSocket só fica aberto com a página aberta.
-const kb = { ws: null, connecting: null, ctrl: false };
+const kb = { ws: null, connecting: null, ctrl: false, gen: 0 };
 const kbSay = msg => { $('#kbMsg').textContent = msg || ''; $('#kbMsg').classList.toggle('hidden', !msg); };
 
 function kbConnect() {
   if (kb.ws && kb.ws.readyState === 1) return Promise.resolve(kb.ws);
   if (kb.connecting) return kb.connecting;
+  const gen = kb.gen;
+  const gone = () => gen !== kb.gen || page !== 'teclado' || document.hidden;
   kb.connecting = (async () => {
     const { ticket } = await api('/keyboard/ticket', { method: 'POST' });
-    if (page !== 'teclado' || document.hidden) throw new Error('Saiu do teclado');
+    if (gone()) throw new Error('Saiu do teclado');
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/keyboard/input?ticket=${encodeURIComponent(ticket)}`);
     await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = () => fail(new Error('Não conectou ao PC')); });
-    if (page !== 'teclado' || document.hidden) { ws.close(); throw new Error('Saiu do teclado'); }
+    if (gone()) { ws.close(); throw new Error('Saiu do teclado'); }
     ws.onclose = e => { if (kb.ws === ws) kb.ws = null; if (e.code === TAKEN) kbSay(`O ${e.reason} assumiu o teclado`); };
     kb.ws = ws;
     return ws;
-  })().finally(() => { kb.connecting = null; });
+  })().finally(() => { if (gen === kb.gen) kb.connecting = null; });
   return kb.connecting;
 }
 
-function kbClose() { if (kb.ws) { kb.ws.close(); kb.ws = null; } }
+function kbClose() { kb.gen++; kb.connecting = null; if (kb.ws) { kb.ws.close(); kb.ws = null; } }
 
 async function kbSend(o) {
   try { (await kbConnect()).send(JSON.stringify(o)); }
@@ -960,8 +962,10 @@ async function kbTypeText(text) {
     for (const s of kbChunks(line)) msgs.push({ t: 'text', s });
     if (l < lines.length - 1) msgs.push({ t: 'key', k: 'enter' });
   });
+  const gen = kb.gen;
   for (let i = 0; i < msgs.length; i++) {
     if (i > 0 && i % 50 === 0) await new Promise(r => setTimeout(r, 400));
+    if (gen !== kb.gen) return false; // saiu do teclado no meio: o resto não vai (e o texto fica no campo)
     if (!(await kbSend(msgs[i]))) return false;
   }
   return true;
@@ -1006,8 +1010,10 @@ function route() {
   $('#back').classList.toggle('hidden', !page);
   document.body.classList.toggle('home', !page);
   window.scrollTo(0, 0);
-  if (page !== 'camera' && camStreaming) camStop(); // saiu da câmera: solta e apaga o LED
-  if (page !== 'tela' && scr.live) scrStop();         // saiu da tela: encerra vídeo e controle
+  // Saiu da página: encerra o que está ligado e invalida o que ainda está abrindo (voltar rápido
+  // não pode aceitar a resposta atrasada da abertura antiga).
+  if (page !== 'camera') { if (camStreaming) camStop(); else camGen++; if (!mic.ws) mic.gen++; }
+  if (page !== 'tela') { if (scr.live) scrStop(); else scr.gen++; }
   if (page === 'tela' && !scr.loaded) scrLoad();
   if (page === 'camera' && !mic.ws) micLoad();
   if (page === 'recebidos') inLoad();

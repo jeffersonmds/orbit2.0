@@ -86,8 +86,11 @@ public sealed partial class MercadoViewModel : TabViewModel
         _sparks.Start();
     }
 
+    private int _rowsGen; // busca da seleção antiga não marca a nova como fresca
+
     private void BuildRows()
     {
+        _rowsGen++;
         Rows.Clear();
         foreach (var item in _settings.MarketCryptos.Select(MarketCatalog.FindCrypto).OfType<MarketCatalogItem>())
             Rows.Add(new MarketRow(item.Id, item.Glyph, item.ColorHex, item.Name, MarketKind.Crypto));
@@ -103,6 +106,7 @@ public sealed partial class MercadoViewModel : TabViewModel
 
     private async Task FetchPricesAsync()
     {
+        var gen = _rowsGen;
         var cryptoRows = Rows.Where(r => r.Kind == MarketKind.Crypto).ToList();
         var currencyRows = Rows.Where(r => r.Kind == MarketKind.Currency).ToList();
         var crypto = await _api.GetCryptoPricesAsync(cryptoRows.Select(r => r.Id));
@@ -121,6 +125,7 @@ public sealed partial class MercadoViewModel : TabViewModel
                     row.Price = "R$ " + p.Price.ToString("0.00", CultureInfo.InvariantCulture);
                     (row.Change, row.ChangeColor) = ChangeIndicator.Format(p.Change, 2);
                 }
+        if (gen != _rowsGen) return;
         bool ok = crypto is not null && fx is not null;
         if (ok) _pricesAt = DateTime.Now;
         Updated = Freshness.Ago(_pricesAt, DateTime.Now, failed: !ok);
@@ -129,6 +134,7 @@ public sealed partial class MercadoViewModel : TabViewModel
     // ponytail: 1 chamada por cripto; limitar ao top-N se bater no rate limit.
     private async Task FetchSparksAsync()
     {
+        var gen = _rowsGen;
         bool any = false;
         foreach (var row in Rows.Where(r => r.Kind == MarketKind.Crypto).ToList())
         {
@@ -137,7 +143,7 @@ public sealed partial class MercadoViewModel : TabViewModel
             row.SetSparkline(s);
             any = true;
         }
-        if (any) _sparksAt = DateTime.Now;
+        if (any && gen == _rowsGen) _sparksAt = DateTime.Now;
     }
 
     [RelayCommand]
@@ -159,6 +165,7 @@ public sealed partial class MercadoViewModel : TabViewModel
         SettingsStore.Save(_settings);
         BuildRows();
         _pricesAt = _sparksAt = null;
+        _pricesTask = _sparksTask = null; // a busca em voo é da seleção antiga: começa outra
         _ = RefreshPricesAsync();
         _ = RefreshSparksAsync();
         IsEditing = false;

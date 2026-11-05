@@ -1314,6 +1314,13 @@ public static class Program
         Check("clips: apagar tudo pede segundo toque", reloaded.Visible.Count == 1 && reloaded.ConfirmClearAll);
         reloaded.ClearAllCommand.Execute(null);
         Check("clips: apagar tudo leva os fixados", reloaded.Visible.Count == 0 && !reloaded.ConfirmClearAll);
+        var px = System.Windows.Media.Imaging.BitmapSource.Create(2, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, new byte[16], 8);
+        px.Freeze();
+        var pending = reloaded.IngestAsync(new ClipSnapshot(null, px, false)); // para no Task.Run da codificação
+        reloaded.TogglePauseCommand.Execute(null);
+        pending.GetAwaiter().GetResult();
+        Check("clips: imagem em codificação ao pausar não entra", reloaded.Visible.Count == 0
+            && !Directory.EnumerateFiles(Path.Combine(dir, "img")).Any());
         Directory.Delete(dir, recursive: true);
     }
 

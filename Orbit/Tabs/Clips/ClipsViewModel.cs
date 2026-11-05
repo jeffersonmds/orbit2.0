@@ -97,6 +97,7 @@ public sealed partial class ClipsViewModel : TabViewModel
     {
         if (!_enabled() || Paused || snap.IsPrivate) return;
         var at = DateTime.Now; // antes de qualquer await
+        var gen = _ingestGen; // pausar/apagar tudo durante a codificação da imagem invalida esta captura
         ClipItem item;
         if (snap.Text is { } text)
         {
@@ -111,10 +112,17 @@ public sealed partial class ClipsViewModel : TabViewModel
                 var (png, hash) = await Task.Run(() => EncodePng(img));
                 var file = hash + ".png";
                 var path = Path.Combine(_imagesDir, file);
+                bool wrote = false;
                 if (!File.Exists(path))
                 {
                     Directory.CreateDirectory(_imagesDir);
                     await File.WriteAllBytesAsync(path, png);
+                    wrote = true;
+                }
+                if (gen != _ingestGen || Paused)
+                {
+                    if (wrote) try { File.Delete(path); } catch { }
+                    return;
                 }
                 item = new ClipItem(ClipKind.Image, null, file, "i:" + hash, at, false, img.PixelWidth, img.PixelHeight);
             }
@@ -192,13 +200,20 @@ public sealed partial class ClipsViewModel : TabViewModel
     }
 
     [RelayCommand]
-    private void TogglePause() => Paused = !Paused;
+    private void TogglePause()
+    {
+        Paused = !Paused;
+        _ingestGen++;
+    }
+
+    private int _ingestGen;
 
     [RelayCommand]
     private void ClearAll()
     {
         if (!ConfirmClearAll) { ConfirmClearAll = true; return; }
         ConfirmClearAll = false;
+        _ingestGen++;
         foreach (var item in _items.ToList())
         {
             _items.Remove(item);

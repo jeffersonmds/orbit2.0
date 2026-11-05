@@ -305,25 +305,28 @@ public sealed class BridgeServer : IAsyncDisposable
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;
                 }
+                // Vaga antes de abrir: Encerrar/revogar durante a inicialização também alcança este stream
+                // (o laço abaixo sai na hora e o finally fecha a câmera).
+                var slot = sessions.BeginCamera(ctx.RequestAborted, RemoteScreen.Who(tokens, claim.Owner));
                 System.Threading.CancellationTokenSource session;
                 System.Threading.CancellationToken sessionToken;
                 try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset, claim.Owner); }
                 catch (Exception ex)
                 {
+                    sessions.End(slot);
                     Log.Warning(ex, "Câmera: não abriu");
                     ctx.Response.StatusCode = StatusCodes.Status409Conflict; // ocupada por outro app, etc.
                     return;
                 }
                 // Encerra por: conexão caiu (RequestAborted), parar explícito ou troca (sessionToken),
                 // revogação ou Encerrar (slot).
-                var slot = sessions.BeginCamera(ctx.RequestAborted, RemoteScreen.Who(tokens, claim.Owner));
                 using var link = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(slot.Token, sessionToken);
                 try
                 {
                     ctx.Response.ContentType = Mjpeg.ContentType;
                     ctx.Response.Headers.CacheControl = "no-cache, no-store";
                     var body = ctx.Response.BodyWriter;
-                    // Desligar ou revogar o aparelho corta a câmera (ela não ocupa vaga em RemoteSessions).
+                    // Desligar a permissão no meio corta a câmera no próximo quadro (revogar já cancela a vaga).
                     while (!link.Token.IsCancellationRequested && tokens.Allows(claim.Owner, Capability.Camera))
                     {
                         var jpeg = await camera.NextFrameAsync(link.Token);
