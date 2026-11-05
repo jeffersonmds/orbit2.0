@@ -18,7 +18,8 @@ namespace Orbit.Bridge;
 public sealed record ScreenOpenRequest(string? Screen, string? Quality);
 // O que o aparelho está fazendo agora — vira o indicador de privacidade na pílula.
 public sealed record RemoteState(bool Viewing, bool Controlling, bool Listening,
-    string? Viewer = null, string? Controller = null, string? Listener = null);
+    string? Viewer = null, string? Controller = null, string? Listener = null,
+    string? Camera = null); // aparelho vendo a câmera do PC (null = ninguém)
 // Quem segura uma vaga: Hash identifica o aparelho, Name é o que aparece pra pessoa.
 public sealed record SessionOwner(string Hash, string Name);
 public sealed record RemoteTicketRequest(string? Screen);
@@ -65,7 +66,7 @@ public sealed class RemoteSessions
 {
     private readonly object _gate = new();
     private readonly Action<RemoteState> _changed;
-    private CancellationTokenSource? _video, _input, _audio;
+    private CancellationTokenSource? _video, _input, _audio, _camera;
     private readonly Dictionary<CancellationTokenSource, SessionOwner> _owners = new();
     private readonly Dictionary<CancellationTokenSource, string> _displaced = new();
 
@@ -74,6 +75,9 @@ public sealed class RemoteSessions
     public CancellationTokenSource BeginVideo(CancellationToken aborted, SessionOwner owner) => Begin(ref _video, aborted, owner);
     public CancellationTokenSource BeginInput(CancellationToken aborted, SessionOwner owner) => Begin(ref _input, aborted, owner);
     public CancellationTokenSource BeginAudio(CancellationToken aborted, SessionOwner owner) => Begin(ref _audio, aborted, owner);
+    // Câmera: a vaga serve pro indicador e pra revogação/Encerrar alcançarem o stream (que pode estar
+    // parado esperando um quadro que nunca vem).
+    public CancellationTokenSource BeginCamera(CancellationToken aborted, SessionOwner owner) => Begin(ref _camera, aborted, owner);
 
     private CancellationTokenSource Begin(ref CancellationTokenSource? slot, CancellationToken aborted, SessionOwner owner)
     {
@@ -113,6 +117,7 @@ public sealed class RemoteSessions
             if (_video == s) _video = null;
             if (_input == s) _input = null;
             if (_audio == s) _audio = null;
+            if (_camera == s) _camera = null;
             _owners.Remove(s);
             _displaced.Remove(s);
         }
@@ -139,6 +144,7 @@ public sealed class RemoteSessions
             _video?.Cancel();
             _input?.Cancel();
             _audio?.Cancel();
+            _camera?.Cancel();
         }
     }
 
@@ -146,7 +152,7 @@ public sealed class RemoteSessions
     public void StopDevice(string hash)
     {
         lock (_gate)
-            foreach (var s in new[] { _video, _input, _audio })
+            foreach (var s in new[] { _video, _input, _audio, _camera })
                 if (s is not null && Owner(s)?.Hash == hash) s.Cancel();
     }
 
@@ -154,7 +160,8 @@ public sealed class RemoteSessions
     {
         RemoteState state;
         lock (_gate) state = new(_video is not null, _input is not null, _audio is not null,
-            Owner(_video)?.Name, Owner(_input)?.Name, Owner(_audio)?.Name);
+            Owner(_video)?.Name, Owner(_input)?.Name, Owner(_audio)?.Name,
+            _camera is null ? null : Owner(_camera)?.Name ?? "Aparelho");
         try { _changed(state); } catch (Exception ex) { Log.Warning(ex, "Tela remota: falha ao avisar a ilha"); }
     }
 }

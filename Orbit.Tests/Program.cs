@@ -193,6 +193,21 @@ public static class Program
         Check("pílula: mesmo aparelho", IslandViewModel.RemoteActivity(new RemoteState(true, false, true, "iPad", null, "iPad")) == "iPad vendo a tela · microfone");
         Check("pílula: aparelhos diferentes", IslandViewModel.RemoteActivity(new RemoteState(true, false, true, "iPad", null, "iPhone")) == "iPad vendo a tela · Microfone no iPhone");
         Check("pílula: só microfone", IslandViewModel.RemoteActivity(new RemoteState(false, false, true, null, null, "iPad")) == "Microfone no iPad");
+        Check("pílula: só câmera", IslandViewModel.RemoteActivity(new RemoteState(false, false, false, Camera: "iPhone")) == "iPhone vendo a câmera");
+        Check("pílula: tela e câmera no mesmo aparelho", IslandViewModel.RemoteActivity(new RemoteState(true, false, false, "iPad", Camera: "iPad")) == "iPad vendo a tela · câmera");
+        Check("pílula: câmera noutro aparelho", IslandViewModel.RemoteActivity(new RemoteState(true, false, false, "iPad", Camera: "iPhone")) == "iPad vendo a tela · Câmera no iPhone");
+        {
+            var camStates = new List<RemoteState>();
+            var rs = new Orbit.Bridge.RemoteSessions(camStates.Add);
+            var cam = rs.BeginCamera(default, new SessionOwner("h1", "iPhone"));
+            Check("câmera: vaga avisa quem está vendo", camStates.Last().Camera == "iPhone");
+            rs.StopDevice("outro");
+            Check("câmera: revogar outro aparelho não corta", !cam.IsCancellationRequested);
+            rs.StopDevice("h1");
+            Check("câmera: revogar o dono corta o stream parado", cam.IsCancellationRequested);
+            rs.End(cam);
+            Check("câmera: fim do stream some do indicador", camStates.Last().Camera is null);
+        }
 
         var agoraAba = new DateTime(2026, 10, 30, 12, 0, 0);
         Check("aba: nunca visto", Orbit.Tabs.Dispositivos.DeviceRow.SeenText(null, agoraAba) == "sem acesso desde que abriu");

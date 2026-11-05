@@ -111,7 +111,7 @@ public sealed partial class DispositivosViewModel : TabViewModel
     // Chamado pela ilha quando tela/controle/microfone mudam (já na UI thread).
     public void SetRemote(RemoteState s)
     {
-        RemoteActive = s.Viewing || s.Controlling || s.Listening;
+        RemoteActive = s.Viewing || s.Controlling || s.Listening || s.Camera is not null;
         RemoteText = Orbit.Island.IslandViewModel.RemoteActivity(s) ?? "";
     }
 

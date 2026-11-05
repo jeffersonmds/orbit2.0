@@ -43,7 +43,7 @@ public sealed class BridgeServer : IAsyncDisposable
 
     private RemoteSessions? _remote;
 
-    // "Encerrar" da aba Dispositivos: derruba tela, controle e microfone.
+    // "Encerrar" da aba Dispositivos: derruba tela, controle, microfone e câmera.
     public void StopRemote() => _remote?.StopAll();
 
     // Revogar/desligar permissão: derruba só as sessões desse aparelho.
@@ -164,10 +164,10 @@ public sealed class BridgeServer : IAsyncDisposable
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             return await next(ctx);
         });
-        MapApi(api, h, tokens, camera, tickets);
+        _remote = new RemoteSessions(h.RemoteChanged);
+        MapApi(api, h, tokens, camera, tickets, _remote);
         MapPcFiles(api, h, tokens, new FileTickets());
         if (h.Push is { } push) MapPush(api, h, push);
-        _remote = new RemoteSessions(h.RemoteChanged);
         RemoteScreen.Map(api, h, tokens, _remote);
         MicStream.Map(api, h, tokens, _remote);
         OutboxRoutes.Map(api, h, tokens);
@@ -186,7 +186,8 @@ public sealed class BridgeServer : IAsyncDisposable
     internal static bool TicketOwnerAllowed(TokenStore tokens, string owner, PathString path) =>
         tokens.Find(owner) is not null && BridgeRules.RequiredCapabilities(path).All(c => tokens.Allows(owner, c));
 
-    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, Orbit.Services.Camera? camera, StreamTickets? tickets)
+    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, Orbit.Services.Camera? camera, StreamTickets? tickets,
+        RemoteSessions sessions)
     {
         api.MapGet("/me", (HttpContext ctx) =>
         {
@@ -313,8 +314,10 @@ public sealed class BridgeServer : IAsyncDisposable
                     ctx.Response.StatusCode = StatusCodes.Status409Conflict; // ocupada por outro app, etc.
                     return;
                 }
-                // Encerra por: conexão caiu (RequestAborted), parar explícito ou troca (sessionToken).
-                using var link = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, sessionToken);
+                // Encerra por: conexão caiu (RequestAborted), parar explícito ou troca (sessionToken),
+                // revogação ou Encerrar (slot).
+                var slot = sessions.BeginCamera(ctx.RequestAborted, RemoteScreen.Who(tokens, claim.Owner));
+                using var link = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(slot.Token, sessionToken);
                 try
                 {
                     ctx.Response.ContentType = Mjpeg.ContentType;
@@ -330,7 +333,11 @@ public sealed class BridgeServer : IAsyncDisposable
                     }
                 }
                 catch (OperationCanceledException) { /* parar, troca ou aparelho fechou */ }
-                finally { await camera.EndStream(session); }
+                finally
+                {
+                    sessions.End(slot);
+                    await camera.EndStream(session);
+                }
             });
 
             api.MapPost("/camera/close", async (HttpContext ctx) => { await camera.CloseAsync(DeviceOf(ctx).Hash); return Results.NoContent(); });

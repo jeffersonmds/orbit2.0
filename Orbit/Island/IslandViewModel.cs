@@ -631,11 +631,17 @@ public sealed partial class IslandViewModel : ObservableObject
         var screen = s.Controlling
             ? (s.Viewing && viewer != controller ? $"{viewer} vendo a tela · {controller} controlando o PC" : controller + " controlando o PC")
             : s.Viewing ? viewer + " vendo a tela" : null;
-        if (!s.Listening) return screen;
-        var mic = s.Listener ?? "Aparelho";
-        if (screen is null) return "Microfone no " + mic;
         var screenDevices = new[] { s.Viewing ? s.Viewer : null, s.Controlling ? s.Controller : null };
-        return screen + (screenDevices.All(d => d is null || d == s.Listener) ? " · microfone" : " · Microfone no " + mic);
+        if (s.Listening)
+        {
+            var mic = s.Listener ?? "Aparelho";
+            screen = screen is null ? "Microfone no " + mic
+                : screen + (screenDevices.All(d => d is null || d == s.Listener) ? " · microfone" : " · Microfone no " + mic);
+        }
+        if (s.Camera is not { } cam) return screen;
+        if (screen is null) return cam + " vendo a câmera";
+        var others = screenDevices.Append(s.Listening ? s.Listener : null);
+        return screen + (others.All(d => d is null || d == cam) ? " · câmera" : " · Câmera no " + cam);
     }
 
     private IReadOnlyCollection<string> ValidTokenHashes() => _tokens.List().Select(t => t.Hash).ToHashSet();
