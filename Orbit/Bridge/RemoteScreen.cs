@@ -103,6 +103,11 @@ public sealed class RemoteSessions
         lock (_gate) return _displaced.GetValueOrDefault(s);
     }
 
+    // Captura falhando há um tempo (PC bloqueado, UAC, tela protegida): a imagem no aparelho está parada.
+    private volatile bool _videoFrozen;
+    public bool VideoFrozen { get => _videoFrozen; set => _videoFrozen = value; }
+    public static readonly TimeSpan FrozenAfter = TimeSpan.FromSeconds(2);
+
     public SessionOwner? Viewer
     {
         get { lock (_gate) return Owner(_video); }
@@ -223,10 +228,13 @@ public static class RemoteScreen
                 var body = ctx.Response.BodyWriter;
                 byte[]? last = null;
                 var sent = Stopwatch.StartNew();
+                Stopwatch? failing = null; // desde a 1ª captura falha seguida
                 while (!ct.IsCancellationRequested)
                 {
                     var t0 = Stopwatch.GetTimestamp();
                     var jpeg = await Task.Run(() => h.CaptureScreen(screen.Bounds, req.Quality), ct);
+                    if (jpeg is null) failing ??= Stopwatch.StartNew(); else failing = null;
+                    sessions.VideoFrozen = failing is not null && failing.Elapsed >= RemoteSessions.FrozenAfter;
                     if (jpeg is not null && (last is null || sent.Elapsed >= KeepAlive || !jpeg.AsSpan().SequenceEqual(last)))
                     {
                         await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), ct);
@@ -240,14 +248,19 @@ public static class RemoteScreen
                 }
             }
             catch (OperationCanceledException) { /* parar, troca, encerrar ou aparelho fechou */ }
-            finally { sessions.End(session); }
+            finally
+            {
+                sessions.End(session);
+                if (sessions.Viewer is null) sessions.VideoFrozen = false;
+            }
         });
 
         // Quem está vendo a tela agora (o MJPEG não avisa o Safari quando outro aparelho assume).
         api.MapGet("/screen/owner", (HttpContext ctx) =>
         {
             var viewer = sessions.Viewer;
-            return Results.Ok(new { name = viewer?.Name, mine = viewer?.Hash == BridgeServer.DeviceOf(ctx).Hash });
+            return Results.Ok(new { name = viewer?.Name, mine = viewer?.Hash == BridgeServer.DeviceOf(ctx).Hash,
+                frozen = viewer is not null && sessions.VideoFrozen });
         });
 
         api.MapPost("/screen/close", (HttpContext ctx) => { sessions.StopVideo(BridgeServer.DeviceOf(ctx).Hash); return Results.NoContent(); });

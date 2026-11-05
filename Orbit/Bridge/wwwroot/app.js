@@ -529,10 +529,21 @@ async function scrCheckOwner() {
     if (!scr.live) return;
     if (!o.name) { scrStop(); scrSay('Transmissão encerrada'); } // o PC não tem mais vídeo nosso
     else if (!o.mine) scrTaken(o.name);
+    else scrFrozen(!!o.frozen);
   } catch (e) {
     if (/403/.test(e.message) && scr.live) { scrStop(); scrSay('Transmissão encerrada'); } // permissão desligada
     /* senão sem rede: o onerror da imagem cuida */
   }
+}
+
+// Captura parada no PC (bloqueado, aviso do UAC): a última imagem fica esmaecida, com aviso, e o toque
+// não vira clique às cegas até voltar.
+function scrFrozen(on) {
+  if (on === !!scr.frozen) return;
+  scr.frozen = on;
+  scrImg.style.opacity = on ? '0.4' : '';
+  scrTouch.style.pointerEvents = on ? 'none' : '';
+  scrSay(on ? 'Imagem parada: o PC está bloqueado ou a captura não está disponível.' : '');
 }
 
 async function scrStart() {
@@ -581,6 +592,7 @@ async function scrConnectControl(screen, gen) {
 
 function scrStop() {
   scr.gen++;
+  scrFrozen(false);
   clearInterval(scr.watch);
   scrImg.onerror = null;
   scrImg.src = BLANK; // aborta a <img>…
