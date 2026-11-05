@@ -101,6 +101,7 @@ public partial class IslandWindow : Window
         _tray.ExitRequested += () => { _exiting = true; Application.Current.Shutdown(); };
         _tray.SendClipboard += () => _vm.SendClipboard();
         _tray.UpdateRequested += () => _ = _vm.UpdateNowAsync();
+        _tray.Recent = _vm.RecentAlerts;
         _vm.ExitForUpdate += () => { _exiting = true; Application.Current.Shutdown(); };
         _vm.Clips.PasteRequested += PasteIntoPrevious;
 #if DEBUG

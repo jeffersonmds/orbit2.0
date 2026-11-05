@@ -10,6 +10,10 @@ public sealed class TrayIcon : IDisposable
     private readonly NotifyIcon _icon;
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _autostartItem;
+    private readonly ToolStripMenuItem _recentItem = new("Alertas recentes");
+
+    // Montado a cada abertura do menu (texto, abrir).
+    public Func<System.Collections.Generic.IReadOnlyList<(string Label, Action Open)>> Recent { get; set; } = () => [];
 
     public event Action? ToggleVisibility;
     public event Action? SettingsRequested;
@@ -29,6 +33,7 @@ public sealed class TrayIcon : IDisposable
 
         _menu = new ContextMenuStrip();
         _menu.Items.Add("Mostrar/Ocultar ilha", null, (_, _) => ToggleVisibility?.Invoke());
+        _menu.Items.Add(_recentItem);
         _menu.Items.Add("Ajustes", null, (_, _) => SettingsRequested?.Invoke());
         _menu.Items.Add("Mandar clipboard pro dispositivo (Ctrl+Alt+I)", null, (_, _) => SendClipboard?.Invoke());
         _menu.Items.Add("Atualizar Orbit (do código)", null, (_, _) => UpdateRequested?.Invoke());
@@ -41,7 +46,14 @@ public sealed class TrayIcon : IDisposable
 #endif
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("Sair", null, (_, _) => ExitRequested?.Invoke());
-        _menu.Opening += (_, _) => _autostartItem.Checked = Autostart.IsEnabled();
+        _menu.Opening += (_, _) =>
+        {
+            _autostartItem.Checked = Autostart.IsEnabled();
+            _recentItem.DropDownItems.Clear();
+            foreach (var (label, open) in Recent())
+                _recentItem.DropDownItems.Add(label.Length > 80 ? label[..79] + "…" : label, null, (_, _) => open());
+            if (_recentItem.DropDownItems.Count == 0) _recentItem.DropDownItems.Add(new ToolStripMenuItem("Nenhum ainda") { Enabled = false });
+        };
 
         _icon = new NotifyIcon
         {

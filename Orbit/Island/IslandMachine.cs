@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -28,6 +29,11 @@ public sealed class Peek
     public string? Detail { get; }
     public string? TabId { get; }
     public string? OpenPath { get; } // se houver, o clique abre isto no Explorer em vez da aba
+    public DateTime CreatedAt { get; init; } = DateTime.Now;
+
+    // Na fila (tela cheia, outro alerta na frente) o aviso envelhece: sinal do sistema (Key) depois de
+    // 1 min já não diz nada; o resto vale 10 min. A lista de recentes da bandeja guarda os perdidos.
+    public bool IsStale(DateTime now) => now - CreatedAt > (Key is null ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(1));
 
     // Eventos do sistema (volume, carregador…): Key igual SUBSTITUI o alerta da vez em vez de enfileirar
     // (girar o volume não pode virar 30 alertas); Duration curta; Level desenha uma barra 0..1.
@@ -53,6 +59,8 @@ public sealed class IslandMachine
     private readonly Dictionary<ActivityKind, string> _activities = new();
     private readonly HashSet<ActivityKind> _quiet = new();
     private readonly List<Peek> _pending = new();
+    public const int MaxPending = 20;
+    public Func<DateTime> Clock { get; init; } = () => DateTime.Now;
 
     public bool Expanded { get; private set; }
     public bool Fullscreen { get; private set; }
@@ -120,6 +128,7 @@ public sealed class IslandMachine
             if (CurrentPeek?.Key == key) { CurrentPeek = peek; return; }
         }
         _pending.Add(peek);
+        if (_pending.Count > MaxPending) _pending.RemoveAt(0); // fila longa (tela cheia demorada): perde o mais velho
         if (!Fullscreen) ShowNextPeek();
     }
 
@@ -139,7 +148,10 @@ public sealed class IslandMachine
 
     private void ShowNextPeek()
     {
-        if (CurrentPeek is not null || _pending.Count == 0) return;
+        if (CurrentPeek is not null) return;
+        var now = Clock();
+        _pending.RemoveAll(p => p.IsStale(now));
+        if (_pending.Count == 0) return;
         CurrentPeek = _pending[0];
         _pending.RemoveAt(0);
     }

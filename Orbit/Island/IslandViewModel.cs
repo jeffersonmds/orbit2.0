@@ -351,8 +351,32 @@ public sealed partial class IslandViewModel : ObservableObject
 
     // Ponto único de alerta dos serviços/abas. Em tela cheia com a preferência ligada vira
     // toast do Windows; senão é peek na pílula (com bip curto, já que o peek é silencioso).
+    // Avisos de verdade (Claude, Pomodoro, ponte, chuva), pro menu "Alertas recentes" da bandeja:
+    // um alerta que passou enquanto você não olhava não some de vez.
+    private readonly List<Peek> _recent = new();
+    public const int MaxRecent = 15;
+
+    public IReadOnlyList<(string Label, Action Open)> RecentAlerts() =>
+        _recent.AsEnumerable().Reverse().Select(p => (RecentLabel(p), (Action)(() => OpenRecent(p)))).ToList();
+
+    public static string RecentLabel(Peek p) =>
+        $"{p.CreatedAt:HH:mm}  {p.Title}" + (string.IsNullOrEmpty(p.Detail) ? "" : " · " + p.Detail);
+
+    private void OpenRecent(Peek p)
+    {
+        if (p.OpenPath is not null)
+        {
+            try { Process.Start(new ProcessStartInfo(p.OpenPath) { UseShellExecute = true }); }
+            catch (Exception ex) { Log.Warning(ex, "Não abri {Caminho}", p.OpenPath); }
+        }
+        else if (p.TabId is not null) OpenTab(p.TabId);
+        else Expand();
+    }
+
     public void Notify(Peek peek, bool sound)
     {
+        _recent.Add(peek);
+        if (_recent.Count > MaxRecent) _recent.RemoveAt(0);
         // Também no aparelho (Web Push), com a ponte ligada. Eventos causados pelo próprio aparelho
         // (link aberto, arquivo recebido) não voltam pra ele.
         if (_settings.BridgeEnabled && peek.TabId != "dispositivos")

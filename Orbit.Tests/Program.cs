@@ -1797,6 +1797,27 @@ public static class Program
         m.RaiseAmbientPeek(musica);
         m.SetFullscreen(false);
         Check("ilha: aviso de música em tela cheia é descartado", m.CurrentPeek is null);
+
+        var now = new DateTime(2026, 11, 5, 15, 0, 0);
+        var mc = new IslandMachine { Clock = () => now };
+        mc.SetFullscreen(true);
+        mc.RaisePeek(new Peek("Claude", null, null) { CreatedAt = now });
+        mc.RaisePeek(new Peek("Volume", null, null) { Key = "sinal:Volume", CreatedAt = now });
+        now = now.AddMinutes(5);
+        mc.SetFullscreen(false);
+        Check("ilha: sinal do sistema velho na fila é descartado", mc.CurrentPeek?.Title == "Claude");
+        mc.PeekDone();
+        Check("ilha: fila sem o sinal velho", mc.CurrentPeek is null);
+        mc.SetFullscreen(true);
+        mc.RaisePeek(new Peek("Antigo", null, null) { CreatedAt = now });
+        now = now.AddMinutes(11);
+        mc.SetFullscreen(false);
+        Check("ilha: aviso de 10+ min na fila não aparece", mc.CurrentPeek is null);
+        mc.SetFullscreen(true);
+        for (int i = 0; i < IslandMachine.MaxPending + 5; i++) mc.RaisePeek(new Peek("n" + i, null, null) { CreatedAt = now });
+        mc.SetFullscreen(false);
+        Check("ilha: fila tem teto e perde os mais velhos", mc.CurrentPeek?.Title == "n5");
+        Check("recentes: rótulo com hora", IslandViewModel.RecentLabel(new Peek("Claude · orbit", "Aguardando", null) { CreatedAt = now }) == "15:16  Claude · orbit · Aguardando");
     }
 
     private static void HeldButtonsTests()
