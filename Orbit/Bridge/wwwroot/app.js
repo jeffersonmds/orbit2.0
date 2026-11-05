@@ -550,14 +550,17 @@ function scrFrozen(on) {
 
 // Sem tocar por um tempo o iPhone apagaria a tela no meio do controle. A trava some sozinha se o app
 // for pro segundo plano (e aí a tela remota também para).
-let wakeLock = null;
+let wakeLock = null, wakeWanted = false;
 async function scrWake(on) {
+  wakeWanted = on;
   try {
     if (on && !wakeLock && navigator.wakeLock) {
-      wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => { wakeLock = null; });
-    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
-  } catch { wakeLock = null; /* sem suporte ou negado: segue sem */ }
+      const lock = await navigator.wakeLock.request('screen');
+      if (!wakeWanted) { lock.release(); return; } // parou enquanto o pedido estava pendente
+      wakeLock = lock;
+      lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+    } else if (!on && wakeLock) { const lock = wakeLock; wakeLock = null; await lock.release(); }
+  } catch { /* sem suporte ou negado: segue sem */ }
 }
 
 async function scrStart() {
@@ -608,7 +611,8 @@ async function scrConnectControl(screen, gen) {
 function scrStop() {
   scr.gen++;
   scrWake(false);
-  scrHoldEnd();
+  scrCancelGesture();
+  scrStopInertia();
   if (scr.twoTap) { clearTimeout(scr.twoTap); scr.twoTap = 0; }
   scrFrozen(false);
   clearInterval(scr.watch);
@@ -707,7 +711,7 @@ scrTouch.addEventListener('touchstart', e => {
     clearTimeout(gesture?.timer);
     const r = scrView.getBoundingClientRect(), m = mid(e.touches);
     gesture = {
-      two: true, kind: null, at: Date.now(), moved: false,
+      two: true, three: e.touches.length >= 3, kind: null, at: Date.now(), moved: false,
       d0: dist(e.touches), m0: m, last: m, z0: view.z, tx0: view.tx, ty0: view.ty,
       // ponto da imagem (sem zoom) que está sob os dedos: fica sob eles durante a pinça
       u: { x: (m.x - r.left - view.tx) / view.z, y: (m.y - r.top - view.ty) / view.z },
@@ -755,7 +759,7 @@ scrTouch.addEventListener('touchmove', e => {
       const dy = m.y - g.last.y, dx = m.x - g.last.x;
       if (Math.abs(dy) + Math.abs(dx) > 2) {
         scrSend({ t: 'scroll', dy: Math.round(dy * 4), dx: Math.round(-dx * 4) });
-        g.v = { dx, dy };
+        g.v = { dx, dy }; g.vAt = Date.now();
         g.last = m;
       }
     }
@@ -795,7 +799,7 @@ scrTouch.addEventListener('touchend', e => {
         scr.twoTap = setTimeout(() => { scr.twoTap = 0; scrSend({ t: 'click', b: 'right' }); scrFx(m.x, m.y, 'right'); }, 300);
       }
     }
-    else if (g.kind === 'scroll' && g.v) scrInertia(g.v);
+    else if (g.kind === 'scroll' && g.v && Date.now() - g.vAt < 120) scrInertia(g.v); // parou antes de soltar: sem inércia
   }
   else if (g.drag) { scrSend({ t: 'up' }); scrHoldEnd(); }
   else if (!g.moved && !g.done) {
@@ -811,6 +815,15 @@ scrTouch.addEventListener('touchend', e => {
   }
   gesture = null;
 }, { passive: false });
+
+// O iOS cancela o toque (notificação, gesto do sistema): sem isso o botão apertado no arraste ficava preso.
+function scrCancelGesture() {
+  const g = gesture;
+  if (g) { clearTimeout(g.timer); if (g.drag) scrSend({ t: 'up' }); }
+  scrHoldEnd();
+  gesture = null;
+}
+scrTouch.addEventListener('touchcancel', scrCancelGesture);
 
 // --- Tela cheia ---
 // No iPhone não há Fullscreen API pra imagem; o app instalado já não tem barra do Safari, então

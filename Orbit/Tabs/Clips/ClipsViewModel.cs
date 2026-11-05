@@ -169,7 +169,11 @@ public sealed partial class ClipsViewModel : TabViewModel
         if (Selected is not { Kind: ClipKind.Image, ImagePath: { } p } || !File.Exists(p)) return;
         OcrStatus = "Lendo o texto…";
         var text = await TextFromImage.FromFileAsync(p);
-        if (!string.IsNullOrEmpty(text) && !ClipboardReader.SetText(text)) { OcrStatus = "Não consegui copiar"; return; }
+        if (!string.IsNullOrEmpty(text))
+        {
+            if (!ClipboardReader.SetText(text)) { OcrStatus = "Não consegui copiar"; return; }
+            await IngestAsync(new ClipSnapshot(text, null, false)); // a captura ignora o eco do nosso SetText
+        }
         OcrStatus = TextFromImage.Summary(text);
     }
 

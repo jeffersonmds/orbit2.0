@@ -66,7 +66,8 @@ public sealed class DownloadWatcher : IDisposable
     private void Seen(string path)
     {
         if (!IsFinalName(path) || Directory.Exists(path) || IsRepeat(path, DateTime.Now)) return;
-        _ = Task.Run(() => FileSettle.WhenReady(path, () => Finished?.Invoke(path)));
+        // quem grava direto no nome final pode segurar o arquivo por minutos: espera até ~4 min, de 1 em 1 s
+        _ = Task.Run(() => FileSettle.WhenReady(path, () => Finished?.Invoke(path), tries: 240, delayMs: 1000));
     }
 
     public void Dispose() => _fsw?.Dispose();
@@ -78,7 +79,7 @@ public sealed class DownloadWatcher : IDisposable
 // Espera o arquivo terminar de ser gravado (quem criou ainda está escrevendo quando o aviso chega).
 public static class FileSettle
 {
-    public static async Task WhenReady(string path, Action ready, int tries = 20)
+    public static async Task WhenReady(string path, Action ready, int tries = 20, int delayMs = 150)
     {
         for (int i = 0; i < tries; i++)
         {
@@ -90,7 +91,7 @@ public static class FileSettle
             catch (FileNotFoundException) { return; } // apagado/renomeado de novo: o próximo evento cuida
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
-            await Task.Delay(150);
+            await Task.Delay(delayMs);
         }
     }
 }

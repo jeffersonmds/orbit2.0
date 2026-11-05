@@ -741,7 +741,11 @@ public sealed partial class IslandViewModel : ObservableObject
     private async Task CopyTextFromImageAsync(string path)
     {
         var text = await TextFromImage.FromFileAsync(path);
-        if (!string.IsNullOrEmpty(text) && !ClipboardReader.SetText(text)) text = null;
+        if (!string.IsNullOrEmpty(text))
+        {
+            if (ClipboardReader.SetText(text)) await Clips.IngestAsync(new ClipSnapshot(text, null, false)); // entra no histórico
+            else text = null;
+        }
         RaisePeek(new Peek(TextFromImage.Summary(text), string.IsNullOrEmpty(text) ? null : text.Split('\n')[0], "clipboard")
             { Key = "ocr", Duration = TimeSpan.FromSeconds(3) });
     }
