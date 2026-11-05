@@ -699,7 +699,10 @@ function scrInertia(v) {
 // Um dedo: toque/trackpad (ver acima). Dois dedos: pinça = zoom (ancorado nos dedos);
 // arrastar = move a imagem se houver zoom, senão rola no PC. Toque rápido de dois dedos = botão direito.
 let gesture = null;
-const mid = ts => ({ x: (ts[0].clientX + ts[1].clientX) / 2, y: (ts[0].clientY + ts[1].clientY) / 2 });
+// O Safari ignora user-scalable=no fora do modo app: barra a pinça da página toda (a imagem tem zoom próprio).
+['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+const mid =ts => ({ x: (ts[0].clientX + ts[1].clientX) / 2, y: (ts[0].clientY + ts[1].clientY) / 2 });
 const dist = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
 
 scrTouch.addEventListener('touchstart', e => {
