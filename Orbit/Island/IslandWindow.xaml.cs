@@ -28,6 +28,8 @@ public partial class IslandWindow : Window
     // Barrinhas da música: 20 quadros/s, e só enquanto aparecem (contrato de leveza).
     private readonly AudioMeter _meter = new();
     private readonly DispatcherTimer _bars = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private readonly DispatcherTimer _audible = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly SilenceGate _silence = new();
     private readonly System.Diagnostics.Stopwatch _barsClock = System.Diagnostics.Stopwatch.StartNew();
     private double _barsLevel;
     private FullscreenWatcher? _fullscreen;
@@ -57,6 +59,13 @@ public partial class IslandWindow : Window
         _leave.Tick += (_, _) => { _leave.Stop(); _vm.Collapse(); };
         _peek.Tick += (_, _) => { _peek.Stop(); _vm.PeekExpired(); };
         _bars.Tick += (_, _) => UpdateBars();
+        // Mídia "tocando" sem som no PC (Spotify Connect no celular, mudo): some da pílula.
+        _audible.Tick += (_, _) =>
+        {
+            if (!_vm.MediaPlaying) { _silence.Reset(); _vm.SetMediaAudible(true); return; }
+            _vm.SetMediaAudible(_silence.Feed(_meter.Peak()));
+        };
+        _audible.Start();
         // Parada, a ilha quase não aloca, então o GC nunca roda sozinho e o que as abas carregaram
         // (views, capas, contadores, JSON) fica retido. Uma coleta agressiva após recolher devolve
         // isso ao Windows (~100 MB → de volta perto do repouso). Custo: alguns ms, uma vez.
@@ -214,6 +223,7 @@ public partial class IslandWindow : Window
             _colorHotKey?.Dispose();
             _drawHotKey?.Dispose();
             _bars.Stop();
+            _audible.Stop();
             _meter.Dispose();
             _fullscreen?.Dispose();
             _clipboard?.Dispose();

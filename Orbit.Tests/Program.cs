@@ -41,6 +41,14 @@ public static class Program
         IslandGeometryTests();
         AtomicFileTests();
         {
+            var g = new Orbit.Services.SilenceGate();
+            g.Feed(0); g.Feed(0);
+            Check("silêncio: 2 s ainda conta como tocando", g.Audible);
+            g.Feed(0);
+            Check("silêncio: 3 s sem som esconde a mídia", !g.Audible);
+            Check("silêncio: qualquer som volta na hora", g.Feed(0.2f));
+        }
+        {
             var st = new Orbit.Models.OrbitSettings { MutedSignals = { "Volume" } };
             Check("sinais: tipo desligado não aparece", !IslandViewModel.SignalAllowed(st, Orbit.Services.SignalKind.Volume)
                 && IslandViewModel.SignalAllowed(st, Orbit.Services.SignalKind.AudioDevice));

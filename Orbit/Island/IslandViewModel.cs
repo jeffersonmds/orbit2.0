@@ -73,6 +73,21 @@ public sealed partial class IslandViewModel : ObservableObject
     // Barrinhas no ritmo do som: só com a pílula em Atividade e a música como atividade da vez.
     [ObservableProperty] private bool _showAudioBars;
     private string? _lastTrack;
+    private string? _mediaText;
+    private bool _mediaAudible = true;
+
+    // O app diz que está tocando (a janela então mede se sai som de verdade).
+    public bool MediaPlaying => _mediaText is not null;
+
+    // Sem som saindo do PC: a pílula de mídia some, mesmo com o app dizendo "tocando".
+    public void SetMediaAudible(bool audible)
+    {
+        if (_mediaAudible == audible) return;
+        _mediaAudible = audible;
+        UpdateMediaActivity();
+    }
+
+    private void UpdateMediaActivity() => SetActivity(ActivityKind.Midia, _mediaAudible ? _mediaText : null, quiet: true);
     // Câmera/microfone em uso: a pílula troca o texto pelo desenho próprio (bolinha, nome, ícones, tempo).
     [ObservableProperty] private bool _showCameraMic;
     [ObservableProperty] private bool _showPomodoroBar;
@@ -121,7 +136,8 @@ public sealed partial class IslandViewModel : ObservableObject
             if (e.PropertyName == nameof(NowPlayingViewModel.ActivityText))
             {
                 var text = NowPlaying.ActivityText;
-                SetActivity(ActivityKind.Midia, text, quiet: true);
+                _mediaText = text;
+                UpdateMediaActivity();
                 // Pílula discreta não mostra o título: avisa por alguns segundos quando começa a tocar ou troca.
                 if (text is not null && text != _lastTrack)
                 {

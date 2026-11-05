@@ -53,3 +53,23 @@ public sealed class AudioMeter : IDisposable
         _enumerator?.Dispose();
     }
 }
+
+// "Tocando" segundo o app não quer dizer som no PC (Spotify Connect tocando no celular, app no mudo).
+// Uma leitura por segundo: qualquer som liga na hora; 3 s seguidos de silêncio desligam.
+public sealed class SilenceGate
+{
+    public const float Threshold = 0.01f;
+    public const int SilentTicks = 3;
+    private int _silent;
+
+    public bool Audible { get; private set; } = true; // começa ligado: não atrasa a pílula de quem acabou de dar play
+
+    public bool Feed(float peak)
+    {
+        if (peak > Threshold) { _silent = 0; Audible = true; }
+        else if (++_silent >= SilentTicks) Audible = false;
+        return Audible;
+    }
+
+    public void Reset() { _silent = 0; Audible = true; }
+}
