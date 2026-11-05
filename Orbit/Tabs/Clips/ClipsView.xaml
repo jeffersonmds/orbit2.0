@@ -54,8 +54,11 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <Button DockPanel.Dock="Bottom" Style="{StaticResource SmallButton}" HorizontalAlignment="Left" Margin="0,8,0,0"
-                    Content="Limpar (mantém fixados)" Command="{Binding ClearCommand}"/>
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                <Button Style="{StaticResource SmallButton}" Content="Limpar (mantém fixados)" Command="{Binding ClearCommand}"/>
+                <Button Style="{StaticResource SmallButton}" Content="{Binding ClearAllLabel}" Command="{Binding ClearAllCommand}" Margin="6,0,0,0"/>
+                <Button Style="{StaticResource SmallButton}" Content="{Binding PauseLabel}" Command="{Binding TogglePauseCommand}" Margin="6,0,0,0"/>
+            </StackPanel>
             <Grid>
                 <TextBlock Text="Nada copiado ainda" Foreground="{StaticResource InkLo}" FontSize="13"
                            HorizontalAlignment="Center" VerticalAlignment="Center"

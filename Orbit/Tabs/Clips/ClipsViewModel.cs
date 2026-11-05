@@ -35,6 +35,12 @@ public sealed partial class ClipsViewModel : TabViewModel
     [ObservableProperty] private string _detailType = "";
     [ObservableProperty] private string _detailSize = "";
     [ObservableProperty] private string _detailCopied = "";
+    // Pausa até religar ou reiniciar o Orbit: copiar algo sensível sem esconder a aba.
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(PauseLabel))] private bool _paused;
+    public string PauseLabel => Paused ? "Retomar captura" : "Pausar captura";
+    // "Apagar tudo" pede um segundo toque (leva os fixados junto).
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ClearAllLabel))] private bool _confirmClearAll;
+    public string ClearAllLabel => ConfirmClearAll ? "Toque de novo: apaga tudo" : "Apagar tudo";
 
     public bool HasQuery => Query.Length > 0;
     public bool ShowNothingCopied => _items.Count == 0;
@@ -56,6 +62,7 @@ public sealed partial class ClipsViewModel : TabViewModel
     public override void SetActive(bool active)
     {
         if (active) Refresh(); // atualiza os "4m", "ontem"
+        else ConfirmClearAll = false; // "toque de novo" não sobrevive a fechar a aba
     }
 
     partial void OnQueryChanged(string value)
@@ -79,7 +86,7 @@ public sealed partial class ClipsViewModel : TabViewModel
     // Chamado pela ilha a cada WM_CLIPBOARDUPDATE (UI thread).
     public async Task CaptureAsync()
     {
-        if (!_enabled()) return;
+        if (!_enabled() || Paused) return;
         if (ClipboardReader.OwnedByUs()) return; // eco do nosso próprio Colar
         var snap = ClipboardReader.Read();
         if (snap is not null) await IngestAsync(snap);
@@ -88,7 +95,7 @@ public sealed partial class ClipsViewModel : TabViewModel
     // Separado do Read pra ser testável sem clipboard de verdade.
     public async Task IngestAsync(ClipSnapshot snap)
     {
-        if (!_enabled() || snap.IsPrivate) return;
+        if (!_enabled() || Paused || snap.IsPrivate) return;
         var at = DateTime.Now; // antes de qualquer await
         ClipItem item;
         if (snap.Text is { } text)
@@ -176,6 +183,23 @@ public sealed partial class ClipsViewModel : TabViewModel
     private void Clear()
     {
         foreach (var item in _items.Where(i => !i.Pinned).ToList())
+        {
+            _items.Remove(item);
+            DeleteImage(item);
+        }
+        Persist();
+        Refresh();
+    }
+
+    [RelayCommand]
+    private void TogglePause() => Paused = !Paused;
+
+    [RelayCommand]
+    private void ClearAll()
+    {
+        if (!ConfirmClearAll) { ConfirmClearAll = true; return; }
+        ConfirmClearAll = false;
+        foreach (var item in _items.ToList())
         {
             _items.Remove(item);
             DeleteImage(item);

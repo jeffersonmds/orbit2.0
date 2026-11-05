@@ -1304,6 +1304,15 @@ public static class Program
 
         var reloaded = new ClipsViewModel(Path.Combine(dir, "clipboard.json"), Path.Combine(dir, "img"), () => true);
         Check("clips: persiste entre execuções", reloaded.Visible.Count == 1 && reloaded.Visible[0].Pinned);
+
+        reloaded.TogglePauseCommand.Execute(null);
+        reloaded.IngestAsync(new ClipSnapshot("durante a pausa", null, false)).GetAwaiter().GetResult();
+        Check("clips: pausado não captura", reloaded.Visible.Count == 1 && reloaded.PauseLabel == "Retomar captura");
+        reloaded.TogglePauseCommand.Execute(null);
+        reloaded.ClearAllCommand.Execute(null);
+        Check("clips: apagar tudo pede segundo toque", reloaded.Visible.Count == 1 && reloaded.ConfirmClearAll);
+        reloaded.ClearAllCommand.Execute(null);
+        Check("clips: apagar tudo leva os fixados", reloaded.Visible.Count == 0 && !reloaded.ConfirmClearAll);
         Directory.Delete(dir, recursive: true);
     }
 
