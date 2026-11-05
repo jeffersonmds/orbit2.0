@@ -8,9 +8,11 @@
             <ColumnDefinition Width="250"/>
         </Grid.ColumnDefinitions>
 
-        <!-- Esquerda: liga/desliga, endereço, tokens -->
-        <DockPanel>
-            <StackPanel DockPanel.Dock="Top">
+        <!-- Esquerda: liga/desliga, endereço, tokens. A coluna inteira rola: com vários chips por aparelho
+             a lista não cabe no que sobra embaixo do formulário. -->
+        <ScrollViewer VerticalScrollBarVisibility="Hidden">
+        <StackPanel>
+            <StackPanel>
                 <DockPanel Margin="0,0,0,8">
                     <CheckBox DockPanel.Dock="Left" Style="{StaticResource Chip}" IsChecked="{Binding Enabled}" Content="Ponte ligada" Margin="0,0,10,0"/>
                     <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"
@@ -53,9 +55,6 @@
                 </DockPanel>
                 <TextBlock Text="Aparelhos com acesso" Style="{StaticResource Label}"/>
             </StackPanel>
-            <TextBlock DockPanel.Dock="Bottom" FontSize="10.5" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,6,0,0"
-                       Text="Precisa do Tailscale no PC e nos aparelhos + 'tailscale serve' (docs/tailscale-setup.md). Nunca use 'tailscale funnel'."/>
-            <ScrollViewer VerticalScrollBarVisibility="Hidden">
                 <ItemsControl ItemsSource="{Binding Devices}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -95,8 +94,10 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </ScrollViewer>
-        </DockPanel>
+            <TextBlock FontSize="10.5" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="Precisa do Tailscale no PC e nos aparelhos + 'tailscale serve' (docs/tailscale-setup.md). Nunca use 'tailscale funnel'."/>
+        </StackPanel>
+        </ScrollViewer>
 
         <!-- Direita: pareamento (QR) ou atividade recente -->
         <Border Grid.Column="2" Style="{StaticResource Card}">
