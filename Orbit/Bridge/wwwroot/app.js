@@ -285,6 +285,10 @@ document.querySelectorAll('[data-power]').forEach(b => b.onclick = async () => {
 const camImg = $('#camImg'), camToggle = $('#camToggle'), camShot = $('#camShot');
 const camDevice = $('#camDevice'), camQuality = $('#camQuality'), camView = $('#camView'), camMsg = $('#camMsg');
 let camStreaming = false, camLoaded = false;
+// Geração de cada abertura: Parar/sair da página/segundo plano invalida a que ainda está no await,
+// senão a resposta atrasada religaria câmera, tela ou microfone depois de você sair.
+let camGen = 0;
+const stillWanted = (gen, cur, want) => gen === cur && page === want && !document.hidden;
 const camName = () => camDevice.selectedOptions[0]?.textContent || '';
 
 function camSay(msg) {
@@ -313,6 +317,7 @@ async function camLoadDevices() {
 }
 
 async function camStart() {
+  const gen = ++camGen;
   try {
     const r = await fetch('/api/camera/open', {
       method: 'POST',
@@ -322,6 +327,7 @@ async function camStart() {
     if (r.status === 403) { camSay('Ligue "Câmera" na aba Dispositivos do PC.'); return; }
     if (!r.ok) { camSay('Não consegui abrir a câmera.'); return; }
     const { ticket } = await r.json();
+    if (!stillWanted(gen, camGen, 'camera')) return;
     camImg.onerror = () => { camSay('Câmera em uso por outro programa, ou o stream caiu.'); camStop(); };
     // só o tíquete (descartável) vai na URL; o token fica no cabeçalho do /open
     camImg.src = `/api/camera/stream?ticket=${encodeURIComponent(ticket)}`;
@@ -336,6 +342,7 @@ async function camStart() {
 // removendo o atributo), e aí o PC solta a câmera e apaga a luz.
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 function camStop() {
+  camGen++;
   camImg.onerror = null;
   camImg.src = BLANK; // solta a <img>
   camStreaming = false;
@@ -471,7 +478,7 @@ async function pfDownload(name) {
 // Vídeo: MJPEG por tíquete (como a câmera). Controle: WebSocket por tíquete, mensagens JSON pequenas.
 // Modo toque: tocar clica ali, arrastar arrasta, segurar = botão direito, dois dedos rolam.
 // Modo trackpad: o dedo move o cursor (relativo), toque clica, toque com dois dedos = botão direito.
-const scr = { live: false, loaded: false, ws: null, mode: 'touch', ctrl: false };
+const scr = { live: false, loaded: false, ws: null, mode: 'touch', ctrl: false, gen: 0 };
 const scrImg = $('#scrImg'), scrView = $('#scrView'), scrTouch = $('#scrTouch');
 const TAKEN = 4001; // o PC fechou porque outro aparelho assumiu (reason = nome dele)
 const scrSay = msg => { $('#scrMsg').textContent = msg || ''; $('#scrMsg').classList.toggle('hidden', !msg); };
@@ -509,9 +516,11 @@ async function scrCheckOwner() {
 
 async function scrStart() {
   $('#scrResume').classList.add('hidden');
+  const gen = ++scr.gen;
   try {
     const screen = $('#scrScreen').value;
     const { ticket } = await api('/screen/open', { method: 'POST', json: { screen, quality: $('#scrQuality').value } });
+    if (!stillWanted(gen, scr.gen, 'tela')) return;
     scrImg.onerror = () => { scrSay('A transmissão caiu.'); scrStop(); };
     scrImg.src = `/api/screen/stream?ticket=${encodeURIComponent(ticket)}`;
     scr.live = true;
@@ -520,16 +529,17 @@ async function scrStart() {
     scrSay('');
     resetView();
     if (landscape.matches) scrImmersive(true); // já deitado: vai direto pra tela cheia
-    scrConnectControl(screen);
+    scrConnectControl(screen, gen);
     clearInterval(scr.watch);
     scr.watch = setInterval(scrCheckOwner, 5000);
   } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba Dispositivos do PC.' : e.message); }
 }
 
 // Controle é opcional: sem a permissão "Controle", fica só olhando.
-async function scrConnectControl(screen) {
+async function scrConnectControl(screen, gen) {
   try {
     const { ticket } = await api('/remote/ticket', { method: 'POST', json: { screen } });
+    if (!stillWanted(gen, scr.gen, 'tela')) return; // parou enquanto pedia o controle
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/remote/input?ticket=${encodeURIComponent(ticket)}`);
     ws.onopen = () => $('#scrBar').classList.remove('hidden');
@@ -546,6 +556,7 @@ async function scrConnectControl(screen) {
 }
 
 function scrStop() {
+  scr.gen++;
   clearInterval(scr.watch);
   scrImg.onerror = null;
   scrImg.src = BLANK; // aborta a <img>…
@@ -727,7 +738,7 @@ $('#scrInput').addEventListener('beforeinput', e => {
 // PCM 16 bits mono pelo WebSocket, tocado com Web Audio num buffer curto (~150 ms) que se
 // re-sincroniza se atrasar. No iPhone a Web Audio obedece a chave de silêncio: audioSession
 // 'playback' (iOS 17+) faz tocar como mídia, igual a um vídeo.
-const mic = { ws: null, ctx: null, gain: null, next: 0, rate: 24000 };
+const mic = { ws: null, ctx: null, gain: null, next: 0, rate: 24000, gen: 0 };
 const micSay = msg => { $('#micMsg').textContent = msg || ''; $('#micMsg').classList.toggle('hidden', !msg); };
 
 async function micLoad() {
@@ -776,9 +787,11 @@ function micStart() {
     try { await fn(); }
     catch (e) { if (/403/.test(e.message)) { micSay('Ligue "Microfone" na aba Dispositivos do PC.'); return; } throw e; }
   };
+  const gen = ++mic.gen;
   run(friendly(async () => {
     const sel = $('#micDevice');
     const { ticket } = await api('/mic/open', { method: 'POST', json: { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent } });
+    if (!stillWanted(gen, mic.gen, 'camera')) return;
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/mic/stream?ticket=${encodeURIComponent(ticket)}`);
     ws.binaryType = 'arraybuffer';
@@ -797,6 +810,7 @@ function micStart() {
 }
 
 function micStop() {
+  mic.gen++;
   if (token) fetch('/api/mic/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
   if (mic.ws) { mic.ws.close(); mic.ws = null; }
   micUi(false);
@@ -809,7 +823,13 @@ $('#micGain').oninput = e => {
   if (mic.gain) mic.gain.gain.value = +e.target.value;
 };
 // App em segundo plano: o iOS corta o áudio; solta o microfone do PC também (privacidade).
-document.addEventListener('visibilitychange', () => { if (document.hidden && mic.ws) micStop(); });
+// App em segundo plano: câmera e tela também param (privacidade; o iOS congela a página de qualquer jeito).
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  if (mic.ws) micStop(); else mic.gen++;
+  if (camStreaming) camStop(); else camGen++;
+  if (scr.live) scrStop(); else scr.gen++;
+});
 
 // --- Foto direto pro clipboard do PC ---
 async function photoToClipboard(input) {
@@ -896,9 +916,11 @@ function kbConnect() {
   if (kb.connecting) return kb.connecting;
   kb.connecting = (async () => {
     const { ticket } = await api('/keyboard/ticket', { method: 'POST' });
+    if (page !== 'teclado' || document.hidden) throw new Error('Saiu do teclado');
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/keyboard/input?ticket=${encodeURIComponent(ticket)}`);
     await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = () => fail(new Error('Não conectou ao PC')); });
+    if (page !== 'teclado' || document.hidden) { ws.close(); throw new Error('Saiu do teclado'); }
     ws.onclose = e => { if (kb.ws === ws) kb.ws = null; if (e.code === TAKEN) kbSay(`O ${e.reason} assumiu o teclado`); };
     kb.ws = ws;
     return ws;
