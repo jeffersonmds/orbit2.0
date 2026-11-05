@@ -1051,6 +1051,17 @@ public static class Program
         Check("pcfiles: oculto recusado", PcFiles.Resolve(roots, "r", "oculto.txt") is null);
         var lista = PcFiles.List(root);
         Check("pcfiles: lista pasta antes, sem oculto", lista.Count == 2 && lista[0].Dir && lista[0].Name == "sub" && lista[1].Name == "a.txt");
+        var big = Path.Combine(dir, "grande");
+        Directory.CreateDirectory(big);
+        for (int i = 0; i < PcFiles.MaxEntries + 50; i++)
+        {
+            var f = Path.Combine(big, $"velho{i}.txt");
+            File.WriteAllText(f, "");
+            File.SetLastWriteTime(f, new DateTime(2020, 1, 1).AddMinutes(i));
+        }
+        File.WriteAllText(Path.Combine(big, "novo.txt"), "");
+        var bigList = PcFiles.List(big);
+        Check("pcfiles: pasta grande corta depois de ordenar (o mais novo aparece)", bigList.Count == PcFiles.MaxEntries && bigList[0].Name == "novo.txt");
         // Link pra fora da raiz (junção não precisa de admin; se o ambiente não deixar, pula).
         var link = Path.Combine(root, "atalho");
         using (var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{dir}\"")

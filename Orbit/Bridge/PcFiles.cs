@@ -53,14 +53,16 @@ public static class PcFiles
     }
 
     // Pastas primeiro (por nome), arquivos do mais novo pro mais antigo (o que acabou de baixar no topo).
+    // Ordena ANTES de cortar: numa Downloads enorme o corte sem ordem perdia justamente os recentes.
+    // Lista com MaxEntries itens = cortada (o PWA avisa).
     public static List<PcEntry> List(string dir) =>
         new DirectoryInfo(dir).EnumerateFileSystemInfos()
             .Where(fi => !Hidden(fi) && !IsLink(fi))
-            .Take(MaxEntries)
             .Select(fi => new PcEntry(fi.Name, fi is DirectoryInfo, fi is FileInfo f ? f.Length : 0, fi.LastWriteTime))
             .OrderByDescending(e => e.Dir)
             .ThenBy(e => e.Dir ? e.Name : "", StringComparer.CurrentCultureIgnoreCase)
             .ThenByDescending(e => e.Modified)
+            .Take(MaxEntries)
             .ToList();
 
     private static bool Hidden(FileSystemInfo fi) => (fi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;

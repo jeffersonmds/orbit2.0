@@ -426,6 +426,7 @@ function pfDate(iso) {
   return d.toLocaleDateString('pt-BR');
 }
 const pf = { root: null, rootName: '', path: '', gen: 0 };
+const PF_MAX = 2000; // = PcFiles.MaxEntries no PC
 const pfJoin = (name, path = pf.path) => path ? `${path}/${name}` : name;
 
 function pfSize(b) {
@@ -476,6 +477,7 @@ async function pfLoad() {
       ? pfRow('dir', e.name, pfDate(e.modified), () => { pf.root = root; pf.rootName = rootName; pf.path = pfJoin(e.name, path); pfLoad(); })
       : pfRow(pfKind(e.name), e.name, `${pfSize(e.size)} · ${pfDate(e.modified)}`, () => pfDownload(root, pfJoin(e.name, path)))));
     if (!entries.length) { msg.textContent = 'Pasta vazia.'; msg.classList.remove('hidden'); }
+    else if (entries.length >= PF_MAX) { msg.textContent = `Pasta grande: mostrando só as pastas e os ${PF_MAX} itens mais recentes.`; msg.classList.remove('hidden'); }
   } catch (e) {
     if (gen !== pf.gen) return;
     list.replaceChildren();
