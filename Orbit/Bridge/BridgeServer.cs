@@ -260,18 +260,29 @@ public sealed class BridgeServer : IAsyncDisposable
             foreach (var file in form.Files)
             {
                 var wanted = BridgeRules.SafeFileName(file.FileName);
-                for (int attempt = 0; ; attempt++)
+                // Só a CRIAÇÃO tenta outro nome (corrida entre dois envios); falha na cópia (disco cheio,
+                // conexão caiu) apaga o parcial e para, em vez de deixar arquivos pela metade com outro nome.
+                FileStream? target = null;
+                string name = wanted;
+                for (int attempt = 0; target is null; attempt++)
                 {
-                    var name = BridgeRules.UniqueName(dir, wanted, File.Exists);
-                    try
-                    {
-                        // CreateNew: nunca sobrescreve, mesmo com corrida entre dois envios.
-                        await using var target = new FileStream(Path.Combine(dir, name), FileMode.CreateNew);
-                        await file.CopyToAsync(target);
-                        saved.Add(name);
-                        break;
-                    }
+                    name = BridgeRules.UniqueName(dir, wanted, File.Exists);
+                    try { target = new FileStream(Path.Combine(dir, name), FileMode.CreateNew); } // nunca sobrescreve
                     catch (IOException) when (attempt < 5 && File.Exists(Path.Combine(dir, name))) { }
+                }
+                try
+                {
+                    await using (target) await file.CopyToAsync(target);
+                    saved.Add(name);
+                }
+                catch (Exception ex)
+                {
+                    try { File.Delete(Path.Combine(dir, name)); } catch { }
+                    Log.Warning(ex, "Ponte: upload de {Arquivo} falhou no meio", name);
+                    if (saved.Count > 0)
+                        h.Notify(new BridgeEvent($"{saved.Count} de {form.Files.Count} arquivos recebidos", string.Join(", ", saved),
+                            OpenPath: dir, Device: DeviceOf(request.HttpContext).Name));
+                    return Results.Json(new { erro = "O PC não conseguiu gravar " + name, saved }, statusCode: StatusCodes.Status507InsufficientStorage);
                 }
             }
             h.Notify(new BridgeEvent(saved.Count == 1 ? "Arquivo recebido" : $"{saved.Count} arquivos recebidos",

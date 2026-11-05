@@ -140,6 +140,11 @@ $('#files').onchange = e => {
     }
     else if (xhr.status === 413) toast('Arquivo grande demais (máx. 500 MB por envio)');
     else if (xhr.status === 429) toast('Calma: muitas ações seguidas');
+    else if (xhr.status === 507) {
+      let n = 0;
+      try { n = (JSON.parse(xhr.responseText).saved || []).length; } catch {}
+      toast(n ? `Só ${n} de ${files.length} chegaram: o PC não conseguiu gravar o resto (disco cheio?)` : 'O PC não conseguiu gravar (disco cheio?)');
+    }
     else if (xhr.status === 401) { showPair(true); toast('Token inválido — pareie de novo'); }
     else toast('Falhou o envio');
   };
