@@ -71,6 +71,7 @@ public sealed partial class IslandViewModel : ObservableObject
     [ObservableProperty] private Peek? _peek;
     // Barrinhas no ritmo do som: só com a pílula em Atividade e a música como atividade da vez.
     [ObservableProperty] private bool _showAudioBars;
+    private string? _lastTrack;
     // Câmera/microfone em uso: a pílula troca o texto pelo desenho próprio (bolinha, nome, ícones, tempo).
     [ObservableProperty] private bool _showCameraMic;
     [ObservableProperty] private CameraMicDisplay? _cameraMicView;
@@ -110,7 +111,18 @@ public sealed partial class IslandViewModel : ObservableObject
         NowPlaying.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(NowPlayingViewModel.ActivityText))
-                SetActivity(ActivityKind.Midia, NowPlaying.ActivityText);
+            {
+                var text = NowPlaying.ActivityText;
+                SetActivity(ActivityKind.Midia, text);
+                // Pílula discreta não mostra o título: avisa por alguns segundos quando a música muda
+                // (pausar/voltar a mesma música não repete o aviso).
+                if (text is not null && text != _lastTrack)
+                {
+                    _machine.RaiseAmbientPeek(new Peek(text.TrimStart('▶', ' '), null, "controles") { Key = "midia", Duration = TimeSpan.FromSeconds(4) });
+                    Refresh();
+                }
+                if (text is not null) _lastTrack = text;
+            }
         };
         NowPlaying.Start();
         // Sem DI: abas e serviços de fundo são criados aqui na mão.
@@ -652,7 +664,7 @@ public sealed partial class IslandViewModel : ObservableObject
         var before = Mode;
         ActivityText = _machine.ActivityText ?? "";
         Peek = _machine.CurrentPeek;
-        ShowAudioBars = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Midia;
+        ShowAudioBars = _machine.Mode == IslandMode.Discreta;
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);

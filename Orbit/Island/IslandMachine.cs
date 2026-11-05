@@ -3,7 +3,8 @@ using System.Linq;
 
 namespace Orbit.Island;
 
-public enum IslandMode { Repouso, Atividade, Alerta, Expandida, Oculta }
+// Discreta: só mídia tocando — pílula fininha com as barrinhas, pra não cobrir as abas do navegador.
+public enum IslandMode { Repouso, Atividade, Discreta, Alerta, Expandida, Oculta }
 
 // Valor maior = prioridade maior na pílula.
 // Maior valor vence na pílula. TelaRemota (tela, controle e microfone pelo aparelho) é indicador de
@@ -55,6 +56,7 @@ public sealed class IslandMachine
         Fullscreen ? IslandMode.Oculta
         : Expanded ? IslandMode.Expandida
         : CurrentPeek is not null ? IslandMode.Alerta
+        : CurrentActivity == ActivityKind.Midia ? IslandMode.Discreta
         : _activities.Count > 0 ? IslandMode.Atividade
         : IslandMode.Repouso;
 
@@ -112,6 +114,14 @@ public sealed class IslandMachine
         }
         _pending.Add(peek);
         if (!Fullscreen) ShowNextPeek();
+    }
+
+    // Alerta descartável (ex.: troca de música): nunca entra na fila — só aparece com a pílula livre,
+    // e só substitui um do mesmo Key se ninguém estiver esperando. Na fila ficaria velho ou seguraria os outros.
+    public void RaiseAmbientPeek(Peek peek)
+    {
+        if (Fullscreen) return;
+        if (CurrentPeek is null || (CurrentPeek.Key == peek.Key && _pending.Count == 0)) CurrentPeek = peek;
     }
 
     public void PeekDone()

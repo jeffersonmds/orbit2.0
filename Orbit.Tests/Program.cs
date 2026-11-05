@@ -1696,11 +1696,11 @@ public static class Program
         Check("ilha: começa em Repouso", m.Mode == IslandMode.Repouso && m.ActivityText is null);
 
         m.SetActivity(ActivityKind.Midia, "▶ lofi");
-        Check("ilha: atividade → Atividade", m.Mode == IslandMode.Atividade && m.ActivityText == "▶ lofi");
+        Check("ilha: só mídia → Discreta", m.Mode == IslandMode.Discreta && m.ActivityText == "▶ lofi");
 
         m.SetActivity(ActivityKind.Claude, "Claude aguardando você");
         m.SetActivity(ActivityKind.Pomodoro, "Foco 12:04");
-        Check("ilha: prioridade Claude > Pomodoro > Mídia", m.ActivityText == "Claude aguardando você");
+        Check("ilha: prioridade Claude > Pomodoro > Mídia", m.ActivityText == "Claude aguardando você" && m.Mode == IslandMode.Atividade);
 
         m.SetActivity(ActivityKind.Claude, null);
         Check("ilha: limpar Claude cai pro Pomodoro", m.ActivityText == "Foco 12:04");
@@ -1751,6 +1751,23 @@ public static class Program
         m.PeekDone();
         Check("ilha: alertas iguais em sequência são eventos distintos", m.CurrentPeek == x2 && !ReferenceEquals(x1, x2));
         m.PeekDone();
+
+        var musica = new Peek("lofi", null, null) { Key = "midia" };
+        m.RaiseAmbientPeek(musica);
+        Check("ilha: aviso de música com a pílula livre aparece", m.CurrentPeek == musica);
+        var claude = new Peek("Claude", null, null);
+        m.RaisePeek(claude);
+        m.RaiseAmbientPeek(new Peek("outra", null, null) { Key = "midia" });
+        Check("ilha: pular música não segura alerta da fila", m.CurrentPeek == musica);
+        m.PeekDone();
+        m.RaiseAmbientPeek(new Peek("mais uma", null, null) { Key = "midia" });
+        Check("ilha: aviso de música não fura nem entra na fila", m.CurrentPeek == claude);
+        m.PeekDone();
+        Check("ilha: aviso de música descartado não reaparece", m.CurrentPeek is null);
+        m.SetFullscreen(true);
+        m.RaiseAmbientPeek(musica);
+        m.SetFullscreen(false);
+        Check("ilha: aviso de música em tela cheia é descartado", m.CurrentPeek is null);
     }
 
     private static void IslandGeometryTests()

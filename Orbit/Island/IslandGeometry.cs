@@ -16,6 +16,7 @@ public static class IslandGeometry
     public static IslandSize SizeFor(IslandMode mode) => mode switch
     {
         IslandMode.Atividade => new IslandSize(320, 30),
+        IslandMode.Discreta => new IslandSize(130, 14),
         IslandMode.Alerta => new IslandSize(360, 56),
         IslandMode.Expandida => new IslandSize(720, 380),
         _ => new IslandSize(110, 10), // Repouso e Oculta
@@ -27,6 +28,7 @@ public static class IslandGeometry
         IslandMode.Expandida => 22,
         IslandMode.Alerta => 18,
         IslandMode.Atividade => 15,
+        IslandMode.Discreta => 7,
         _ => 5,
     };
 

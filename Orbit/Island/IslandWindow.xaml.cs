@@ -342,7 +342,7 @@ public partial class IslandWindow : Window
         _barsLevel = peak > _barsLevel ? peak : _barsLevel * 0.82 + peak * 0.18;
         var heights = AudioMeter.Bars(_barsLevel, _barsClock.Elapsed.TotalSeconds, AudioBars.Children.Count);
         for (int i = 0; i < heights.Length; i++)
-            ((FrameworkElement)AudioBars.Children[i]).Height = 2 + heights[i] * 12;
+            ((FrameworkElement)AudioBars.Children[i]).Height = 2 + heights[i] * 8; // cabe na pílula discreta (14)
     }
 
     private void UpdateVisibility() =>
@@ -359,9 +359,10 @@ public partial class IslandWindow : Window
         ActivityLayer.Visibility = Visibility.Collapsed;
         PeekLayer.Visibility = Visibility.Collapsed;
         ExpandedLayer.Visibility = Visibility.Collapsed;
+        ActivityContent.Visibility = mode == IslandMode.Discreta ? Visibility.Collapsed : Visibility.Visible;
         UIElement? layer = mode switch
         {
-            IslandMode.Atividade => ActivityLayer,
+            IslandMode.Atividade or IslandMode.Discreta => ActivityLayer,
             IslandMode.Alerta => PeekLayer,
             IslandMode.Expandida => ExpandedLayer,
             _ => null,
@@ -408,7 +409,7 @@ public partial class IslandWindow : Window
     // o cursor parado: só abre por hover se o mouse se mexeu de verdade.
     private void OnPillMove(object sender, MouseEventArgs e)
     {
-        if (_hoverFrom is not { } from || _hover.IsEnabled || _vm.Mode is not (IslandMode.Repouso or IslandMode.Atividade)) return;
+        if (_hoverFrom is not { } from || _hover.IsEnabled || _vm.Mode is not (IslandMode.Repouso or IslandMode.Atividade or IslandMode.Discreta)) return;
         var at = e.GetPosition(this);
         if (IslandGeometry.CursorMoved(at.X - from.X, at.Y - from.Y)) _hover.Start();
     }
