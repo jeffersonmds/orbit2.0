@@ -25,6 +25,7 @@ public sealed partial class HojeViewModel : TabViewModel
 
     public WeatherViewModel Weather { get; }
     public PomodoroViewModel Pomodoro { get; }
+    public QuickTimerViewModel Timer { get; }
     public ObservableCollection<WeekDay> Week { get; } = new();
     public ObservableCollection<TodoItem> Todos { get; } = new();
 
@@ -33,8 +34,9 @@ public sealed partial class HojeViewModel : TabViewModel
     [ObservableProperty] private string _newTodo = "";
     [ObservableProperty] private string _todoCounter = "0/0";
 
-    public HojeViewModel(ApiService api, PomodoroViewModel pomodoro, string todosPath)
+    public HojeViewModel(ApiService api, PomodoroViewModel pomodoro, QuickTimerViewModel timer, string todosPath)
     {
+        Timer = timer;
         Weather = new WeatherViewModel(api);
         Pomodoro = pomodoro;
         _todosPath = todosPath;

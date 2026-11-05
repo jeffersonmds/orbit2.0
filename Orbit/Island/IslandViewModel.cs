@@ -65,6 +65,7 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public ObservableCollection<TabViewModel> Tabs { get; } = new();
     public PomodoroViewModel Pomodoro { get; }
+    public QuickTimerViewModel Timer { get; }
     public NowPlayingViewModel NowPlaying { get; } = new();
 
     [ObservableProperty] private TabViewModel? _selectedTab;
@@ -94,6 +95,7 @@ public sealed partial class IslandViewModel : ObservableObject
     [ObservableProperty] private bool _showPomodoroBar;
     [ObservableProperty] private bool _showUpdating;
     [ObservableProperty] private double _pomodoroProgress;
+    private double TimerProgress { get; set; }
     [ObservableProperty] private CameraMicDisplay? _cameraMicView;
 
     // Monitor da ilha (Ajustes). A janela escuta MonitorChanged e se reposiciona.
@@ -129,8 +131,16 @@ public sealed partial class IslandViewModel : ObservableObject
             {
                 // Primeiro minuto da fase com a pílula cheia (dá pra ver o tempo); depois só a barrinha.
                 SetActivity(ActivityKind.Pomodoro, Pomodoro.ActivityText, quiet: Pomodoro.Elapsed >= TimeSpan.FromMinutes(1));
-                PomodoroProgress = Pomodoro.ElapsedFraction;
+                if (_machine.CurrentActivity != ActivityKind.Timer) PomodoroProgress = Pomodoro.ElapsedFraction;
             }
+        };
+        Timer = new QuickTimerViewModel(OnTimerFinished);
+        Timer.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(QuickTimerViewModel.ActivityText)) return;
+            var now = DateTime.Now;
+            SetActivity(ActivityKind.Timer, Timer.ActivityText, quiet: Timer.Quiet(now));
+            TimerProgress = Timer.Fraction(now);
         };
         NowPlaying.PropertyChanged += (_, e) =>
         {
@@ -153,7 +163,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke(),
             SelfUpdate.CheckAsync, UpdateNowAsync));
-        Register(new HojeViewModel(_api, Pomodoro, TodoStore.FilePath));
+        Register(new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath));
         Register(new ControlesViewModel(NowPlaying));
         Register(new StatsViewModel());
         Register(new MercadoViewModel(_api, settings));
@@ -336,6 +346,9 @@ public sealed partial class IslandViewModel : ObservableObject
 
     // "iPad · Link aberto no PC"; sem aparelho (ex.: pareamento) fica só o título.
     public static string PeekTitle(BridgeEvent e) => e.Device is { Length: > 0 } d ? d + " · " + e.Title : e.Title;
+
+    private void OnTimerFinished(int minutes) =>
+        Notify(new Peek("Timer acabou", $"{minutes} min", "hoje"), true);
 
     private void OnPomodoroPhase(PomodoroPhase phase, int minutes) =>
         Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "hoje"), _settings.PomodoroSoundEnabled);
@@ -807,7 +820,9 @@ public sealed partial class IslandViewModel : ObservableObject
         ActivityText = _machine.ActivityText ?? "";
         Peek = _machine.CurrentPeek;
         ShowAudioBars = _machine.Mode == IslandMode.Discreta && _machine.CurrentActivity == ActivityKind.Midia;
-        ShowPomodoroBar = _machine.Mode == IslandMode.Discreta && _machine.CurrentActivity == ActivityKind.Pomodoro;
+        // A barrinha de progresso serve ao Pomodoro e ao timer: mostra o da atividade da vez.
+        ShowPomodoroBar = _machine.Mode == IslandMode.Discreta && _machine.CurrentActivity is ActivityKind.Pomodoro or ActivityKind.Timer;
+        if (_machine.CurrentActivity == ActivityKind.Timer) PomodoroProgress = TimerProgress;
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         ShowUpdating = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Atualizacao;
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos

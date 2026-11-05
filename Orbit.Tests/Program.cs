@@ -41,6 +41,20 @@ public static class Program
         IslandGeometryTests();
         AtomicFileTests();
         {
+            Check("timer: formato", Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromSeconds(272)) == "04:32"
+                && Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromSeconds(0.2)) == "00:01"
+                && Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromMinutes(90)) == "1:30:00");
+            int done = -1;
+            var qt = new Orbit.Tabs.Hoje.QuickTimerViewModel(m => done = m);
+            qt.StartCommand.Execute("10");
+            var t0 = DateTime.Now;
+            Check("timer: começa com a pílula cheia", qt.IsRunning && qt.ActivityText!.StartsWith("Timer · ") && !qt.Quiet(t0));
+            Check("timer: no meio fica fininho", qt.Quiet(t0.AddMinutes(5)) && Math.Abs(qt.Fraction(t0.AddMinutes(5)) - 0.5) < 0.01);
+            Check("timer: últimos 30 s voltam a pílula cheia", !qt.Quiet(t0.AddMinutes(9).AddSeconds(45)));
+            qt.CancelCommand.Execute(null);
+            Check("timer: cancelar some da pílula sem avisar", !qt.IsRunning && qt.ActivityText is null && done == -1);
+        }
+        {
             Check("download: temporários do navegador não avisam", !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\x.zip.crdownload")
                 && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\x.part") && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\desktop.ini")
                 && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\~$doc.docx"));

@@ -12,7 +12,8 @@ public enum IslandMode { Repouso, Atividade, Discreta, Alerta, Expandida, Oculta
 // privacidade: nunca fica atrás de nada.
 // CameraMic: algum app do PC usando câmera/microfone (indicador de privacidade, logo abaixo do aparelho).
 // Envio: copiando arquivos pra caixa de saída do aparelho (clicar na pílula cancela).
-public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2, Envio = 3, Atualizacao = 4, CameraMic = 5, TelaRemota = 6 }
+// Timer: timer rápido da aba Hoje (acima do Pomodoro: é o que acaba antes).
+public enum ActivityKind { Midia = 0, Pomodoro = 1, Timer = 2, Claude = 3, Envio = 4, Atualizacao = 5, CameraMic = 6, TelaRemota = 7 }
 
 // Evento pontual que a pílula mostra por alguns segundos. TabId = aba aberta ao clicar.
 // Classe (não record): dois alertas iguais seguidos são eventos distintos — igualdade por referência.

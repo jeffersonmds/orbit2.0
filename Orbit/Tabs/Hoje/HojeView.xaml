@@ -89,6 +89,22 @@
                     <Button Style="{StaticResource RoundButton}" Content="{Binding PlayGlyph}" Command="{Binding ToggleCommand}" Margin="0,0,8,0"/>
                     <Button Style="{StaticResource RoundButton}" Content="&#xE72C;" Command="{Binding ResetCommand}"/>
                 </StackPanel>
+                <!-- Timer rápido (independente do Pomodoro) -->
+                <StackPanel DataContext="{Binding DataContext.Timer, RelativeSource={RelativeSource AncestorType=UserControl}}" Margin="0,12,0,0">
+                    <TextBlock Text="Timer" FontSize="11" Foreground="{StaticResource InkLo}" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                Visibility="{Binding IsRunning, Converter={StaticResource NotBoolToVis}}">
+                        <Button Style="{StaticResource SmallButton}" Content="5 min" Command="{Binding StartCommand}" CommandParameter="5" Margin="0,0,4,0"/>
+                        <Button Style="{StaticResource SmallButton}" Content="10 min" Command="{Binding StartCommand}" CommandParameter="10" Margin="0,0,4,0"/>
+                        <Button Style="{StaticResource SmallButton}" Content="25 min" Command="{Binding StartCommand}" CommandParameter="25"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding Display}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Typography.NumeralAlignment="Tabular" Margin="0,0,8,0"/>
+                        <Button Style="{StaticResource SmallButton}" Content="Cancelar" Command="{Binding CancelCommand}"/>
+                    </StackPanel>
+                </StackPanel>
             </StackPanel>
         </Border>
 
