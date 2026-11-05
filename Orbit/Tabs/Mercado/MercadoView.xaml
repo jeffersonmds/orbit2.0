@@ -14,8 +14,11 @@
     <Grid>
         <!-- Lista -->
         <DockPanel Visibility="{Binding IsEditing, Converter={StaticResource NotBoolToVis}}">
-            <Button DockPanel.Dock="Top" HorizontalAlignment="Right" Style="{StaticResource SmallButton}"
-                    Content="Editar" Command="{Binding EditCommand}" Margin="0,0,0,8"/>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Content="Editar" Command="{Binding EditCommand}"/>
+                <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Content="Atualizar" Command="{Binding RetryCommand}" Margin="0,0,6,0"/>
+                <TextBlock Text="{Binding Updated}" FontSize="11" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
+            </DockPanel>
             <ScrollViewer VerticalScrollBarVisibility="Hidden">
                 <ItemsControl ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>

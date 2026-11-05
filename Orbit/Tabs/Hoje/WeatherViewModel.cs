@@ -23,6 +23,9 @@ public sealed partial class WeatherViewModel : ObservableObject
     private double _lat = -23.55, _lon = -46.63; // São Paulo até geolocalizar
     private bool _located;
     private DateTime? _lastOk;
+    private Task? _inFlight;
+    // Só aparece quando o dado está velho (falhou a última busca): fresco não precisa de aviso.
+    [ObservableProperty] private string? _stale;
 
     [ObservableProperty] private string _icon = "…";
     [ObservableProperty] private string _temp = "--°";
@@ -52,7 +55,9 @@ public sealed partial class WeatherViewModel : ObservableObject
         _timer.Start();
     }
 
-    private async Task RefreshAsync()
+    private Task RefreshAsync() => Freshness.Once(ref _inFlight, FetchAsync);
+
+    private async Task FetchAsync()
     {
         if (!_located)
         {
@@ -69,12 +74,15 @@ public sealed partial class WeatherViewModel : ObservableObject
         var w = await _api.GetWeatherAsync(_lat, _lon);
         if (w is null)
         {
-            Condition = "indisponível";
+            // Com dado anterior mantém ele na tela, marcado como velho; sem nenhum, "indisponível".
+            if (_lastOk is null) Condition = "indisponível";
+            else Stale = Freshness.Ago(_lastOk, DateTime.Now, failed: true);
             _timer.Interval = TimeSpan.FromSeconds(20); // falhou: tenta de novo logo
             return;
         }
         _timer.Interval = Interval;
         _lastOk = DateTime.Now;
+        Stale = null;
         var (icon, desc) = Describe(w.Code);
         Icon = icon;
         Temp = $"{Math.Round(w.Temp)}°";

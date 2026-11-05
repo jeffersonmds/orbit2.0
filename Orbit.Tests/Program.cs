@@ -40,6 +40,7 @@ public static class Program
         IslandMachineTests();
         IslandGeometryTests();
         AtomicFileTests();
+        FreshnessLabelTests();
         TempSweepTests();
         HeldButtonsTests();
         AccentTests();
@@ -1853,6 +1854,24 @@ public static class Program
         Check("faxina: PNG temporário velho some", !File.Exists(old));
         Check("faxina: recente e de outros apps ficam", File.Exists(fresh) && File.Exists(other));
         Directory.Delete(dir, recursive: true);
+    }
+
+    private static void FreshnessLabelTests()
+    {
+        var now = new DateTime(2026, 11, 5, 15, 0, 0);
+        Check("frescor: nunca buscou", Orbit.Services.Freshness.Ago(null, now, false) == "Atualizando…" && Orbit.Services.Freshness.Ago(null, now, true) == "Sem conexão");
+        Check("frescor: agora", Orbit.Services.Freshness.Ago(now.AddSeconds(-20), now, false) == "Atualizado agora");
+        Check("frescor: minutos com falha", Orbit.Services.Freshness.Ago(now.AddMinutes(-7), now, true) == "Sem conexão · atualizado há 7 min");
+        Check("frescor: horas", Orbit.Services.Freshness.Ago(now.AddHours(-3), now, false) == "Atualizado há 3 h");
+        Task? inFlight = null;
+        int started = 0;
+        var gate = new TaskCompletionSource();
+        var t1 = Orbit.Services.Freshness.Once(ref inFlight, () => { started++; return gate.Task; });
+        var t2 = Orbit.Services.Freshness.Once(ref inFlight, () => { started++; return gate.Task; });
+        Check("frescor: busca em voo é reaproveitada", started == 1 && ReferenceEquals(t1, t2));
+        gate.SetResult();
+        Orbit.Services.Freshness.Once(ref inFlight, () => { started++; return Task.CompletedTask; });
+        Check("frescor: terminada, a próxima começa", started == 2);
     }
 
     private static void AtomicFileTests()

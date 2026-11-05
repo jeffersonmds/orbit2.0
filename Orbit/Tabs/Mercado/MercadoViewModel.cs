@@ -48,6 +48,8 @@ public sealed partial class MercadoViewModel : TabViewModel
     private readonly DispatcherTimer _prices = new() { Interval = PricesEvery };
     private readonly DispatcherTimer _sparks = new() { Interval = SparksEvery };
     private DateTime? _pricesAt, _sparksAt;
+    private Task? _pricesTask, _sparksTask;
+    [ObservableProperty] private string _updated = "";
 
     public override string Id => "mercado";
     public override string Title => "Mercado";
@@ -77,6 +79,7 @@ public sealed partial class MercadoViewModel : TabViewModel
             return;
         }
         var now = DateTime.Now;
+        if (_pricesAt is not null) Updated = Freshness.Ago(_pricesAt, now, failed: false);
         if (Freshness.IsStale(_pricesAt, PricesEvery, now)) _ = RefreshPricesAsync();
         if (Freshness.IsStale(_sparksAt, SparksEvery, now)) _ = RefreshSparksAsync();
         _prices.Start();
@@ -92,7 +95,13 @@ public sealed partial class MercadoViewModel : TabViewModel
             Rows.Add(new MarketRow(item.Id, item.Glyph, item.ColorHex, item.Name, MarketKind.Currency));
     }
 
-    private async Task RefreshPricesAsync()
+    private Task RefreshPricesAsync() => Freshness.Once(ref _pricesTask, FetchPricesAsync);
+    private Task RefreshSparksAsync() => Freshness.Once(ref _sparksTask, FetchSparksAsync);
+
+    [RelayCommand]
+    private Task Retry() => RefreshPricesAsync();
+
+    private async Task FetchPricesAsync()
     {
         var cryptoRows = Rows.Where(r => r.Kind == MarketKind.Crypto).ToList();
         var currencyRows = Rows.Where(r => r.Kind == MarketKind.Currency).ToList();
@@ -112,11 +121,13 @@ public sealed partial class MercadoViewModel : TabViewModel
                     row.Price = "R$ " + p.Price.ToString("0.00", CultureInfo.InvariantCulture);
                     (row.Change, row.ChangeColor) = ChangeIndicator.Format(p.Change, 2);
                 }
-        if (crypto is not null && fx is not null) _pricesAt = DateTime.Now;
+        bool ok = crypto is not null && fx is not null;
+        if (ok) _pricesAt = DateTime.Now;
+        Updated = Freshness.Ago(_pricesAt, DateTime.Now, failed: !ok);
     }
 
     // ponytail: 1 chamada por cripto; limitar ao top-N se bater no rate limit.
-    private async Task RefreshSparksAsync()
+    private async Task FetchSparksAsync()
     {
         bool any = false;
         foreach (var row in Rows.Where(r => r.Kind == MarketKind.Crypto).ToList())

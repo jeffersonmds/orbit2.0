@@ -26,6 +26,8 @@
                     </StackPanel>
                     <TextBlock Text="{Binding Condition}" FontSize="12" Margin="0,4,0,0"/>
                     <TextBlock Text="{Binding Details}" FontSize="11" Foreground="{StaticResource InkLo}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Stale}" FontSize="11" Foreground="#FF9F0A"
+                               Visibility="{Binding Stale, Converter={StaticResource NullToCollapsed}}"/>
                     <TextBlock FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,2,0,8">
                         <Run Text="{Binding Sun, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding RainChance, Mode=OneWay}"/>
                     </TextBlock>
