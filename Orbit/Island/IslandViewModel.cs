@@ -117,7 +117,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 // Pílula discreta não mostra o título: avisa por alguns segundos quando começa a tocar ou troca.
                 if (text is not null && text != _lastTrack)
                 {
-                    _machine.RaiseAmbientPeek(new Peek(text.TrimStart('▶', ' '), null, "controles") { Key = "midia", Duration = TimeSpan.FromSeconds(4) });
+                    _machine.RaiseAmbientPeek(new Peek(text.TrimStart('▶', ' '), null, "controles") { Key = "midia", Duration = TimeSpan.FromSeconds(4), Compact = true });
                     Refresh();
                 }
                 _lastTrack = text;

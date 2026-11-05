@@ -22,6 +22,9 @@ public static class IslandGeometry
         _ => new IslandSize(110, 10), // Repouso e Oculta
     };
 
+    // Alerta de uma linha (Peek.Compact): mesma altura da pílula de atividade.
+    public static readonly IslandSize CompactPeek = new(280, 30);
+
     // Raio dos cantos de baixo (os de cima encostam na borda da tela).
     public static double RadiusFor(IslandMode mode) => mode switch
     {

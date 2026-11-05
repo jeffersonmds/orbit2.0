@@ -129,7 +129,8 @@
                         <Run Text="● " Foreground="{DynamicResource AccentBrush}"/><Run Text="{Binding Peek.Title, Mode=OneWay}"/>
                     </TextBlock>
                     <TextBlock Text="{Binding Peek.Detail}" FontSize="11" Foreground="{StaticResource InkLo}"
-                               TextTrimming="CharacterEllipsis"/>
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding Peek.Detail, Converter={StaticResource NullToCollapsed}}"/>
                     <!-- Barra de nível (volume, bateria) -->
                     <Border Height="4" CornerRadius="2" Background="#33FFFFFF" Margin="0,5,0,0"
                             Visibility="{Binding Peek.HasLevel, Converter={StaticResource BoolToVis}}">

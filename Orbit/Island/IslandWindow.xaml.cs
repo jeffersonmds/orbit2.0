@@ -37,6 +37,7 @@ public partial class IslandWindow : Window
     private bool _released;
     private int _layoutGen;
     private IslandMode _lastMode = IslandMode.Repouso;
+    private bool _layoutCompact;
     private IntPtr _prevFg;
     private WinEventProc? _foregroundHook; // campo: o delegate não pode ser coletado enquanto o hook vive
     private IntPtr _foregroundHookHandle;
@@ -76,6 +77,8 @@ public partial class IslandWindow : Window
                 _peek.Stop();
                 _peek.Interval = _vm.Peek?.Duration ?? DefaultPeek;
                 _peek.Start();
+                // Alerta de uma linha ↔ normal mudam o tamanho da pílula sem mudar o modo.
+                if ((_vm.Peek?.Compact == true) != _layoutCompact) ApplyLayout(IslandMode.Alerta, animate: true);
             }
         };
 
@@ -352,8 +355,9 @@ public partial class IslandWindow : Window
     private void ApplyLayout(IslandMode mode, bool animate)
     {
         int gen = ++_layoutGen;
-        var size = IslandGeometry.SizeFor(mode);
-        var r = IslandGeometry.RadiusFor(mode);
+        bool compact = _layoutCompact = mode == IslandMode.Alerta && _vm.Peek?.Compact == true;
+        var size = compact ? IslandGeometry.CompactPeek : IslandGeometry.SizeFor(mode);
+        var r = IslandGeometry.RadiusFor(compact ? IslandMode.Atividade : mode);
         Pill.CornerRadius = new CornerRadius(0, 0, r, r);
 
         ActivityLayer.Visibility = Visibility.Collapsed;

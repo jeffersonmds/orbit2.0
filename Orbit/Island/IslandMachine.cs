@@ -38,6 +38,8 @@ public sealed class Peek
     // Botões no próprio alerta (ex.: print → "Aparelho" / "Abrir"); clicar executa e fecha o alerta.
     public System.Collections.Generic.IReadOnlyList<PeekAction> Actions { get; init; } = System.Array.Empty<PeekAction>();
     public bool HasActions => Actions.Count > 0;
+    // Uma linha só (ex.: título da música): pílula baixinha em vez do alerta de duas linhas.
+    public bool Compact { get; init; }
 }
 
 public sealed record PeekAction(string Label, System.Action Run);
