@@ -160,6 +160,14 @@ button.danger { color: var(--danger); }
 .scr-bar button { flex: 0 0 auto; min-width: 44px; padding: 8px 12px; font-size: 15px; }
 .scr-bar button.on { background: var(--accent); color: #0b0b0c; }
 .scr-group { display: contents; }
+/* Retorno do gesto: o toque "pegou" antes de a imagem do PC atualizar. */
+.scr-fx { position: absolute; z-index: 2; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .9); pointer-events: none; animation: scr-fx .35s ease-out forwards; }
+.scr-fx.right { border-color: #ff6b6b; }
+.scr-fx.middle { border-color: #4cd964; }
+@keyframes scr-fx { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.2); opacity: 0; } }
+.scr-hold { position: absolute; z-index: 2; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+  background: rgba(10, 132, 255, .25); border: 2px solid #0a84ff; pointer-events: none; }
 .scr-group.hidden { display: none; }
 .scr-wins { position: absolute; inset: 8px; z-index: 3; overflow-y: auto; border-radius: 12px; padding: 10px;
   background: rgba(20, 20, 22, .92); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }

@@ -548,6 +548,18 @@ function scrFrozen(on) {
   scrSay(on ? 'Imagem parada: o PC está bloqueado ou a captura não está disponível.' : '');
 }
 
+// Sem tocar por um tempo o iPhone apagaria a tela no meio do controle. A trava some sozinha se o app
+// for pro segundo plano (e aí a tela remota também para).
+let wakeLock = null;
+async function scrWake(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; /* sem suporte ou negado: segue sem */ }
+}
+
 async function scrStart() {
   $('#scrResume').classList.add('hidden');
   const gen = ++scr.gen;
@@ -558,6 +570,7 @@ async function scrStart() {
     scrImg.onerror = () => { scrSay('A transmissão caiu.'); scrStop(); };
     scrImg.src = `/api/screen/stream?ticket=${encodeURIComponent(ticket)}`;
     scr.live = true;
+    scrWake(true);
     scrView.classList.add('live');
     $('#scrToggle').textContent = 'Parar';
     scrSay('');
@@ -594,6 +607,9 @@ async function scrConnectControl(screen, gen) {
 
 function scrStop() {
   scr.gen++;
+  scrWake(false);
+  scrHoldEnd();
+  if (scr.twoTap) { clearTimeout(scr.twoTap); scr.twoTap = 0; }
   scrFrozen(false);
   clearInterval(scr.watch);
   scrImg.onerror = null;
@@ -644,6 +660,23 @@ function applyView() {
 function resetView() { view.z = 1; view.tx = 0; view.ty = 0; applyView(); }
 $('#scrZoomReset').onclick = resetView;
 
+// Marcas de toque: círculo rápido no clique (branco, vermelho = direito, verde = meio) e um círculo
+// azul que segue o dedo enquanto um arraste segura o botão.
+function scrFx(x, y, kind = '') {
+  const r = scrView.getBoundingClientRect(), d = document.createElement('div');
+  d.className = 'scr-fx ' + kind;
+  d.style.left = `${x - r.left}px`; d.style.top = `${y - r.top}px`;
+  scrView.append(d);
+  setTimeout(() => d.remove(), 400);
+}
+let holdMark = null;
+function scrHold(x, y) {
+  const r = scrView.getBoundingClientRect();
+  if (!holdMark) { holdMark = document.createElement('div'); holdMark.className = 'scr-hold'; scrView.append(holdMark); }
+  holdMark.style.left = `${x - r.left}px`; holdMark.style.top = `${y - r.top}px`;
+}
+function scrHoldEnd() { holdMark?.remove(); holdMark = null; }
+
 // Rolagem com dois dedos continua um pouco depois de soltar, freando (como no trackpad do notebook).
 let inertia = 0;
 function scrStopInertia() { cancelAnimationFrame(inertia); inertia = 0; }
@@ -670,7 +703,7 @@ scrTouch.addEventListener('touchstart', e => {
   scrStopInertia();
   if (e.touches.length >= 3 && gesture?.two) { gesture.three = true; return; } // 3º dedo: vira clique do meio
   if (e.touches.length >= 2) {
-    if (gesture?.drag) scrSend({ t: 'up' });
+    if (gesture?.drag) { scrSend({ t: 'up' }); scrHoldEnd(); }
     clearTimeout(gesture?.timer);
     const r = scrView.getBoundingClientRect(), m = mid(e.touches);
     gesture = {
@@ -685,8 +718,13 @@ scrTouch.addEventListener('touchstart', e => {
   const g = gesture = { x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, at: Date.now(), moved: false, drag: false, done: false, p0: scrPoint(t) };
   if (scr.mode === 'touch' && g.p0) {
     g.timer = setTimeout(() => {
-      if (!g.moved) { scrSend({ t: 'abs', ...g.p0 }); scrSend({ t: 'click', b: 'right' }); g.done = true; }
+      if (!g.moved) { scrSend({ t: 'abs', ...g.p0 }); scrSend({ t: 'click', b: 'right' }); g.done = true; scrFx(g.x, g.y, 'right'); }
     }, 550);
+  } else if (scr.mode === 'pad') {
+    // trackpad: segurar parado = aperta o botão; mover o dedo arrasta (janela, seleção, arquivo); soltar solta
+    g.timer = setTimeout(() => {
+      if (!g.moved) { scrSend({ t: 'down' }); g.drag = true; scrHold(g.x, g.y); }
+    }, 400);
   }
 }, { passive: false });
 
@@ -725,6 +763,7 @@ scrTouch.addEventListener('touchmove', e => {
   }
   const t = e.touches[0];
   if (Math.hypot(t.clientX - g.x0, t.clientY - g.y0) > 8) { g.moved = true; clearTimeout(g.timer); }
+  if (g.drag) scrHold(t.clientX, t.clientY);
   if (scr.mode === 'pad') {
     const dx = t.clientX - g.x, dy = t.clientY - g.y;
     // devagar = preciso; rápido = atravessa a tela (até 2,5× a mais)
@@ -747,18 +786,27 @@ scrTouch.addEventListener('touchend', e => {
   clearTimeout(g.timer);
   const quick = Date.now() - g.at < 300;
   if (g.two) {
-    if (!g.moved && quick) scrSend({ t: 'click', b: g.three ? 'middle' : 'right' });
+    if (!g.moved && quick && g.three) { scrSend({ t: 'click', b: 'middle' }); scrFx(g.m0.x, g.m0.y, 'middle'); }
+    else if (!g.moved && quick) {
+      // dois toques de dois dedos = entra/sai da tela cheia; um só = botão direito (espera 300 ms pra saber)
+      if (scr.twoTap) { clearTimeout(scr.twoTap); scr.twoTap = 0; scrImmersive(!document.body.classList.contains('immersive')); }
+      else {
+        const m = g.m0;
+        scr.twoTap = setTimeout(() => { scr.twoTap = 0; scrSend({ t: 'click', b: 'right' }); scrFx(m.x, m.y, 'right'); }, 300);
+      }
+    }
     else if (g.kind === 'scroll' && g.v) scrInertia(g.v);
   }
-  else if (g.drag) scrSend({ t: 'up' });
+  else if (g.drag) { scrSend({ t: 'up' }); scrHoldEnd(); }
   else if (!g.moved && !g.done) {
-    if (scr.mode === 'pad') scrSend({ t: 'click' });
+    if (scr.mode === 'pad') { scrSend({ t: 'click' }); scrFx(g.x, g.y); }
     else if (g.p0) {
       // 2º toque rápido perto do 1º: mesmo ponto no PC, senão o Windows não reconhece o clique duplo
       const now = Date.now(), last = scr.lastTap;
       const p = last && now - last.at < 450 && Math.hypot(g.x0 - last.x, g.y0 - last.y) < 30 ? last.p : g.p0;
       scr.lastTap = { at: now, x: g.x0, y: g.y0, p };
       scrSend({ t: 'abs', ...p }); scrSend({ t: 'click' });
+      scrFx(g.x0, g.y0);
     }
   }
   gesture = null;
