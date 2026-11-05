@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace Orbit.Services;
 
@@ -12,20 +11,29 @@ public static class KeepAwake
     private enum Es : uint { Continuous = 0x80000000, SystemRequired = 0x00000001 }
 
     private static int _count;
+    private static readonly object Gate = new();
 
     public static void On()
     {
-        if (Interlocked.Increment(ref _count) == 1)
-            SetThreadExecutionState(Es.Continuous | Es.SystemRequired);
+        lock (Gate) if (++_count == 1) Apply(Es.Continuous | Es.SystemRequired);
     }
 
     public static void Off()
     {
-        if (Interlocked.Decrement(ref _count) <= 0)
+        lock (Gate)
         {
-            Interlocked.Exchange(ref _count, 0);
-            SetThreadExecutionState(Es.Continuous);
+            if (_count == 0) return;
+            if (--_count == 0) Apply(Es.Continuous);
         }
+    }
+
+    // SetThreadExecutionState vale pra thread que chama: On/Off vêm de continuations em threads
+    // quaisquer, então os dois sempre rodam no Dispatcher (fila em ordem, dentro do lock).
+    private static void Apply(Es flags)
+    {
+        var d = System.Windows.Application.Current?.Dispatcher;
+        if (d is null) SetThreadExecutionState(flags);
+        else d.BeginInvoke(() => SetThreadExecutionState(flags));
     }
 
     [DllImport("kernel32.dll")]
