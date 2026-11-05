@@ -38,6 +38,9 @@ public sealed class OrbitSettings
     // Print novo (pasta Capturas de tela): a pílula oferece mandar pro aparelho.
     public bool ScreenshotOfferEnabled { get; set; } = true;
 
+    // Download terminado na pasta Downloads: a pílula oferece abrir, mostrar na pasta ou mandar pro aparelho.
+    public bool DownloadOfferEnabled { get; set; } = true;
+
     // Aviso de chuva chegando (ilha + aparelhos), pela previsão de 15 em 15 min.
     public bool RainAlertEnabled { get; set; } = true;
 

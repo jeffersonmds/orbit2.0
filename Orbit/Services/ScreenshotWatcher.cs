@@ -34,23 +34,7 @@ public sealed class ScreenshotWatcher : IDisposable
     {
         if (FolderPath() is not { } dir || !Directory.Exists(dir)) { Log.Information("Prints: pasta de capturas não encontrada"); return; }
         _fsw = new FileSystemWatcher(dir) { Filter = "*.png", NotifyFilter = NotifyFilters.FileName, EnableRaisingEvents = true };
-        _fsw.Created += (_, e) => _ = Task.Run(() => Settle(e.FullPath));
-    }
-
-    // Espera o arquivo terminar de ser gravado (o Windows/OneDrive ainda está escrevendo quando o aviso chega).
-    private async Task Settle(string path)
-    {
-        for (int i = 0; i < 20; i++)
-        {
-            try
-            {
-                using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) { }
-                if (new FileInfo(path).Length > 0) { Captured?.Invoke(path); return; }
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-            await Task.Delay(150);
-        }
+        _fsw.Created += (_, e) => _ = Task.Run(() => FileSettle.WhenReady(e.FullPath, () => Captured?.Invoke(e.FullPath)));
     }
 
     public void Dispose() => _fsw?.Dispose();

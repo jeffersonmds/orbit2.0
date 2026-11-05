@@ -41,6 +41,16 @@ public static class Program
         IslandGeometryTests();
         AtomicFileTests();
         {
+            Check("download: temporários do navegador não avisam", !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\x.zip.crdownload")
+                && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\x.part") && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\desktop.ini")
+                && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\~$doc.docx"));
+            Check("download: arquivo final avisa", Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\relatório.pdf"));
+            var dw = new Orbit.Services.DownloadWatcher();
+            var t = new DateTime(2026, 11, 5, 10, 0, 0);
+            Check("download: criou e renomeou = um aviso só", !dw.IsRepeat(@"C:\D\a.zip", t) && dw.IsRepeat(@"C:\D\a.zip", t.AddSeconds(2))
+                && !dw.IsRepeat(@"C:\D\a.zip", t.AddSeconds(30)));
+        }
+        {
             var g = new Orbit.Services.SilenceGate();
             g.Feed(0); g.Feed(0);
             Check("silêncio: 2 s ainda conta como tocando", g.Audible);

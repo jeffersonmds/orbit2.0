@@ -51,6 +51,7 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly CameraMicWatcher _cameraMic = new();
     private readonly SystemSignals _signals = new();
     private readonly ScreenshotWatcher _screenshots = new();
+    private readonly DownloadWatcher _downloads = new();
     private readonly RainAlert _rain = new();
     private readonly System.Windows.Threading.DispatcherTimer _rainTimer = new() { Interval = TimeSpan.FromMinutes(20) };
     private readonly System.Windows.Threading.DispatcherTimer _sweepTimer = new() { Interval = TimeSpan.FromMinutes(30) };
@@ -215,6 +216,11 @@ public sealed partial class IslandViewModel : ObservableObject
             if (_settings.ScreenshotOfferEnabled) RaisePeek(ScreenshotPeek(path, _settings.BridgeEnabled ? Devices() : Array.Empty<TokenInfo>()));
         });
         _screenshots.Start();
+        _downloads.Finished += path => Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_settings.DownloadOfferEnabled) RaisePeek(DownloadPeek(path, _settings.BridgeEnabled ? Devices() : Array.Empty<TokenInfo>()));
+        });
+        _downloads.Start();
         // "Vai chover": a cada 20 min (1ª checagem 1 min depois de abrir, pra não disputar o começo).
         _rainTimer.Tick += async (_, _) => { _rainTimer.Interval = TimeSpan.FromMinutes(20); await CheckRainAsync(); };
         _rainTimer.Interval = TimeSpan.FromMinutes(1);
@@ -715,6 +721,26 @@ public sealed partial class IslandViewModel : ObservableObject
             catch (Exception ex) { Log.Warning(ex, "Não abri o print"); }
         }));
         return new Peek("Print salvo", Path.GetFileName(path), null) { Key = "print", Duration = TimeSpan.FromSeconds(6), Actions = actions };
+    }
+
+    // Download terminado: 8 s com "Abrir", "Pasta" (Explorer com o arquivo selecionado) e um botão por aparelho.
+    public Peek DownloadPeek(string path, IReadOnlyList<TokenInfo> devices)
+    {
+        var actions = new List<PeekAction>
+        {
+            new("Abrir", () =>
+            {
+                try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
+                catch (Exception ex) { Log.Warning(ex, "Não abri o download"); }
+            }),
+            new("Pasta", () =>
+            {
+                try { Process.Start("explorer.exe", $"/select,\"{path}\""); }
+                catch (Exception ex) { Log.Warning(ex, "Não abri a pasta do download"); }
+            }),
+        };
+        actions.AddRange(DeviceActions(devices, d => SendFiles(new[] { path }, d)));
+        return new Peek("Download concluído", Path.GetFileName(path), null) { Key = "download", Duration = TimeSpan.FromSeconds(8), Actions = actions };
     }
 
     public static bool SignalAllowed(OrbitSettings s, SignalKind kind) =>

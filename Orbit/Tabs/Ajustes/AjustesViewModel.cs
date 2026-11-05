@@ -82,6 +82,7 @@ public sealed partial class AjustesViewModel : TabViewModel
     // Um chip por tipo de sinal (só valem com EventosDoSistema ligado).
     public IReadOnlyList<SignalToggle> Sinais { get; }
     [ObservableProperty] private bool _ofertaDePrint;
+    [ObservableProperty] private bool _ofertaDeDownload;
     [ObservableProperty] private bool _avisoDeChuva;
     [ObservableProperty] private bool _somClaude;
 
@@ -113,6 +114,7 @@ public sealed partial class AjustesViewModel : TabViewModel
             SettingsStore.Save(settings);
         })).ToList();
         OfertaDePrint = settings.ScreenshotOfferEnabled;
+        OfertaDeDownload = settings.DownloadOfferEnabled;
         AvisoDeChuva = settings.RainAlertEnabled;
         FocoTexto = settings.PomodoroFocusMinutes.ToString();
         PausaTexto = settings.PomodoroShortBreakMinutes.ToString();
@@ -241,6 +243,13 @@ public sealed partial class AjustesViewModel : TabViewModel
     {
         if (_settings.RainAlertEnabled == value) return;
         _settings.RainAlertEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    partial void OnOfertaDeDownloadChanged(bool value)
+    {
+        if (_settings.DownloadOfferEnabled == value) return;
+        _settings.DownloadOfferEnabled = value;
         SettingsStore.Save(_settings);
     }
 
