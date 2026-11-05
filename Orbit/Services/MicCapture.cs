@@ -62,17 +62,30 @@ public static class MicCapture
     public static (int Rate, IDisposable Stop) Open(string? deviceId, Action<byte[]> onPcm)
     {
         var en = new MMDeviceEnumerator();
-        var dev = deviceId is null ? en.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications) : en.GetDevice(deviceId);
-        var cap = new WasapiCapture(dev, true, 50);
-        var fmt = cap.WaveFormat;
-        bool isFloat = fmt.BitsPerSample == 32; // mix format do WASAPI compartilhado é float; PCM 32 bits não aparece na prática
-        int factor = Factor(fmt.SampleRate);
-        cap.DataAvailable += (_, e) =>
+        MMDevice? dev = null;
+        WasapiCapture? cap = null;
+        try
         {
-            if (e.BytesRecorded > 0) onPcm(ToMonoPcm16(e.Buffer.AsSpan(0, e.BytesRecorded), fmt.Channels, isFloat, factor));
-        };
-        cap.StartRecording();
-        return (fmt.SampleRate / factor, new Stopper(cap, dev, en));
+            dev = deviceId is null ? en.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications) : en.GetDevice(deviceId);
+            cap = new WasapiCapture(dev, true, 50);
+            var fmt = cap.WaveFormat;
+            bool isFloat = fmt.BitsPerSample == 32; // mix format do WASAPI compartilhado é float; PCM 32 bits não aparece na prática
+            int factor = Factor(fmt.SampleRate);
+            cap.DataAvailable += (_, e) =>
+            {
+                if (e.BytesRecorded > 0) onPcm(ToMonoPcm16(e.Buffer.AsSpan(0, e.BytesRecorded), fmt.Channels, isFloat, factor));
+            };
+            cap.StartRecording();
+            return (fmt.SampleRate / factor, new Stopper(cap, dev, en));
+        }
+        catch
+        {
+            // falhou no meio (aparelho sumiu, formato): solta os objetos COM já abertos
+            cap?.Dispose();
+            dev?.Dispose();
+            en.Dispose();
+            throw;
+        }
     }
 
     private sealed class Stopper(WasapiCapture cap, MMDevice dev, MMDeviceEnumerator en) : IDisposable

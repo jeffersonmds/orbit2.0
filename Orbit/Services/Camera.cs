@@ -112,25 +112,38 @@ public sealed class Camera : IDisposable
     {
         _minIntervalMs = 1000 / Math.Max(preset.Fps, 1);
         var capture = new MediaCapture();
-        await capture.InitializeAsync(new MediaCaptureInitializationSettings
+        MediaFrameReader? reader = null;
+        // Só vira campo depois de tudo dar certo: falha no meio (câmera ocupada, formato) solta o que abriu,
+        // senão a webcam fica presa até o GC.
+        try
         {
-            VideoDeviceId = deviceId,
-            StreamingCaptureMode = StreamingCaptureMode.Video,
-            MemoryPreference = MediaCaptureMemoryPreference.Cpu,
-            SharingMode = MediaCaptureSharingMode.ExclusiveControl,
-        });
-        var source = capture.FrameSources.Values.FirstOrDefault(s => s.Info.MediaStreamType == MediaStreamType.VideoRecord)
-                     ?? capture.FrameSources.Values.First(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
-        // Formato mais perto da largura do preset (desempata pela maior taxa).
-        var format = source.SupportedFormats
-            .Where(f => f.VideoFormat.Width > 0)
-            .OrderBy(f => Math.Abs((int)f.VideoFormat.Width - preset.Width))
-            .ThenByDescending(f => f.FrameRate.Numerator / Math.Max(1.0, f.FrameRate.Denominator))
-            .FirstOrDefault();
-        if (format is not null) await source.SetFormatAsync(format);
-        var reader = await capture.CreateFrameReaderAsync(source);
-        reader.FrameArrived += OnFrame;
-        await reader.StartAsync();
+            await capture.InitializeAsync(new MediaCaptureInitializationSettings
+            {
+                VideoDeviceId = deviceId,
+                StreamingCaptureMode = StreamingCaptureMode.Video,
+                MemoryPreference = MediaCaptureMemoryPreference.Cpu,
+                SharingMode = MediaCaptureSharingMode.ExclusiveControl,
+            });
+            var source = capture.FrameSources.Values.FirstOrDefault(s => s.Info.MediaStreamType == MediaStreamType.VideoRecord)
+                         ?? capture.FrameSources.Values.First(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
+            // Formato mais perto da largura do preset (desempata pela maior taxa).
+            var format = source.SupportedFormats
+                .Where(f => f.VideoFormat.Width > 0)
+                .OrderBy(f => Math.Abs((int)f.VideoFormat.Width - preset.Width))
+                .ThenByDescending(f => f.FrameRate.Numerator / Math.Max(1.0, f.FrameRate.Denominator))
+                .FirstOrDefault();
+            if (format is not null) await source.SetFormatAsync(format);
+            reader = await capture.CreateFrameReaderAsync(source);
+            reader.FrameArrived += OnFrame;
+            var status = await reader.StartAsync();
+            if (status != MediaFrameReaderStartStatus.Success) throw new InvalidOperationException("Câmera não iniciou: " + status);
+        }
+        catch
+        {
+            if (reader is not null) { reader.FrameArrived -= OnFrame; reader.Dispose(); }
+            capture.Dispose();
+            throw;
+        }
         _capture = capture;
         _reader = reader;
         _openDevice = deviceId;
