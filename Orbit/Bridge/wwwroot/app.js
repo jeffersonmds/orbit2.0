@@ -425,8 +425,8 @@ function pfDate(iso) {
   if (d.getFullYear() === now.getFullYear()) return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '');
   return d.toLocaleDateString('pt-BR');
 }
-const pf = { root: null, rootName: '', path: '' };
-const pfJoin = name => pf.path ? `${pf.path}/${name}` : name;
+const pf = { root: null, rootName: '', path: '', gen: 0 };
+const pfJoin = (name, path = pf.path) => path ? `${path}/${name}` : name;
 
 function pfSize(b) {
   if (b < 1024) return `${b} B`;
@@ -449,28 +449,35 @@ function pfRow(icon, name, sub, onclick) {
   return b;
 }
 
+// Cada carga fotografa raiz/caminho: resposta atrasada (voltou rápido de pasta) é descartada, e cada
+// linha age sobre a pasta em que foi listada, não sobre o estado global do momento do toque.
 async function pfLoad() {
   const list = $('#pfList'), msg = $('#pfMsg');
+  const gen = ++pf.gen, { root, rootName, path } = pf;
   msg.classList.add('hidden');
   try {
-    if (!pf.root) {
+    if (!root) {
       const roots = await api('/pcfiles/roots');
+      if (gen !== pf.gen) return;
       $('#pfCrumb').textContent = 'Pastas do PC';
       list.replaceChildren(...roots.map(r => pfRow('dir', r.name, '', () => { pf.root = r.id; pf.rootName = r.name; pf.path = ''; pfLoad(); })));
       return;
     }
-    const entries = await api(`/pcfiles/list?root=${encodeURIComponent(pf.root)}&path=${encodeURIComponent(pf.path)}`);
-    const parts = [pf.rootName, ...pf.path.split('/').filter(Boolean)];
+    const entries = await api(`/pcfiles/list?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
+    if (gen !== pf.gen) return;
+    const parts = [rootName, ...path.split('/').filter(Boolean)];
     $('#pfCrumb').textContent = parts.join(' › ');
     const up = pfRow('up', parts.length > 1 ? parts[parts.length - 2] : 'Pastas do PC', '', () => {
-      if (pf.path) pf.path = pf.path.split('/').slice(0, -1).join('/'); else pf.root = null;
+      pf.root = root; pf.rootName = rootName;
+      if (path) pf.path = path.split('/').slice(0, -1).join('/'); else pf.root = null;
       pfLoad();
     });
     list.replaceChildren(up, ...entries.map(e => e.dir
-      ? pfRow('dir', e.name, pfDate(e.modified), () => { pf.path = pfJoin(e.name); pfLoad(); })
-      : pfRow(pfKind(e.name), e.name, `${pfSize(e.size)} · ${pfDate(e.modified)}`, () => pfDownload(e.name))));
+      ? pfRow('dir', e.name, pfDate(e.modified), () => { pf.root = root; pf.rootName = rootName; pf.path = pfJoin(e.name, path); pfLoad(); })
+      : pfRow(pfKind(e.name), e.name, `${pfSize(e.size)} · ${pfDate(e.modified)}`, () => pfDownload(root, pfJoin(e.name, path)))));
     if (!entries.length) { msg.textContent = 'Pasta vazia.'; msg.classList.remove('hidden'); }
   } catch (e) {
+    if (gen !== pf.gen) return;
     list.replaceChildren();
     msg.textContent = /403/.test(e.message) ? 'Ligue "Arquivos" na aba Dispositivos do PC.' : e.message;
     msg.classList.remove('hidden');
@@ -479,9 +486,9 @@ async function pfLoad() {
 
 // Tíquete (com token) e depois navega pro download: o PC responde como anexo, então o iOS
 // oferece baixar sem sair do app. Só o tíquete descartável vai na URL, nunca o token.
-async function pfDownload(name) {
+async function pfDownload(root, path) {
   try {
-    const { ticket } = await api('/pcfiles/ticket', { method: 'POST', json: { root: pf.root, path: pfJoin(name) } });
+    const { ticket } = await api('/pcfiles/ticket', { method: 'POST', json: { root, path } });
     location.href = `/api/pcfiles/download?ticket=${encodeURIComponent(ticket)}`;
   } catch (e) { toast(e.message); }
 }
