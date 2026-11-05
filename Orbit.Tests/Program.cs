@@ -40,6 +40,13 @@ public static class Program
         IslandMachineTests();
         IslandGeometryTests();
         AtomicFileTests();
+        {
+            var st = new Orbit.Models.OrbitSettings { MutedSignals = { "Volume" } };
+            Check("sinais: tipo desligado não aparece", !IslandViewModel.SignalAllowed(st, Orbit.Services.SignalKind.Volume)
+                && IslandViewModel.SignalAllowed(st, Orbit.Services.SignalKind.AudioDevice));
+            st.SystemSignalsEnabled = false;
+            Check("sinais: chave geral desliga todos", !IslandViewModel.SignalAllowed(st, Orbit.Services.SignalKind.AudioDevice));
+        }
         Check("energia: cancelar ok", Orbit.Services.Power.ReadCancel(0) == Orbit.Services.Power.CancelResult.Cancelled);
         Check("energia: nada agendado não é erro", Orbit.Services.Power.ReadCancel(1116) == Orbit.Services.Power.CancelResult.NothingScheduled);
         Check("energia: sem resposta é falha", Orbit.Services.Power.ReadCancel(null) == Orbit.Services.Power.CancelResult.Failed && Orbit.Services.Power.ReadCancel(5) == Orbit.Services.Power.CancelResult.Failed);

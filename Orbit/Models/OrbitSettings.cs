@@ -32,6 +32,8 @@ public sealed class OrbitSettings
 
     // Volume, carregador, saída de som, Caps Lock e internet animando na pílula.
     public bool SystemSignalsEnabled { get; set; } = true;
+    // Tipos de sinal desligados um a um (nomes de SignalKind); vazio = todos, como antes.
+    public List<string> MutedSignals { get; set; } = new();
 
     // Print novo (pasta Capturas de tela): a pílula oferece mandar pro aparelho.
     public bool ScreenshotOfferEnabled { get; set; } = true;

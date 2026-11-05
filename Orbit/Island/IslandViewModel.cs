@@ -190,7 +190,7 @@ public sealed partial class IslandViewModel : ObservableObject
         // Eventos do sistema: alerta curto na pílula (não vai pro aparelho nem vira toast em tela cheia).
         _signals.Raised += sig => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            if (_settings.SystemSignalsEnabled) RaisePeek(SignalPeek(sig));
+            if (SignalAllowed(_settings, sig.Kind)) RaisePeek(SignalPeek(sig));
         });
         _signals.Start();
         _screenshots.Captured += path => Application.Current?.Dispatcher.BeginInvoke(() =>
@@ -664,6 +664,9 @@ public sealed partial class IslandViewModel : ObservableObject
         }));
         return new Peek("Print salvo", Path.GetFileName(path), null) { Key = "print", Duration = TimeSpan.FromSeconds(6), Actions = actions };
     }
+
+    public static bool SignalAllowed(OrbitSettings s, SignalKind kind) =>
+        s.SystemSignalsEnabled && !s.MutedSignals.Contains(kind.ToString());
 
     // Volume some rápido (1,5 s); os outros ficam 2,5 s. A mesma chave substitui o alerta anterior.
     public static Peek SignalPeek(SystemSignal s) => new(s.Title, s.Detail, null)

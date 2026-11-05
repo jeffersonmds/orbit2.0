@@ -59,6 +59,16 @@
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding SomClaude}" Content="Som nos alertas do Claude"/>
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding EventosDoSistema}"
                           Content="Volume, carregador, som, Caps Lock e internet na pílula"/>
+                <ItemsControl ItemsSource="{Binding Sinais}" IsEnabled="{Binding EventosDoSistema}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding IsOn}" Content="{Binding Label}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDePrint}" Content="Print novo: oferecer mandar pro aparelho"/>
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AvisoDeChuva}" Content="Avisar quando for chover"/>
             </WrapPanel>

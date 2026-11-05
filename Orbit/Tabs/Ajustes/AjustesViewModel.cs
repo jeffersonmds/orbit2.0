@@ -79,6 +79,8 @@ public sealed partial class AjustesViewModel : TabViewModel
 
     [ObservableProperty] private bool _alertasComoToast;
     [ObservableProperty] private bool _eventosDoSistema;
+    // Um chip por tipo de sinal (só valem com EventosDoSistema ligado).
+    public IReadOnlyList<SignalToggle> Sinais { get; }
     [ObservableProperty] private bool _ofertaDePrint;
     [ObservableProperty] private bool _avisoDeChuva;
     [ObservableProperty] private bool _somClaude;
@@ -99,6 +101,17 @@ public sealed partial class AjustesViewModel : TabViewModel
         Accent.Changed += () => Opcoes[0] = SystemOption();
         AlertasComoToast = settings.AlertsAsToastInFullscreen;
         EventosDoSistema = settings.SystemSignalsEnabled;
+        Sinais = new[]
+        {
+            (SignalKind.Volume, "Volume"), (SignalKind.AudioDevice, "Saída de som"), (SignalKind.Power, "Carregador"),
+            (SignalKind.CapsLock, "Caps Lock"), (SignalKind.Network, "Internet"),
+        }.Select(k => new SignalToggle(k.Item2, !settings.MutedSignals.Contains(k.Item1.ToString()), on =>
+        {
+            var name = k.Item1.ToString();
+            settings.MutedSignals.Remove(name);
+            if (!on) settings.MutedSignals.Add(name);
+            SettingsStore.Save(settings);
+        })).ToList();
         OfertaDePrint = settings.ScreenshotOfferEnabled;
         AvisoDeChuva = settings.RainAlertEnabled;
         FocoTexto = settings.PomodoroFocusMinutes.ToString();
@@ -259,4 +272,11 @@ public sealed partial class AjustesViewModel : TabViewModel
         SettingsStore.Save(_settings);
         Accent.Refresh();
     }
+}
+
+public sealed partial class SignalToggle(string label, bool on, Action<bool> changed) : ObservableObject
+{
+    public string Label { get; } = label;
+    [ObservableProperty] private bool _isOn = on;
+    partial void OnIsOnChanged(bool value) => changed(value);
 }
