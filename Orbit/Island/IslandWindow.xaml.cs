@@ -124,6 +124,9 @@ public partial class IslandWindow : Window
 #endif
 
         ApplyLayout(_vm.Mode, animate: false);
+        // Alerta levantado antes da janela assinar o VM (ex.: "Orbit atualizado" na abertura): o
+        // OnModeChanged não rodou, então o timer que fecha o alerta é ligado aqui.
+        if (_vm.Mode == IslandMode.Alerta && !_userHidden) { _peek.Interval = _vm.Peek?.Duration ?? DefaultPeek; _peek.Start(); }
     }
 
     protected override void OnSourceInitialized(EventArgs e)
