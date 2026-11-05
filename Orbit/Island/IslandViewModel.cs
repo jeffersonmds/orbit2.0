@@ -460,15 +460,48 @@ public sealed partial class IslandViewModel : ObservableObject
         if (files.Count == 0) return;
         var live = LiveRecipients(to, _tokens.List());
         if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "dispositivos")); return; }
+        // Copiar até 2 GB demora: a pílula mostra "Preparando 2/5" e um clique nela cancela.
+        // Um envio novo não cancela o anterior: só passa a ser o mostrado (e o cancelável) na pílula.
+        var cts = _sendCts = new System.Threading.CancellationTokenSource();
+        var ui = Application.Current?.Dispatcher;
         _ = Task.Run(() =>
         {
-            var added = files.Select(f =>
+            var added = new List<OutboxItem>();
+            for (int i = 0; i < files.Count && !cts.IsCancellationRequested; i++)
             {
-                try { return _outbox.AddFile(f, DateTime.Now, live, files.Count == 1 ? name : null); }
-                catch (Exception ex) { Log.Warning(ex, "Mandar pro dispositivo: não copiou {Arquivo}", f); return null; }
-            }).OfType<OutboxItem>().ToList();
-            Application.Current?.Dispatcher.BeginInvoke(() => Announce(added, files.Count, live));
+                var f = files[i];
+                var text = SendProgressText(i, files.Count, Path.GetFileName(f));
+                ui?.BeginInvoke(() => { if (_sendCts == cts) SetActivity(ActivityKind.Envio, text); });
+                try { if (_outbox.AddFile(f, DateTime.Now, live, files.Count == 1 ? name : null, cts.Token) is { } item) added.Add(item); }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { Log.Warning(ex, "Mandar pro dispositivo: não copiou {Arquivo}", f); }
+            }
+            ui?.BeginInvoke(() =>
+            {
+                if (_sendCts == cts) { _sendCts = null; SetActivity(ActivityKind.Envio, null); }
+                if (cts.IsCancellationRequested)
+                {
+                    // cancelado: o que já tinha ido pra caixa de saída sai também (nada pela metade no aparelho)
+                    foreach (var item in added) foreach (var d in live) _outbox.Remove(item.Id, d);
+                    RaisePeek(new Peek("Envio cancelado", added.Count > 0 ? $"{added.Count} arquivo(s) retirados" : null, null));
+                }
+                else Announce(added, files.Count, live);
+                cts.Dispose();
+            });
         });
+    }
+
+    private System.Threading.CancellationTokenSource? _sendCts;
+
+    public static string SendProgressText(int index, int total, string file) =>
+        (total == 1 ? "Preparando " + file : $"Preparando {index + 1}/{total} · {file}") + " — clique pra cancelar";
+
+    // Clique na pílula com o envio na vez: cancela em vez de abrir a ilha.
+    public bool CancelSendIfShowing()
+    {
+        if (_sendCts is null || _machine.Mode != IslandMode.Atividade || _machine.CurrentActivity != ActivityKind.Envio) return false;
+        _sendCts.Cancel();
+        return true;
     }
 
     public enum ClipSend { Files, Image, Text, Private, Empty }

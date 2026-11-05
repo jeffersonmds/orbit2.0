@@ -663,6 +663,15 @@ public static class Program
         var swPath = swept.PathOf(sw.Id, t0, "D")!;
         swept.Sweep(t0.AddHours(25));
         Check("saída: faxina periódica apaga o vencido sem ninguém consultar", !File.Exists(swPath));
+        var cancelBox = new Outbox(Path.Combine(dir, "box-cancel"));
+        File.WriteAllText(src, "x");
+        bool canceled = false;
+        try { cancelBox.AddFile(src, t0, all, ct: new System.Threading.CancellationToken(true)); }
+        catch (OperationCanceledException) { canceled = true; }
+        Check("saída: cancelar a cópia não deixa parcial nem item", canceled && cancelBox.List(t0, "D").Count == 0
+            && !Directory.EnumerateFiles(Path.Combine(dir, "box-cancel")).Any(f => !f.EndsWith(".json")));
+        Check("envio: texto de progresso", IslandViewModel.SendProgressText(1, 5, "a.pdf") == "Preparando 2/5 · a.pdf — clique pra cancelar"
+            && IslandViewModel.SendProgressText(0, 1, "a.pdf") == "Preparando a.pdf — clique pra cancelar");
         OutboxPerDeviceTests(dir, t0);
 
         Check("saída: aviso de 1 arquivo", IslandViewModel.OutboxAnnouncement(new[] { new OutboxItem("1", "foto.jpg", 2 * 1024 * 1024, "1.jpg", null, t0) })

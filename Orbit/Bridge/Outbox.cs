@@ -63,7 +63,9 @@ public sealed class Outbox
     }
 
     // Copia um arquivo do PC pra caixa de saída. null = não dá (pasta, sumiu, grande demais).
-    public OutboxItem? AddFile(string path, DateTime now, IReadOnlyList<string> recipients, string? displayName = null)
+    // ct: cancelar no meio de um arquivo grande apaga a cópia parcial e lança OperationCanceledException.
+    public OutboxItem? AddFile(string path, DateTime now, IReadOnlyList<string> recipients, string? displayName = null,
+        System.Threading.CancellationToken ct = default)
     {
         if (recipients.Count == 0) return null;
         var info = new FileInfo(path);
@@ -72,7 +74,18 @@ public sealed class Outbox
         var name = BridgeRules.SafeFileName(displayName ?? info.Name);
         var stored = id + Path.GetExtension(name);
         Directory.CreateDirectory(_dir);
-        System.IO.File.Copy(path, Path.Combine(_dir, stored));
+        var target = Path.Combine(_dir, stored);
+        try
+        {
+            using (var src = System.IO.File.OpenRead(path))
+            using (var dst = new FileStream(target, FileMode.CreateNew))
+                src.CopyToAsync(dst, ct).GetAwaiter().GetResult(); // já roda fora da UI thread (SendFiles)
+        }
+        catch
+        {
+            try { System.IO.File.Delete(target); } catch { }
+            throw;
+        }
         return Add(new OutboxItem(id, name, info.Length, stored, null, now, recipients.ToList()), now);
     }
 

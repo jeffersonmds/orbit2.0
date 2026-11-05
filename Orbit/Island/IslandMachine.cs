@@ -11,7 +11,8 @@ public enum IslandMode { Repouso, Atividade, Discreta, Alerta, Expandida, Oculta
 // Maior valor vence na pílula. TelaRemota (tela, controle e microfone pelo aparelho) é indicador de
 // privacidade: nunca fica atrás de nada.
 // CameraMic: algum app do PC usando câmera/microfone (indicador de privacidade, logo abaixo do aparelho).
-public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2, Atualizacao = 3, CameraMic = 4, TelaRemota = 5 }
+// Envio: copiando arquivos pra caixa de saída do aparelho (clicar na pílula cancela).
+public enum ActivityKind { Midia = 0, Pomodoro = 1, Claude = 2, Envio = 3, Atualizacao = 4, CameraMic = 5, TelaRemota = 6 }
 
 // Evento pontual que a pílula mostra por alguns segundos. TabId = aba aberta ao clicar.
 // Classe (não record): dois alertas iguais seguidos são eventos distintos — igualdade por referência.

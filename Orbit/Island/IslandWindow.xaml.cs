@@ -449,6 +449,7 @@ public partial class IslandWindow : Window
 
     private void OnPillClick(object sender, MouseButtonEventArgs e)
     {
+        if (_vm.CancelSendIfShowing()) return;
         if (_vm.Mode == IslandMode.Alerta) { _vm.OpenPeekTab(); Activate(); }
         else if (_vm.Mode != IslandMode.Expandida) ExpandFocused();
     }
