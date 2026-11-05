@@ -41,6 +41,23 @@ public static class Program
         IslandGeometryTests();
         AtomicFileTests();
         {
+            // OCR de verdade (API do Windows): desenha um texto num PNG e lê de volta.
+            var ocrPng = Path.Combine(Path.GetTempPath(), "orbit-ocr-" + Guid.NewGuid().ToString("N") + ".png");
+            using (var bmp = new System.Drawing.Bitmap(600, 120))
+            using (var g = System.Drawing.Graphics.FromImage(bmp))
+            using (var font = new System.Drawing.Font("Segoe UI", 36))
+            {
+                g.Clear(System.Drawing.Color.White);
+                g.DrawString("ORBIT ILHA 2026", font, System.Drawing.Brushes.Black, 10, 20);
+                bmp.Save(ocrPng, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            var lido = Orbit.Services.TextFromImage.FromFileAsync(ocrPng).GetAwaiter().GetResult();
+            Check("ocr: lê o texto do print", Windows.Media.Ocr.OcrEngine.TryCreateFromUserProfileLanguages() is null ? lido is null : lido?.Contains("ORBIT") == true);
+            File.Delete(ocrPng);
+            Check("ocr: resumo", Orbit.Services.TextFromImage.Summary("a\nb") == "2 linhas copiadas"
+                && Orbit.Services.TextFromImage.Summary("") == "Nenhum texto na imagem" && Orbit.Services.TextFromImage.Summary(null) == "Não consegui ler a imagem");
+        }
+        {
             Check("timer: formato", Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromSeconds(272)) == "04:32"
                 && Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromSeconds(0.2)) == "00:01"
                 && Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromMinutes(90)) == "1:30:00");

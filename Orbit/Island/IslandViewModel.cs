@@ -728,12 +728,22 @@ public sealed partial class IslandViewModel : ObservableObject
     public Peek ScreenshotPeek(string path, IReadOnlyList<TokenInfo> devices)
     {
         var actions = DeviceActions(devices, d => SendFiles(new[] { path }, d));
+        actions.Add(new PeekAction("Texto", () => _ = CopyTextFromImageAsync(path)));
         actions.Add(new PeekAction("Abrir", () =>
         {
             try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
             catch (Exception ex) { Log.Warning(ex, "Não abri o print"); }
         }));
         return new Peek("Print salvo", Path.GetFileName(path), null) { Key = "print", Duration = TimeSpan.FromSeconds(6), Actions = actions };
+    }
+
+    // "Texto" no aviso de print: OCR do Windows, texto vai pro clipboard e a pílula diz quantas linhas.
+    private async Task CopyTextFromImageAsync(string path)
+    {
+        var text = await TextFromImage.FromFileAsync(path);
+        if (!string.IsNullOrEmpty(text) && !ClipboardReader.SetText(text)) text = null;
+        RaisePeek(new Peek(TextFromImage.Summary(text), string.IsNullOrEmpty(text) ? null : text.Split('\n')[0], "clipboard")
+            { Key = "ocr", Duration = TimeSpan.FromSeconds(3) });
     }
 
     // Download terminado: 8 s com "Abrir", "Pasta" (Explorer com o arquivo selecionado) e um botão por aparelho.

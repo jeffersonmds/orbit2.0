@@ -147,8 +147,13 @@
                         <Button Style="{StaticResource SmallButton}" Content="{Binding PinLabel}" Command="{Binding TogglePinCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource SmallButton}" Content="Remover" Command="{Binding RemoveCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource SmallButton}" Content="Dispositivo" ToolTip="Mandar pro dispositivo"
-                                Command="{Binding SendToDeviceCommand}"/>
+                                Command="{Binding SendToDeviceCommand}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource SmallButton}" Content="Copiar texto" ToolTip="Lê o texto da imagem (OCR do Windows) e copia"
+                                Command="{Binding CopyTextCommand}"
+                                Visibility="{Binding IsImageSelected, Converter={StaticResource BoolToVis}}"/>
                     </StackPanel>
+                    <TextBlock Text="{Binding OcrStatus}" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,6,0,0"
+                               Visibility="{Binding OcrStatus, Converter={StaticResource NullToCollapsed}}"/>
                     <TextBlock Text="Enter cola · Ctrl+P fixa · Del remove · Ctrl+Alt+I manda a seleção pro dispositivo" FontSize="10.5"
                                Foreground="{StaticResource InkLo}" Margin="0,8,0,0"/>
                 </StackPanel>

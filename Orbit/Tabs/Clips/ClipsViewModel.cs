@@ -75,6 +75,8 @@ public sealed partial class ClipsViewModel : TabViewModel
 
     partial void OnSelectedChanged(ClipItem? value)
     {
+        OnPropertyChanged(nameof(IsImageSelected));
+        OcrStatus = null;
         OnPropertyChanged(nameof(PinLabel));
         DetailType = value?.Kind switch { ClipKind.Link => "Link", ClipKind.Image => "Imagem", ClipKind.Text => "Texto", _ => "" };
         DetailSize = value is null ? ""
@@ -155,6 +157,20 @@ public sealed partial class ClipsViewModel : TabViewModel
         Persist();
         Refresh();
         PasteRequested?.Invoke();
+    }
+
+    // OCR da imagem selecionada: o texto vai pro clipboard (e entra no histórico como texto).
+    [ObservableProperty] private string? _ocrStatus;
+    public bool IsImageSelected => Selected?.Kind == ClipKind.Image;
+
+    [RelayCommand]
+    private async Task CopyText()
+    {
+        if (Selected is not { Kind: ClipKind.Image, ImagePath: { } p } || !File.Exists(p)) return;
+        OcrStatus = "Lendo o texto…";
+        var text = await TextFromImage.FromFileAsync(p);
+        if (!string.IsNullOrEmpty(text) && !ClipboardReader.SetText(text)) { OcrStatus = "Não consegui copiar"; return; }
+        OcrStatus = TextFromImage.Summary(text);
     }
 
     // A ilha manda pro dispositivo (caixa de saída + aviso). Imagem vai como arquivo, texto como texto.
