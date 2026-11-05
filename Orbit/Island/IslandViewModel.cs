@@ -618,6 +618,7 @@ public sealed partial class IslandViewModel : ObservableObject
         var s = await SelfUpdate.CheckAsync();
         if (!s.CanUpdate) { RaisePeek(new Peek("Não dá pra atualizar", s.Reason, "ajustes")); return; }
         _updating = true;
+        Collapse(); // a pílula mostra o progresso; a ilha aberta só atrapalharia
         SetActivity(ActivityKind.Atualizacao, "Atualizando Orbit…");
         try
         {
