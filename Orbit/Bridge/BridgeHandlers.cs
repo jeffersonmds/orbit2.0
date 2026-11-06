@@ -47,7 +47,8 @@ public sealed class BridgeHandlers
     // Teclado remoto (ditado do aparelho → app em foco no PC): só texto e teclas.
     public Func<IReadOnlyList<ScreenInfo>> Screens { get; init; } = () => Array.Empty<ScreenInfo>();
     public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
-    public Action<RemoteCommand, System.Drawing.Rectangle> RemoteInput { get; init; } = (_, _) => { };
+    // Devolve um aviso pro aparelho quando o comando não chegou ao app (null = chegou).
+    public Func<RemoteCommand, System.Drawing.Rectangle, string?> RemoteInput { get; init; } = (_, _) => null;
     // Janelas abertas no PC (trocar de janela pelo aparelho) e trazer uma pra frente.
     public Func<IReadOnlyList<Orbit.Services.OpenWindow>> Windows { get; init; } = () => Array.Empty<Orbit.Services.OpenWindow>();
     public Func<long, bool> FocusWindow { get; init; } = _ => false;

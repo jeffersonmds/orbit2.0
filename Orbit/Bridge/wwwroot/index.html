@@ -241,6 +241,15 @@
           <div class="scr-wins-head"><b>Janelas no PC</b><button id="scrWinsClose">Fechar</button></div>
           <div id="scrWinsList"></div>
         </div>
+        <!-- Escrever/ditar por cima da tela: o ditado corrige palavras, então vai tudo de uma vez -->
+        <div class="scr-type hidden" id="scrType">
+          <textarea id="scrTypeText" rows="3" placeholder="Escreva ou dite aqui…"></textarea>
+          <div class="scr-type-row">
+            <label><input type="checkbox" id="scrTypeEnter"> + Enter</label>
+            <button id="scrTypeClose">Fechar</button>
+            <button class="primary" id="scrTypeSend">Digitar no PC</button>
+          </div>
+        </div>
         <div class="scr-float">
           <button id="scrFsStop" class="fs-only">Parar</button>
           <button id="scrZoomReset" class="hidden">1×</button>
@@ -254,6 +263,7 @@
         <button id="scrMode">Toque</button>
         <button id="scrSpeed" class="hidden">Vel 2×</button>
         <button id="scrKbd">Teclado</button>
+        <button id="scrTypeBtn">Ditar</button>
         <button id="scrWinsBtn">Janelas</button>
         <button id="scrGroup">Atalhos</button>
         <span class="scr-group" id="scrKeys">
@@ -269,6 +279,12 @@
           <button data-key="up">↑</button>
           <button data-key="down">↓</button>
           <button data-key="right">→</button>
+          <button data-key="delete">Del</button>
+          <button data-key="home">Home</button>
+          <button data-key="end">End</button>
+          <button data-key="pageup">PgUp</button>
+          <button data-key="pagedown">PgDn</button>
+          <button data-key="f5">F5</button>
         </span>
         <span class="scr-group hidden" id="scrCombos">
           <button data-combo="ctrl+c">Copiar</button>
@@ -279,6 +295,16 @@
           <button data-combo="win+d">Área de trabalho</button>
           <button data-combo="ctrl+w">Fechar aba</button>
           <button data-combo="alt+f4">Fechar janela</button>
+          <button data-combo="ctrl+shift+t">Reabrir aba</button>
+          <button data-combo="win+shift+s">Recorte</button>
+          <button id="scrPasteFrom">Colar do celular</button>
+          <button id="scrCopyTo">Copiar pro celular</button>
+          <button data-combo="playpause">⏯</button>
+          <button data-combo="prev">⏮</button>
+          <button data-combo="next">⏭</button>
+          <button data-combo="voldown">Vol−</button>
+          <button data-combo="volup">Vol+</button>
+          <button data-combo="volmute">Mudo</button>
         </span>
       </div>
       <input id="scrInput" class="scr-input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Teclado do PC">

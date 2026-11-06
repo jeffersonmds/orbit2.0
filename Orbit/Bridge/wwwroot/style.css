@@ -175,6 +175,12 @@ select { width: 100%; background: var(--bg); color: var(--ink); border: 1px soli
 .scr-group.hidden { display: none; }
 .scr-wins { position: absolute; inset: 8px; z-index: 3; overflow-y: auto; border-radius: 12px; padding: 10px;
   background: rgba(20, 20, 22, .92); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.scr-type { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 3; border-radius: 12px; padding: 10px;
+  background: rgba(20, 20, 22, .92); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.scr-type textarea { width: 100%; box-sizing: border-box; font-size: 16px; }
+.scr-type-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.scr-type-row label { margin-right: auto; font-size: 14px; }
+.scr-type.hidden { display: none; }
 .scr-wins-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .scr-wins-head button { min-height: 32px; padding: 4px 10px; }
 #scrWinsList button { display: block; width: 100%; text-align: left; margin-bottom: 6px; padding: 10px 12px; }

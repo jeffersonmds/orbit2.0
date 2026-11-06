@@ -198,6 +198,9 @@ public static class Program
     {
         var abs = RemoteInput.Parse("{\"t\":\"abs\",\"x\":0.5,\"y\":1}");
         Check("remoto: abs", abs is { Kind: RemoteKind.Abs, X: 0.5, Y: 1 });
+        Check("remoto: teclas de mídia e Ctrl+Shift+T", RemoteInput.Parse("{\"t\":\"key\",\"k\":\"volup\"}") is { Kind: RemoteKind.Key, Vk: 0xAF }
+            && RemoteInput.Parse("{\"t\":\"key\",\"k\":\"playpause\",\"mods\":[]}") is { Vk: 0xB3 }
+            && RemoteInput.Parse("{\"t\":\"key\",\"k\":\"t\",\"mods\":[\"ctrl\",\"shift\"]}") is { Mods.Length: 2 });
         Check("remoto: abs fora de 0..1 recusado", RemoteInput.Parse("{\"t\":\"abs\",\"x\":1.5,\"y\":0}") is null);
         Check("remoto: move", RemoteInput.Parse("{\"t\":\"move\",\"dx\":-12,\"dy\":3.5}") is { Kind: RemoteKind.Move, X: -12, Y: 3.5 });
         Check("remoto: move gigante recusado", RemoteInput.Parse("{\"t\":\"move\",\"dx\":99999,\"dy\":0}") is null);
@@ -305,7 +308,7 @@ public static class Program
         {
             Screens = () => new[] { fakeScreen },
             CaptureScreen = (_, _) => jpeg,
-            RemoteInput = (c, _) => received.Enqueue(c),
+            RemoteInput = (c, _) => { received.Enqueue(c); return null; },
             RemoteChanged = st => states.Enqueue(st),
             Windows = () => new[] { new Orbit.Services.OpenWindow(42, "Relatório.docx - Word", "Microsoft Word") },
             FocusWindow = id => id == 42,
@@ -678,7 +681,7 @@ public static class Program
         var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
         var handlers = new BridgeHandlers
         {
-            RemoteInput = (c, _) => got.Enqueue(c),
+            RemoteInput = (c, _) => { got.Enqueue(c); return null; },
             RemoteChanged = st => states.Enqueue(st),
         };
         var server = new BridgeServer();

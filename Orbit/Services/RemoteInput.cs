@@ -54,6 +54,8 @@ public static class RemoteInput
             ["enter"] = 0x0D, ["backspace"] = 0x08, ["tab"] = 0x09, ["esc"] = 0x1B, ["space"] = 0x20,
             ["left"] = 0x25, ["up"] = 0x26, ["right"] = 0x27, ["down"] = 0x28, ["delete"] = 0x2E,
             ["home"] = 0x24, ["end"] = 0x23, ["pageup"] = 0x21, ["pagedown"] = 0x22, ["win"] = 0x5B,
+            ["volmute"] = 0xAD, ["voldown"] = 0xAE, ["volup"] = 0xAF,
+            ["next"] = 0xB0, ["prev"] = 0xB1, ["playpause"] = 0xB3,
         };
         for (char c = 'a'; c <= 'z'; c++) k[c.ToString()] = (ushort)char.ToUpperInvariant(c);
         for (char c = '0'; c <= '9'; c++) k[c.ToString()] = c;
@@ -114,43 +116,78 @@ public static class RemoteInput
     public static (ushort Vk, bool Up)[] KeySequence(ushort vk, ushort[] mods) =>
         mods.Select(m => (m, false)).Append((vk, false)).Append((vk, true)).Concat(mods.Reverse().Select(m => (m, true))).ToArray();
 
-    public static void Execute(RemoteCommand cmd, Rectangle bounds)
+    // Aviso pro aparelho quando o comando não chegou ao app (null = foi). O Windows não deixa um
+    // programa comum mandar teclas/cliques pra um app aberto como administrador (UIPI), e o SendInput
+    // nem sempre acusa: confere o app em foco antes.
+    public const string ElevatedWarning = "O app em foco no PC está como administrador: não aceita o teclado daqui.";
+    public const string BlockedWarning = "O PC não aceitou o comando (tela bloqueada ou app protegido?).";
+
+    public static string? Execute(RemoteCommand cmd, Rectangle bounds)
+    {
+        // Manda sempre (o clique é justamente como se tira o foco do app elevado); só teclas avisam.
+        var ok = Run(cmd, bounds);
+        if (cmd.Kind is RemoteKind.Text or RemoteKind.Key && ForegroundElevated()) return ElevatedWarning;
+        return ok ? null : BlockedWarning;
+    }
+
+    private static bool Run(RemoteCommand cmd, Rectangle bounds)
     {
         switch (cmd.Kind)
         {
             case RemoteKind.Abs:
                 var p = ToScreen(cmd.X, cmd.Y, bounds);
-                SetCursorPos(p.X, p.Y);
-                break;
+                return SetCursorPos(p.X, p.Y);
             case RemoteKind.Move:
-                Send(Mouse(MOUSEEVENTF_MOVE, (int)cmd.X, (int)cmd.Y));
-                break;
+                return Send(Mouse(MOUSEEVENTF_MOVE, (int)cmd.X, (int)cmd.Y));
             case RemoteKind.Down:
-                Send(Mouse(cmd.Right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN));
-                break;
+                return Send(Mouse(cmd.Right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN));
             case RemoteKind.Up:
-                Send(Mouse(cmd.Right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP));
-                break;
+                return Send(Mouse(cmd.Right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP));
             case RemoteKind.Click:
                 var (down, up) = cmd.Middle ? (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP)
                     : cmd.Right ? (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP) : (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
-                Send(Enumerable.Range(0, cmd.Count).SelectMany(_ => new[] { Mouse(down), Mouse(up) }).ToArray());
-                break;
+                return Send(Enumerable.Range(0, cmd.Count).SelectMany(_ => new[] { Mouse(down), Mouse(up) }).ToArray());
             case RemoteKind.Scroll:
                 var wheel = new List<INPUT>();
                 if (cmd.Y != 0) wheel.Add(Mouse(MOUSEEVENTF_WHEEL, data: (int)cmd.Y));
                 if (cmd.X != 0) wheel.Add(Mouse(MOUSEEVENTF_HWHEEL, data: (int)cmd.X));
-                Send(wheel.ToArray());
-                break;
+                return Send(wheel.ToArray());
             case RemoteKind.Text:
-                Send(cmd.Text.SelectMany(ch => new[] { Unicode(ch, false), Unicode(ch, true) }).ToArray());
-                break;
+                return Send(cmd.Text.SelectMany(ch => new[] { Unicode(ch, false), Unicode(ch, true) }).ToArray());
             case RemoteKind.Key:
-                Send(KeySequence(cmd.Vk, cmd.Mods ?? Array.Empty<ushort>())
+                return Send(KeySequence(cmd.Vk, cmd.Mods ?? Array.Empty<ushort>())
                     .Select(k => Key(k.Vk, k.Up)).ToArray());
-                break;
         }
+        return true;
     }
+
+    private static readonly bool SelfElevated = Environment.IsPrivilegedProcess;
+
+    // App em primeiro plano roda elevado e o Orbit não: o Windows descarta o que mandarmos pra ele.
+    private static bool ForegroundElevated()
+    {
+        if (SelfElevated) return false;
+        var hwnd = GetForegroundWindow();
+        if (hwnd == IntPtr.Zero || GetWindowThreadProcessId(hwnd, out var pid) == 0) return false;
+        var proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (proc == IntPtr.Zero) return false;
+        try
+        {
+            if (!OpenProcessToken(proc, TOKEN_QUERY, out var tok)) return false;
+            try { return GetTokenInformation(tok, TokenElevation, out var elevated, sizeof(int), out _) && elevated != 0; }
+            finally { CloseHandle(tok); }
+        }
+        finally { CloseHandle(proc); }
+    }
+
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, TOKEN_QUERY = 0x8;
+    private const int TokenElevation = 20;
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("kernel32.dll")] private static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("advapi32.dll")] private static extern bool OpenProcessToken(IntPtr proc, uint access, out IntPtr token);
+    [DllImport("advapi32.dll")] private static extern bool GetTokenInformation(IntPtr token, int cls, out int info, int len, out int retLen);
+    [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr h);
 
     // --- SendInput ---
 
@@ -176,10 +213,8 @@ public static class RemoteInput
 
     private static bool IsExtended(ushort vk) => vk is >= 0x21 and <= 0x28 or 0x2E or 0x5B;
 
-    private static void Send(params INPUT[] inputs)
-    {
-        if (inputs.Length > 0) SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
-    }
+    private static bool Send(params INPUT[] inputs) =>
+        inputs.Length == 0 || SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()) == inputs.Length;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT { public uint type; public InputUnion u; }

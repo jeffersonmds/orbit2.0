@@ -522,6 +522,15 @@ const scrPref = (k, v) => {
     localStorage.setItem('scr.' + k, JSON.stringify(v));
   } catch { return null; }
 };
+// O PC avisa quando o comando não chegou ao app (ex.: app como administrador).
+const warnOf = data => { try { const o = JSON.parse(data); return o.t === 'warn' ? String(o.msg) : null; } catch { return null; } };
+function scrWarn(data) {
+  const m = warnOf(data);
+  if (!m) return;
+  scrSay(m);
+  clearTimeout(scr.warnT);
+  scr.warnT = setTimeout(() => { if ($('#scrMsg').textContent === m) scrSay(''); }, 5000);
+}
 const scrSend = o => { if (scr.ws && scr.ws.readyState === 1) scr.ws.send(JSON.stringify(o)); };
 
 async function scrLoad() {
@@ -618,6 +627,7 @@ async function scrConnectControl(screen, gen) {
       $('#scrBar').classList.remove('hidden');
       if (scr.retrying) { scr.retrying = false; scrSay(''); }
     };
+    ws.onmessage = e => scrWarn(e.data);
     ws.onclose = e => {
       const mine = scr.ws === ws; // false = fechei eu (Parar)
       $('#scrBar').classList.add('hidden');
@@ -924,10 +934,52 @@ $('#scrGroup').onclick = () => {
   $('#scrKeys').classList.toggle('hidden', combos);
   $('#scrGroup').classList.toggle('on', combos);
 };
-document.querySelectorAll('[data-combo]').forEach(b => b.onclick = () => {
+document.querySelectorAll('[data-combo]').forEach(b => b.onclick = () => { // "ctrl+shift+t", ou só "volup"
   const parts = b.dataset.combo.split('+');
   scrSend({ t: 'key', k: parts.pop(), mods: parts });
 });
+
+// Colar do celular: o texto do clipboard daqui vai pro do PC e entra com Ctrl+V.
+$('#scrPasteFrom').onclick = () => run(async () => {
+  const text = await navigator.clipboard.readText(); // iOS mostra "Colar" pra confirmar
+  if (!text) throw new Error('O clipboard do celular está vazio');
+  await api('/clipboard', { method: 'PUT', json: { text } });
+  scrSend({ t: 'key', k: 'v', mods: ['ctrl'] });
+}, 'Colado no PC');
+
+// Copiar pro celular: Ctrl+C no PC e o texto vem pro clipboard daqui. O Safari só aceita gravar
+// dentro do toque: ClipboardItem com promessa segura o gesto enquanto o PC responde.
+$('#scrCopyTo').onclick = () => {
+  scrSend({ t: 'key', k: 'c', mods: ['ctrl'] });
+  const text = new Promise(r => setTimeout(r, 400)).then(() => api('/clipboard')).then(c => {
+    if (!c || !c.text) throw new Error('Nada copiado no PC');
+    return c.text;
+  });
+  const done = window.ClipboardItem && navigator.clipboard.write
+    ? navigator.clipboard.write([new ClipboardItem({ 'text/plain': text.then(t => new Blob([t], { type: 'text/plain' })) })])
+    : text.then(t => navigator.clipboard.writeText(t));
+  done.then(() => toast('Copiado no celular'), e => toast(e.message || 'Não consegui copiar'));
+};
+
+// Ditar por cima da tela (o teclado solto manda letra a letra; o ditado precisa do texto inteiro).
+$('#scrTypeBtn').onclick = () => {
+  $('#scrType').classList.remove('hidden');
+  $('#scrTypeText').focus();
+};
+$('#scrTypeClose').onclick = () => { $('#scrType').classList.add('hidden'); $('#scrTypeText').blur(); };
+$('#scrTypeSend').onclick = () => {
+  const f = $('#scrTypeText'), text = f.value;
+  if (!text) return toast('Escreva ou dite algo primeiro');
+  if (!scr.ws || scr.ws.readyState !== 1) return toast('Sem controle do PC agora');
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  lines.forEach((line, i) => {
+    for (const s of kbChunks(line)) scrSend({ t: 'text', s });
+    if (i < lines.length - 1) scrSend({ t: 'key', k: 'enter' });
+  });
+  if ($('#scrTypeEnter').checked) scrSend({ t: 'key', k: 'enter' });
+  f.value = '';
+  toast('Digitado no PC');
+};
 
 // Trocar de janela: lista as janelas do PC; tocar traz pra frente.
 async function scrWindows() {
@@ -1194,6 +1246,7 @@ function kbConnect() {
     await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = () => fail(new Error('Não conectou ao PC')); });
     if (gone()) { ws.close(); throw new Error('Saiu do teclado'); }
     ws.onclose = e => { if (kb.ws === ws) kb.ws = null; if (e.code === TAKEN) kbSay(`O ${e.reason} assumiu o teclado`); };
+    ws.onmessage = e => { const m = warnOf(e.data); if (m) kbSay(m); };
     kb.ws = ws;
     return ws;
   })().finally(() => { if (gen === kb.gen) kb.connecting = null; });

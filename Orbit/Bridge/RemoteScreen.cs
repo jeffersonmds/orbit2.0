@@ -402,6 +402,7 @@ public static class RemoteScreen
         var window = Stopwatch.StartNew();
         int inWindow = 0;
         var held = new HeldButtons();
+        long warnedAt = -10_000; // um aviso a cada 3 s, não um por tecla
         try
         {
             while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -424,7 +425,14 @@ public static class RemoteScreen
                 if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, len)) is { } cmd && allow(cmd))
                 {
                     held.Track(cmd);
-                    h.RemoteInput(cmd, bounds);
+                    if (h.RemoteInput(cmd, bounds) is { } warn && Environment.TickCount64 - warnedAt > 3000)
+                    {
+                        warnedAt = Environment.TickCount64;
+                        // Mensagem de volta {t:"warn"}: o aparelho mostra no aviso da tela/teclado.
+                        try { await ws.SendAsync(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new { t = "warn", msg = warn })),
+                            WebSocketMessageType.Text, true, ct); }
+                        catch (Exception) when (!ct.IsCancellationRequested) { }
+                    }
                 }
             }
         }
