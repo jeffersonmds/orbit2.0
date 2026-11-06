@@ -43,7 +43,7 @@ async function run(fn, ok) {
 
 function setOnline(on) {
   $('#dot').className = 'dot ' + (on ? 'on' : 'off');
-  $('#state').textContent = on ? 'PC conectado' : 'PC fora do ar';
+  $('#state').textContent = on ? (me && me.name ? `Conectado · ${me.name}` : 'PC conectado') : 'PC fora do ar';
 }
 
 async function ping() {
@@ -531,7 +531,36 @@ function scrWarn(data) {
   clearTimeout(scr.warnT);
   scr.warnT = setTimeout(() => { if ($('#scrMsg').textContent === m) scrSay(''); }, 5000);
 }
-const scrSend = o => { if (scr.ws && scr.ws.readyState === 1) scr.ws.send(JSON.stringify(o)); };
+// Movimento, posição e rolagem se juntam e saem uma vez por quadro; com a rede engasgada
+// (buffer do WebSocket enchendo) continuam se juntando em vez de empilhar atraso. Clique, tecla
+// e texto saem na hora, depois do movimento pendente (a ordem não muda).
+const scrQ = { abs: null, move: null, scroll: null, raf: 0 };
+const SCR_BUSY = 32 * 1024;
+const clampD = v => Math.max(-2000, Math.min(2000, v));
+function scrPush(ws) {
+  for (const k of ['abs', 'move', 'scroll']) if (scrQ[k]) { ws.send(JSON.stringify(scrQ[k])); scrQ[k] = null; }
+}
+function scrFlush() {
+  scrQ.raf = 0;
+  const ws = scr.ws;
+  if (!ws || ws.readyState !== 1) { scrQ.abs = scrQ.move = scrQ.scroll = null; return; }
+  if (ws.bufferedAmount > SCR_BUSY) { scrQ.raf = requestAnimationFrame(scrFlush); return; }
+  scrPush(ws);
+}
+function scrSend(o) {
+  const ws = scr.ws;
+  if (!ws || ws.readyState !== 1) return;
+  if (o.t === 'abs') scrQ.abs = o;
+  else if (o.t === 'move' || o.t === 'scroll') {
+    const q = scrQ[o.t] || (scrQ[o.t] = { t: o.t, dx: 0, dy: 0 });
+    q.dx = clampD(q.dx + (o.dx || 0)); q.dy = clampD(q.dy + (o.dy || 0));
+  } else {
+    scrPush(ws);
+    ws.send(JSON.stringify(o));
+    return;
+  }
+  if (!scrQ.raf) scrQ.raf = requestAnimationFrame(scrFlush);
+}
 
 async function scrLoad() {
   if (!token || scr.live) return;
@@ -1379,17 +1408,65 @@ function route() {
 window.addEventListener('hashchange', route);
 
 // Polling só com o app visível (nada roda em segundo plano no iPhone) e só do que está na tela.
+// Quem sou e o que posso: atalho de função desligada no PC fica apagado com "Desligado no PC"
+// (antes só se descobria tocando e levando um erro). Nome do aparelho aparece no topo.
+const TILE_PERM = { tela: ['screen'], clipboard: ['clipboard'], notas: ['notes'], teclado: ['keyboard'],
+  pcfiles: ['pcFiles'], camera: ['camera', 'mic'] }; // câmera: liga se tiver uma das duas
+let me = null;
+refresh.n = 0;
+async function refreshMe() {
+  try { me = await api('/me'); } catch { return; }
+  const p = me.permissions || {};
+  document.querySelectorAll('a.tile').forEach(t => {
+    const need = TILE_PERM[t.getAttribute('href').slice(1)];
+    const off = !!need && !need.some(k => p[k]);
+    t.classList.toggle('off', off);
+    const sub = t.querySelector('span:last-child');
+    if (off && !sub.dataset.on) { sub.dataset.on = sub.textContent; sub.textContent = 'Desligado no PC'; }
+    if (!off && sub.dataset.on) { sub.textContent = sub.dataset.on; delete sub.dataset.on; }
+  });
+  setOnline(true);
+}
+
 function refresh() {
   ping();
   if (!token) return;
   if (page === '' || page === 'midia') refreshMedia();
   if (page === '' || page === 'pc') refreshStats();
-  if (page === '') inLoad();
+  if (page === '') { inLoad(); if (!me || ++refresh.n % 6 === 0) refreshMe(); } // a cada ~30 s
   if (page === 'camera' && !camLoaded) camLoadDevices();
 }
 let loop;
 function startLoop() { clearInterval(loop); refresh(); loop = setInterval(refresh, 5000); }
 document.addEventListener('visibilitychange', () => document.hidden ? clearInterval(loop) : startLoop());
+// Reabrir o app até 30 min depois de usar a Tela do PC volta direto pra ela (o iOS fecha o PWA
+// em segundo plano e ele abria na tela inicial).
+try {
+  const last = JSON.parse(localStorage.getItem('lastPage') || 'null');
+  if (!location.hash && last && last.page === 'tela' && Date.now() - last.t < 30 * 60 * 1000) location.replace('#tela');
+} catch {}
+window.addEventListener('hashchange', () => {
+  try { localStorage.setItem('lastPage', JSON.stringify({ page, t: Date.now() })); } catch {}
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) try { localStorage.setItem('lastPage', JSON.stringify({ page, t: Date.now() })); } catch {}
+});
+
+// Arrastar da borda esquerda volta pra tela inicial (o PWA no iPhone não tem o gesto do Safari).
+// Na Tela do PC não: lá o toque é do PC.
+const edge = { x: 0, y: 0, on: false };
+document.addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  edge.on = e.touches.length === 1 && page && page !== 'tela' && t.clientX < 24;
+  edge.x = t.clientX; edge.y = t.clientY;
+}, { passive: true });
+document.addEventListener('touchend', e => {
+  if (!edge.on) return;
+  edge.on = false;
+  const t = e.changedTouches[0];
+  if (t.clientX - edge.x > 80 && Math.abs(t.clientY - edge.y) < 60) location.hash = '';
+}, { passive: true });
+
 route(); // já faz o 1º refresh
 loop = setInterval(refresh, 5000);
 

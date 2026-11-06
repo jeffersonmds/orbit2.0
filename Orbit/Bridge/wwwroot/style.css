@@ -34,6 +34,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; max-widt
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tile { display: grid; gap: 2px; align-content: start; min-height: 116px; padding: 14px; border-radius: var(--radius);
   background: var(--card); color: var(--ink); text-decoration: none; }
+.tile.off { opacity: .45; }
 .tile:active { background: var(--hover); transform: scale(.98); }
 .tile b { margin-top: 10px; font-size: 16px; }
 .tile > span:last-child { color: var(--ink-lo); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
