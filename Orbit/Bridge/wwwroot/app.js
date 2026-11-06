@@ -1071,7 +1071,9 @@ $('#scrTypeSend').onclick = async () => {
       ws.send(JSON.stringify(msgs[i]));
     }
   } finally { scr.typing = false; }
-  if (f.value === text) f.value = ''; // o que foi ditado durante o envio fica
+  // o que foi ditado durante o envio fica; o que já foi, sai (senão o próximo envio repetiria)
+  if (f.value === text) f.value = '';
+  else if (f.value.startsWith(text)) f.value = f.value.slice(text.length).replace(/^\s+/, '');
   toast('Digitado no PC');
 };
 

@@ -214,6 +214,8 @@ body.immersive { overflow: hidden; }
 .immersive .scr-float .fs-only { display: block; }
 .immersive .scr-float { z-index: 4; } /* Parar acima do aviso e do painel de janelas */
 .immersive .scr-view { margin: 0; border-radius: 0; min-height: 0; }
+/* tela cheia com o teclado aberto: vale o encaixe no visualViewport, não o inset: 0 da tela cheia */
+.page[data-page="tela"].immersive.kbd { inset: auto 0 auto 0; top: var(--vvtop, 0px); height: var(--vvh, 100dvh); }
 .immersive .scr-bar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 8px);
   max-width: calc(100% - 24px); margin: 0; padding: 6px; border-radius: 14px; background: rgba(0, 0, 0, .55);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); z-index: 2; }
