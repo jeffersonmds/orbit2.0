@@ -16,7 +16,7 @@ public static class OutboxRoutes
 {
     public const long MaxPhotoBytes = 40L * 1024 * 1024;
 
-    public static void Map(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens)
+    public static void Map(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, RemoteSessions sessions)
     {
         api.MapPost("/clipboard/image", async (HttpRequest request) =>
         {
@@ -55,7 +55,11 @@ public static class OutboxRoutes
             var id = Path.GetFileNameWithoutExtension(path);
             if (box.List(DateTime.Now, found.Owner).FirstOrDefault(i => i.Id == id) is not { } item || !File.Exists(path)) return Results.NotFound();
             var name = item.Name;
+            BridgeServer.CutOnRevoke(ctx, sessions, found.Owner);
             new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(name, out var type);
+            // Arquivo vindo do PC nunca roda com a origem do PWA (html/svg com script leria o token).
+            ctx.Response.Headers.ContentSecurityPolicy = "sandbox";
+            ctx.Response.Headers.XContentTypeOptions = "nosniff";
             return Results.File(path, type ?? "application/octet-stream", name, enableRangeProcessing: true);
         });
 

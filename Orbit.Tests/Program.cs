@@ -351,10 +351,14 @@ public static class Program
             ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/remote/input?ticket={it}"), System.Threading.CancellationToken.None).Wait();
             foreach (var m in new[] { "{\"t\":\"abs\",\"x\":0.25,\"y\":0.5}", "{\"t\":\"click\"}", "{lixo", "{\"t\":\"text\",\"s\":\"oi\"}" })
                 ws.SendAsync(System.Text.Encoding.UTF8.GetBytes(m), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
-            for (int i = 0; i < 50 && received.Count < 3; i++) System.Threading.Thread.Sleep(20);
+            // mensagem em dois pedaços: o PC junta em vez de descartar
+            ws.SendAsync(System.Text.Encoding.UTF8.GetBytes("{\"t\":\"te"), System.Net.WebSockets.WebSocketMessageType.Text, false, System.Threading.CancellationToken.None).Wait();
+            ws.SendAsync(System.Text.Encoding.UTF8.GetBytes("xt\",\"s\":\"oi2\"}"), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
+            for (int i = 0; i < 50 && received.Count < 4; i++) System.Threading.Thread.Sleep(20);
             var got = received.ToArray();
-            Check("tela: WebSocket entrega os comandos válidos e ignora lixo", got.Length == 3 && got[0].Kind == RemoteKind.Abs
+            Check("tela: WebSocket entrega os comandos válidos e ignora lixo", got.Length == 4 && got[0].Kind == RemoteKind.Abs
                 && got[1].Kind == RemoteKind.Click && got[2].Text == "oi");
+            Check("tela: mensagem fragmentada é remontada", got.Length == 4 && got[3].Text == "oi2");
             Check("tela: controle avisa a ilha", states.Any(st => st.Controlling));
             server.StopRemote(); // o "Encerrar" da aba iPhone
             for (int i = 0; i < 50 && ws.State == System.Net.WebSockets.WebSocketState.Open; i++)
@@ -362,6 +366,8 @@ public static class Program
                 try { ws.ReceiveAsync(new byte[16], new System.Threading.CancellationTokenSource(100).Token).Wait(); } catch { }
             }
             Check("tela: Encerrar derruba o controle", ws.State != System.Net.WebSockets.WebSocketState.Open && states.Last() == new RemoteState(false, false, false));
+            // 1000 = encerrado de propósito: o PWA não reconecta sozinho (só em queda de rede)
+            Check("tela: Encerrar fecha com 1000", ws.CloseStatus == System.Net.WebSockets.WebSocketCloseStatus.NormalClosure);
         }
         // Segundo aparelho assume o controle: o primeiro fecha com 4001 + nome do novo.
         var tokenB = tokens.Create("iPad");

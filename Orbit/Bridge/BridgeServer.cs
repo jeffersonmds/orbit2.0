@@ -72,12 +72,11 @@ public sealed class BridgeServer : IAsyncDisposable
         builder.Services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            o.AddFixedWindowLimiter("api", w =>
-            {
-                w.PermitLimit = 120;
-                w.Window = TimeSpan.FromMinutes(1);
-                w.QueueLimit = 0;
-            });
+            // Cota por aparelho; rotas de tíquete (sem token na hora do limite) contam por IP, à parte:
+            // flood de tíquete inválido não tira a cota de quem está autenticado.
+            o.AddPolicy("api", ctx => RateLimitPartition.GetFixedWindowLimiter(
+                ctx.Items["device"] is TokenInfo d ? "d:" + d.Hash : "ip:" + ctx.Connection.RemoteIpAddress,
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             // Pareamento é a única rota aberta que aceita palpite: cota própria e baixa.
             o.AddFixedWindowLimiter("pair", w =>
             {
@@ -113,7 +112,9 @@ public sealed class BridgeServer : IAsyncDisposable
             catch (Exception ex) { Log.Warning(ex, "Ponte: erro fora das rotas"); throw; }
         });
         app.UseRateLimiter();
-        app.UseWebSockets(); // controle da tela remota
+        // Ping a cada 10 s; sem resposta em 15 s o socket cai (Wi-Fi sumiu no meio de um arraste: o finally
+        // solta o botão em vez de ficar apertado até o TCP desistir).
+        app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(10), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
         if (hasWeb)
         {
             app.UseDefaultFiles();
@@ -166,11 +167,11 @@ public sealed class BridgeServer : IAsyncDisposable
         });
         _remote = new RemoteSessions(h.RemoteChanged);
         MapApi(api, h, tokens, camera, tickets, _remote);
-        MapPcFiles(api, h, tokens, new FileTickets());
+        MapPcFiles(api, h, tokens, new FileTickets(), _remote);
         if (h.Push is { } push) MapPush(api, h, push);
         RemoteScreen.Map(api, h, tokens, _remote);
         MicStream.Map(api, h, tokens, _remote);
-        OutboxRoutes.Map(api, h, tokens);
+        OutboxRoutes.Map(api, h, tokens, _remote);
 
         try { await app.StartAsync(); }
         catch { await app.DisposeAsync(); throw; }
@@ -251,7 +252,10 @@ public sealed class BridgeServer : IAsyncDisposable
         {
             if (!request.HasFormContentType) return Results.BadRequest(new { erro = "Envie multipart/form-data." });
             request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = BridgeRules.MaxUploadBytes;
-            var form = await request.ReadFormAsync();
+            // revogar o aparelho no meio corta o envio (e apaga o parcial, abaixo)
+            using var cut = CancellationTokenSource.CreateLinkedTokenSource(request.HttpContext.RequestAborted,
+                sessions.TransferToken(DeviceOf(request.HttpContext).Hash));
+            var form = await request.ReadFormAsync(cut.Token);
             if (form.Files.Count == 0) return Results.BadRequest(new { erro = "Nenhum arquivo." });
             if (form.Files.Count > 50) return Results.BadRequest(new { erro = "Máximo de 50 arquivos por envio." });
             var dir = h.UploadFolder();
@@ -272,7 +276,7 @@ public sealed class BridgeServer : IAsyncDisposable
                         try { target = new FileStream(Path.Combine(dir, name), FileMode.CreateNew); } // nunca sobrescreve
                         catch (IOException) when (attempt < 5 && File.Exists(Path.Combine(dir, name))) { }
                     }
-                    await using (target) await file.CopyToAsync(target);
+                    await using (target) await file.CopyToAsync(target, cut.Token);
                     saved.Add(name);
                 }
                 catch (Exception ex)
@@ -368,7 +372,7 @@ public sealed class BridgeServer : IAsyncDisposable
         }
     }
 
-    private static void MapPcFiles(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, FileTickets tickets)
+    private static void MapPcFiles(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, FileTickets tickets, RemoteSessions sessions)
     {
         api.MapGet("/pcfiles/roots", () => Results.Ok(h.PcRoots().Select(r => new { id = r.Id, name = r.Name })));
 
@@ -392,7 +396,10 @@ public sealed class BridgeServer : IAsyncDisposable
             if (!TicketOwnerAllowed(tokens, found.Owner, ctx.Request.Path)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             var file = found.Path;
             if (!File.Exists(file)) return Results.NotFound();
+            CutOnRevoke(ctx, sessions, found.Owner);
             new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(file, out var type);
+            ctx.Response.Headers.ContentSecurityPolicy = "sandbox"; // html/svg do PC não roda com a origem do PWA
+            ctx.Response.Headers.XContentTypeOptions = "nosniff";
             return Results.File(file, type ?? "application/octet-stream", Path.GetFileName(file), enableRangeProcessing: true);
         });
     }
@@ -416,6 +423,10 @@ public sealed class BridgeServer : IAsyncDisposable
         });
     }
 
+    // Download em andamento cai se o aparelho for revogado (o Results.File roda depois do handler voltar).
+    internal static void CutOnRevoke(HttpContext ctx, RemoteSessions sessions, string owner) =>
+        ctx.Response.RegisterForDispose(sessions.TransferToken(owner).Register(ctx.Abort));
+
     private static int? ActualPort(WebApplication app)
     {
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses.FirstOrDefault();
@@ -427,7 +438,9 @@ public sealed class BridgeServer : IAsyncDisposable
         if (_app is null) return;
         var app = _app;
         _app = null;
-        await app.StopAsync();
+        _remote?.StopAll(); // mouse, teclado, mic e transferências param já, não quando o Kestrel desistir
+        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        await app.StopAsync(limit.Token);
         await app.DisposeAsync();
         Log.Information("Ponte desligada");
     }

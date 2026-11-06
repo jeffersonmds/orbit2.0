@@ -604,7 +604,9 @@ async function scrConnectControl(screen, gen) {
       $('#scrBar').classList.add('hidden');
       if (mine) scr.ws = null;
       if (mine && e.code === TAKEN) scrTaken(e.reason);
-      else if (mine) scrRetryControl(screen, gen); // Wi-Fi piscou: a imagem segue, o controle volta sozinho
+      // 1000 = o PC encerrou de propósito (Encerrar, permissão tirada, monitor mudou): não volta sozinho.
+      // Queda de rede chega como 1006: a imagem segue, o controle volta sozinho.
+      else if (mine && e.code !== 1000) scrRetryControl(screen, gen);
     };
     scr.ws = ws;
   } catch (e) {
@@ -1067,7 +1069,9 @@ async function inShare(item) {
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file] }); } catch (e) { if (e.name !== 'AbortError') throw e; }
   } else {
-    location.href = URL.createObjectURL(blob);
+    // Download como anexo (servidor manda attachment + sandbox). Nunca abrir o blob: ele herda a origem
+    // do Orbit, e um .html recebido rodaria aqui dentro com acesso ao token.
+    location.href = await inTicketUrl(item.id);
   }
 }
 

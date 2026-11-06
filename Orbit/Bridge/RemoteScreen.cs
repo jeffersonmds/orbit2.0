@@ -70,8 +70,19 @@ public sealed class RemoteSessions
     private CancellationTokenSource? _video, _input, _audio, _camera;
     private readonly Dictionary<CancellationTokenSource, SessionOwner> _owners = new();
     private readonly Dictionary<CancellationTokenSource, string> _displaced = new();
+    private readonly Dictionary<string, CancellationTokenSource> _transfers = new(); // por aparelho
 
     public RemoteSessions(Action<RemoteState> changed) => _changed = changed;
+
+    // Uploads/downloads do aparelho: revogar (StopDevice) ou desligar a ponte (StopAll) corta no meio.
+    public CancellationToken TransferToken(string hash)
+    {
+        lock (_gate)
+        {
+            if (!_transfers.TryGetValue(hash, out var c)) _transfers[hash] = c = new CancellationTokenSource();
+            return c.Token;
+        }
+    }
 
     public CancellationTokenSource BeginVideo(CancellationToken aborted, SessionOwner owner) => Begin(ref _video, aborted, owner);
     public CancellationTokenSource BeginInput(CancellationToken aborted, SessionOwner owner) => Begin(ref _input, aborted, owner);
@@ -151,6 +162,8 @@ public sealed class RemoteSessions
             _input?.Cancel();
             _audio?.Cancel();
             _camera?.Cancel();
+            foreach (var c in _transfers.Values) c.Cancel();
+            _transfers.Clear();
         }
     }
 
@@ -158,8 +171,11 @@ public sealed class RemoteSessions
     public void StopDevice(string hash)
     {
         lock (_gate)
+        {
             foreach (var s in new[] { _video, _input, _audio, _camera })
                 if (s is not null && Owner(s)?.Hash == hash) s.Cancel();
+            if (_transfers.Remove(hash, out var t)) t.Cancel();
+        }
     }
 
     private void Notify()
@@ -297,7 +313,7 @@ public static class RemoteScreen
             var session = sessions.BeginInput(ctx.RequestAborted, Who(tokens, owner));
             // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
-            try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly); }
+            try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly, () => true); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
             finally { await CloseAsync(ws, sessions, session); }
         });
@@ -329,7 +345,9 @@ public static class RemoteScreen
             var session = sessions.BeginInput(ctx.RequestAborted, Who(tokens, owner));
             // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
-            try { await ReceiveLoop(ws, screen.Bounds, h, session.Token, _ => true); }
+            // Monitor rearranjado/desconectado: os Bounds velhos clicariam em OUTRO monitor (o vídeo já encerra).
+            bool Valid() => h.Screens().Any(s => s.Id == screen.Id && s.Bounds == screen.Bounds);
+            try { await ReceiveLoop(ws, screen.Bounds, h, session.Token, _ => true, Valid); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
             finally { await CloseAsync(ws, sessions, session); }
         });
@@ -355,33 +373,43 @@ public static class RemoteScreen
     public static bool KeyboardOnly(RemoteCommand c) => c.Kind is RemoteKind.Text or RemoteKind.Key;
 
     private static async Task ReceiveLoop(WebSocket ws, System.Drawing.Rectangle bounds, BridgeHandlers h, CancellationToken ct,
-        Func<RemoteCommand, bool> allow)
+        Func<RemoteCommand, bool> allow, Func<bool> stillValid)
     {
         var buf = new byte[8192];
         // Cancelar o ReceiveAsync aborta o socket e o 4001/"fim" nunca sairia: espera sem passar o token.
-        async Task<WebSocketReceiveResult> Receive(byte[] b)
+        async Task<WebSocketReceiveResult> Receive(ArraySegment<byte> b)
         {
             return await ws.ReceiveAsync(b, CancellationToken.None).WaitAsync(ct);
         }
         var window = Stopwatch.StartNew();
         int inWindow = 0;
+        var recheck = Stopwatch.StartNew();
         var held = new HeldButtons();
         try
         {
             while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
-                var res = await Receive(buf);
-                if (res.MessageType == WebSocketMessageType.Close) break;
-                if (!res.EndOfMessage)
+                // A mensagem pode chegar em pedaços: junta até o fim; passou de 8 KiB, descarta inteira.
+                int len = 0;
+                bool tooBig = false;
+                WebSocketReceiveResult res;
+                do
                 {
-                    // mensagem grande demais: descarta até o fim dela
-                    while (!(await Receive(buf)).EndOfMessage) { }
-                    continue;
+                    res = await Receive(tooBig ? new ArraySegment<byte>(buf) : new ArraySegment<byte>(buf, len, buf.Length - len));
+                    if (res.MessageType == WebSocketMessageType.Close) return;
+                    if (!tooBig) len += res.Count;
+                    if (!res.EndOfMessage && len == buf.Length) tooBig = true;
+                } while (!res.EndOfMessage);
+                if (tooBig) continue;
+                if (recheck.ElapsedMilliseconds >= 1000)
+                {
+                    recheck.Restart();
+                    if (!stillValid()) break;
                 }
                 if (window.ElapsedMilliseconds >= 1000) { window.Restart(); inWindow = 0; }
                 if (++inWindow > MaxMessagesPerSecond) continue;
                 ct.ThrowIfCancellationRequested(); // sessão encerrada/assumida: nada de comando atrasado
-                if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, res.Count)) is { } cmd && allow(cmd))
+                if (RemoteInput.Parse(Encoding.UTF8.GetString(buf, 0, len)) is { } cmd && allow(cmd))
                 {
                     held.Track(cmd);
                     h.RemoteInput(cmd, bounds);
