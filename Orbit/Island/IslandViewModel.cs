@@ -691,14 +691,14 @@ public sealed partial class IslandViewModel : ObservableObject
     public async Task UpdateNowAsync()
     {
         if (_updating) return;
-        var s = await SelfUpdate.CheckAsync();
-        if (!s.CanUpdate) { RaisePeek(new Peek("Não dá pra atualizar", s.Reason, "ajustes")); return; }
-        _updating = true;
-        Collapse(); // a pílula mostra o progresso; a ilha aberta só atrapalharia
-        SetActivity(ActivityKind.Atualizacao, "Atualizando Orbit…");
+        _updating = true; // antes do 1º await: bandeja e Ajustes ao mesmo tempo não publicam duas vezes
         try
         {
-            var staging = await Task.Run(SelfUpdate.PublishAsync);
+            var s = await SelfUpdate.CheckAsync();
+            if (!s.CanUpdate) { RaisePeek(new Peek("Não dá pra atualizar", s.Reason, "ajustes")); return; }
+            Collapse(); // a pílula mostra o progresso; a ilha aberta só atrapalharia
+            SetActivity(ActivityKind.Atualizacao, s.DownloadUrl is null ? "Atualizando Orbit…" : "Baixando Orbit…");
+            var staging = await Task.Run(() => SelfUpdate.PrepareAsync(s));
             SetActivity(ActivityKind.Atualizacao, "Reiniciando o Orbit…");
             SelfUpdate.LaunchSwap(staging);
             ExitForUpdate?.Invoke();

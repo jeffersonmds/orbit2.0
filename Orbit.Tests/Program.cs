@@ -633,6 +633,10 @@ public static class Program
             && !SelfUpdate.IsInside(@"C:\repos\orbit2.0-copia\bin", @"C:\repos\orbit2.0")
             && !SelfUpdate.IsInside(@"C:\Users\x\AppData\Local\Programs\Orbit2", @"C:\repos\orbit2.0"));
 
+        Check("atualizar: commit da tag do GitHub", SelfUpdate.CommitFromTag("build-abc1234") == "abc1234"
+            && SelfUpdate.CommitFromTag("v2.0") is null && SelfUpdate.CommitFromTag(null) is null);
+        Check("atualizar: texto no modo GitHub", SelfUpdate.Describe(new UpdateStatus("abc1234", 2, false, true, "", "https://x/z.zip"))
+            == "Versão abc1234 · 2 commits novos no GitHub");
         Check("atualizar: texto em dia", SelfUpdate.Describe(new UpdateStatus("abc1234", 0, false, true, "")) == "Versão abc1234 · em dia com o código");
         Check("atualizar: texto com commits e sujeira", SelfUpdate.Describe(new UpdateStatus("abc1234", 3, true, true, ""))
             == "Versão abc1234 · 3 commits novos no código, código com alterações não commitadas");

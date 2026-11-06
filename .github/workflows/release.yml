@@ -1,0 +1,44 @@
+# Build automático: cada push no master vira uma release "build-<commit>" com o zip que a
+# autoatualização baixa (Services/SelfUpdate, modo GitHub) e o instalador pra uma máquina nova.
+name: release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Publicar e gerar o instalador
+        shell: pwsh
+        run: ./installer/build.ps1
+
+      - name: Criar a release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = '${{ github.sha }}'.Substring(0, 7)
+          Compress-Archive -Path 'Orbit/bin/Release/net10.0-windows10.0.22621.0/win-x64/publish/*' -DestinationPath Orbit-win-x64.zip
+          gh release create "build-$sha" Orbit-win-x64.zip installer/Orbit2Setup.exe `
+            --title "Orbit $sha" --notes "Build automático do commit ${{ github.sha }}." --latest
+          # Guarda só as 5 últimas
+          gh release list --limit 100 --json tagName --jq '.[5:][].tagName' | ForEach-Object { gh release delete $_ --yes --cleanup-tag }
