@@ -25,7 +25,7 @@ public sealed record TextRequest(string? Text);
 public sealed record NotesRequest(string? Text, string? Rev);
 public sealed record VolumeRequest(double Percent);
 public sealed record PairRequest(string? Code);
-public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps);
+public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps, string? Resume);
 public sealed record CameraPhotoRequest(string? DeviceId, string? Name);
 public sealed record PcFileRequest(string? Root, string? Path);
 public sealed record PushKeys(string? P256dh, string? Auth);
@@ -312,7 +312,9 @@ public sealed class BridgeServer : IAsyncDisposable
             {
                 if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
                 var preset = CameraPreset.Parse(req.Quality, req.Fps);
-                var ticket = tickets.Issue(DeviceOf(ctx).Hash, req.DeviceId, preset, DateTime.Now);
+                var ticket = tickets.Issue(DeviceOf(ctx).Hash, req.DeviceId, preset, DateTime.Now,
+                    id => sessions.PrepareMedia("camera", id, RemoteScreen.Who(tokens, DeviceOf(ctx).Hash), req.Resume));
+                if (ticket is null) return Results.Conflict();
                 h.Notify(new BridgeEvent("Câmera aberta", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
                 return Results.Ok(new { ticket });
             });
@@ -332,12 +334,15 @@ public sealed class BridgeServer : IAsyncDisposable
                 }
                 // Vaga antes de abrir: Encerrar/revogar durante a inicialização também alcança este stream
                 // (o laço abaixo sai na hora e o finally fecha a câmera).
-                var slot = sessions.BeginCamera(ctx.RequestAborted, RemoteScreen.Who(tokens, claim.Owner));
+                var slot = sessions.BeginMedia("camera", ticket!, ctx.RequestAborted, RemoteScreen.Who(tokens, claim.Owner));
+                if (slot is null) { ctx.Response.StatusCode = StatusCodes.Status409Conflict; return; }
+                if (!TicketOwnerAllowed(tokens, claim.Owner, ctx.Request.Path)) slot.Cancel();
                 System.Threading.CancellationTokenSource session;
                 System.Threading.CancellationToken sessionToken;
-                try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset, claim.Owner); }
+                try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset, claim.Owner, slot.Token, ticket); }
                 catch (Exception ex)
                 {
+                    sessions.StopMedia("camera", claim.Owner, ticket);
                     sessions.End(slot);
                     Log.Warning(ex, "Câmera: não abriu");
                     ctx.Response.StatusCode = StatusCodes.Status409Conflict; // ocupada por outro app, etc.
@@ -354,13 +359,25 @@ public sealed class BridgeServer : IAsyncDisposable
                     // Desligar a permissão no meio corta a câmera no próximo quadro (revogar já cancela a vaga).
                     while (!link.Token.IsCancellationRequested && tokens.Allows(claim.Owner, Capability.Camera))
                     {
-                        var jpeg = await camera.NextFrameAsync(link.Token);
-                        await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), link.Token);
-                        await body.WriteAsync(jpeg, link.Token);
-                        await body.FlushAsync(link.Token);
+                        byte[] jpeg;
+                        try { jpeg = await camera.NextFrameAsync(link.Token); }
+                        catch (Exception ex) when (ex is TimeoutException or IOException)
+                        {
+                            sessions.StopMedia("camera", claim.Owner, ticket);
+                            Log.Warning(ex, "Câmera: sem sinal");
+                            break;
+                        }
+                        var sentAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                        using var send = CancellationTokenSource.CreateLinkedTokenSource(link.Token);
+                        send.CancelAfter(TimeSpan.FromSeconds(5));
+                        await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), send.Token);
+                        await body.WriteAsync(jpeg, send.Token);
+                        await body.FlushAsync(send.Token);
+                        camera.ReportSend(System.Diagnostics.Stopwatch.GetElapsedTime(sentAt).TotalMilliseconds);
                     }
                 }
                 catch (OperationCanceledException) { /* parar, troca ou aparelho fechou */ }
+                catch (IOException) { /* queda de rede: a intenção permite reconectar */ }
                 finally
                 {
                     sessions.End(slot);
@@ -368,14 +385,40 @@ public sealed class BridgeServer : IAsyncDisposable
                 }
             });
 
-            api.MapPost("/camera/close", async (HttpContext ctx) => { await camera.CloseAsync(DeviceOf(ctx).Hash); return Results.NoContent(); });
+            api.MapPost("/camera/close", (HttpContext ctx, string? id) =>
+            {
+                sessions.StopMedia("camera", DeviceOf(ctx).Hash, id);
+                return Results.NoContent();
+            });
+
+            api.MapGet("/camera/status", (HttpContext ctx, string id) =>
+            {
+                var state = sessions.MediaStatus("camera", DeviceOf(ctx).Hash, id);
+                var video = camera.Status;
+                bool ready = state.Active && video.Id == id;
+                return Results.Ok(new { allowed = state.Allowed, active = state.Active, name = state.Name,
+                    width = ready ? video.Width : 0, height = ready ? video.Height : 0,
+                    fps = ready ? Math.Round(video.Fps, 1) : 0, reduced = ready && video.Reduced });
+            });
 
             api.MapPost("/camera/photo", async (CameraPhotoRequest req, HttpContext ctx) =>
             {
                 if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
-                var jpeg = await camera.PhotoAsync(req.DeviceId);
-                h.Notify(new BridgeEvent("Foto capturada", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
-                return Results.File(jpeg, "image/jpeg");
+                var owner = DeviceOf(ctx).Hash;
+                using var cut = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, sessions.TransferToken(owner));
+                if (!TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) return Results.StatusCode(403);
+                try
+                {
+                    var jpeg = await camera.PhotoAsync(req.DeviceId, cut.Token);
+                    cut.Token.ThrowIfCancellationRequested();
+                    if (!TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) return Results.StatusCode(403);
+                    ctx.Response.ContentType = "image/jpeg";
+                    ctx.Response.Headers.CacheControl = "no-store";
+                    await ctx.Response.Body.WriteAsync(jpeg, cut.Token);
+                    h.Notify(new BridgeEvent("Foto capturada", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
+                    return Results.Empty;
+                }
+                catch (OperationCanceledException) { return ctx.Response.HasStarted ? Results.Empty : Results.StatusCode(409); }
             });
         }
     }

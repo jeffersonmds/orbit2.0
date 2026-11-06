@@ -56,8 +56,8 @@ public sealed class BridgeHandlers
     public Func<long, bool> FocusWindow { get; init; } = _ => false;
     // Microfone. OpenMic devolve a taxa do PCM e quem para a captura.
     public Func<IReadOnlyList<MicDevice>> MicDevices { get; init; } = () => Array.Empty<MicDevice>();
-    public Func<string?, Action<byte[]>, (int Rate, IDisposable Stop)> OpenMic { get; init; } =
-        (_, _) => throw new InvalidOperationException("Sem microfone");
+    public Func<string?, Action<byte[]>, Action<Exception?>, (int Rate, IDisposable Stop)> OpenMic { get; init; } =
+        (_, _, _) => throw new InvalidOperationException("Sem microfone");
 
     // Vendo/controlando/ouvindo — pro indicador na pílula. Chamado de thread do Kestrel.
     public Action<RemoteState> RemoteChanged { get; init; } = _ => { };

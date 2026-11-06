@@ -1,5 +1,5 @@
 // Rede primeiro (atualizações chegam), cache como plano B offline. /api e /health nunca em cache.
-const CACHE = 'orbit-v4';
+const CACHE = 'orbit-v5';
 const SHELL = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 

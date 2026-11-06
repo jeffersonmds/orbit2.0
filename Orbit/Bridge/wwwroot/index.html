@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Orbit">
@@ -23,6 +23,11 @@
     <div class="pill" id="pill"><span class="dot" id="dot"></span><span id="state">Conectando…</span></div>
   </header>
 
+  <div id="micGlobal" class="mic-global hidden">
+    <span id="micGlobalState" role="status" aria-live="polite">Ouvindo o PC</span>
+    <button id="micGlobalResume" class="hidden">Retomar áudio</button>
+    <button id="micGlobalStop">Parar</button>
+  </div>
   <main id="app">
     <section id="pair" class="card hidden">
       <h2>Parear com o PC</h2>
@@ -192,8 +197,9 @@
       <div class="row top">
         <select id="camDevice" aria-label="Câmera"></select>
         <select id="camQuality" aria-label="Qualidade">
-          <option value="720">720p</option>
-          <option value="480">480p</option>
+          <option value="auto">Automático</option>
+          <option value="eco">Econômico</option>
+          <option value="fluid">Fluido</option>
         </select>
       </div>
       <div class="cam-view" id="camView">
@@ -204,20 +210,35 @@
         <img id="camImg" alt="">
         <button id="camShot" class="cam-shot" aria-label="Tirar foto"></button>
       </div>
+      <div class="row cam-tools">
+        <button id="camFs">Tela cheia</button>
+        <button id="camZoomReset" class="hidden">1×</button>
+        <button id="camControls" aria-expanded="true">Recolher</button>
+        <button id="camAudio">Ouvir</button>
+      </div>
       <button class="primary" id="camToggle">Ver câmera</button>
-      <p class="muted hidden" id="camMsg"></p>
+      <p class="muted hidden" id="camMsg" role="status" aria-live="polite"></p>
+      <p id="camStats" class="muted"></p>
+      <div class="row"><button id="camRefresh">Atualizar dispositivos</button>
+        <label><input id="camWake" type="checkbox"> Manter tela acesa</label></div>
+      <div id="camPhoto" class="hidden">
+        <img id="camPhotoImg" alt="Foto capturada">
+        <button id="camShare">Pronto · compartilhar</button>
+        <button id="camDiscard">Descartar foto</button>
+      </div>
 
       <!-- Microfone: independente da câmera (dá pra só ouvir) -->
       <p class="crumb section-title">Microfone</p>
       <select id="micDevice" class="mic-select" aria-label="Microfone"></select>
       <div class="vol mic-vol">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5a1 1 0 0 0 1 1h3l4.4 3.6A1 1 0 0 0 14 18.3V5.7a1 1 0 0 0-1.6-.8L8 8.5H5a1 1 0 0 0-1 1z"/></svg>
-        <input id="micGain" type="range" min="1" max="6" step="0.5" value="2" aria-label="Volume do microfone">
+        <input id="micGain" type="range" min="0" max="6" step="0.5" value="2" aria-label="Volume do microfone">
         <span id="micGainVal">2×</span>
       </div>
       <div class="mic-level"><div id="micLevel"></div></div>
       <button class="primary" id="micToggle">Ouvir</button>
-      <p class="muted hidden" id="micMsg"></p>
+      <p class="muted hidden" id="micMsg" role="status" aria-live="polite"></p>
+      <button id="micResume" class="hidden">Retomar áudio</button>
     </section>
 
     <section class="page" data-page="tela" data-title="Tela do PC">

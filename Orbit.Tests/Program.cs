@@ -918,20 +918,38 @@ public static class Program
     // Microfone: conversão pra PCM mono 16 bits e o WebSocket com um microfone falso (nenhum teste abre o de verdade).
     private static void MicTests()
     {
-        Check("mic: fator 48k → 2, 44,1k → 2, 16k → 1", MicCapture.Factor(48000) == 2 && MicCapture.Factor(44100) == 2 && MicCapture.Factor(16000) == 1);
-        // float estéreo: (0,5 ; 0,5) e (−0,5 ; −0,5)
-        var f = new byte[16];
-        BitConverter.GetBytes(0.5f).CopyTo(f, 0); BitConverter.GetBytes(0.5f).CopyTo(f, 4);
-        BitConverter.GetBytes(-0.5f).CopyTo(f, 8); BitConverter.GetBytes(-0.5f).CopyTo(f, 12);
-        var m = MicCapture.ToMonoPcm16(f, 2, true, 1);
-        Check("mic: float estéreo → mono 16 bits", m.Length == 4 && BitConverter.ToInt16(m, 0) == 16383 && BitConverter.ToInt16(m, 2) == -16383);
-        var avg = MicCapture.ToMonoPcm16(f, 2, true, 2);
-        Check("mic: reduzir faz média (0,5 e −0,5 → 0)", avg.Length == 2 && BitConverter.ToInt16(avg, 0) == 0);
-        var pcm = new byte[4];
-        BitConverter.GetBytes((short)-16384).CopyTo(pcm, 0); BitConverter.GetBytes((short)8192).CopyTo(pcm, 2);
-        var back = MicCapture.ToMonoPcm16(pcm, 1, false, 1);
-        Check("mic: PCM 16 mono preservado", Math.Abs(BitConverter.ToInt16(back, 0) - -16384) <= 1 && Math.Abs(BitConverter.ToInt16(back, 2) - 8192) <= 1);
-        Check("mic: limita no máximo", BitConverter.ToInt16(MicCapture.ToMonoPcm16(BitConverter.GetBytes(4f), 1, true, 1), 0) == short.MaxValue);
+        var floatFormat = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
+        Check("mic: valida float e PCM, recusa encoding desconhecido", MicCapture.PcmConverter.Supported(floatFormat)
+            && MicCapture.PcmConverter.Supported(new NAudio.Wave.WaveFormat(48000, 32, 1))
+            && !MicCapture.PcmConverter.Supported(NAudio.Wave.WaveFormat.CreateCustomFormat(NAudio.Wave.WaveFormatEncoding.ALaw, 8000, 1, 8000, 1, 8)));
+        var tone = new byte[44100 * 8];
+        for (int i = 0; i < 44100; i++)
+        {
+            var sample = BitConverter.GetBytes((float)(.5 * Math.Sin(i * Math.PI * 2 * 440 / 44100)));
+            sample.CopyTo(tone, i * 8); sample.CopyTo(tone, i * 8 + 4);
+        }
+        var whole = new MicCapture.PcmConverter(floatFormat).Convert(tone);
+        var incremental = new MicCapture.PcmConverter(floatFormat);
+        var split = new List<byte>();
+        for (int at = 0; at < tone.Length; at += 137) split.AddRange(incremental.Convert(tone.AsSpan(at, Math.Min(137, tone.Length - at))));
+        Check("mic: 44,1 kHz entrega 24 kHz sem perder sobras", Math.Abs(whole.Length / 2 - 24000) <= 2 && whole.SequenceEqual(split));
+        var int32 = new byte[400];
+        for (int i = 0; i < 100; i++) BitConverter.GetBytes(1073741824).CopyTo(int32, i * 4);
+        var converted = new MicCapture.PcmConverter(new NAudio.Wave.WaveFormat(24000, 32, 1)).Convert(int32);
+        Check("mic: PCM 32 não vira float", converted.Length > 100 && Math.Abs(BitConverter.ToInt16(converted, 80) - 16383) < 5);
+        var badFloat = new byte[400];
+        for (int i = 0; i < 100; i++) BitConverter.GetBytes(float.NaN).CopyTo(badFloat, i * 4);
+        Check("mic: NaN vira silêncio", new MicCapture.PcmConverter(NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(24000, 1)).Convert(badFloat).All(v => v == 0));
+        var q = new PcmQueue();
+        q.Push(new byte[2400], 24000, 0); q.Push(new byte[12000], 24000, 1); q.Push(new byte[4800], 24000, 2);
+        Check("mic: fila limitada a 300 ms por duração", q.Take(2) is { Sequence: 3, Pcm.Length: 4800 } && q.Take(2) is null);
+        q.Push(new byte[40000], 24000, 10);
+        Check("mic: pacote grande cabe no prazo", q.Take(11)?.Pcm.Length == 14400);
+        q.Push(new byte[200], 24000, 0);
+        Check("mic: descarta áudio vencido antes de enviar", q.Take(301) is null);
+        var wire = new PcmPacket(7, 100, [1, 2]).Wire(120);
+        Check("mic: cabeçalho leva sequência e idade", wire.Length == 18 && BitConverter.ToUInt32(wire, 0) == 7
+            && BitConverter.ToUInt32(wire, 4) == 20 && BitConverter.ToDouble(wire, 8) == 100 && wire[16] == 1);
 
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-mic-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -939,11 +957,12 @@ public static class Program
         var token = tokens.Create("iPhone teste");
         bool stopped = false;
         Action<byte[]>? feed = null;
+        Action<Exception?>? finish = null;
         var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
         var handlers = new BridgeHandlers
         {
             MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
-            OpenMic = (_, onPcm) => { feed = onPcm; return (24000, new Disposer(() => stopped = true)); },
+            OpenMic = (_, onPcm, onStopped) => { feed = onPcm; finish = onStopped; return (24000, new Disposer(() => stopped = true)); },
             RemoteChanged = st => states.Enqueue(st),
         };
         var server = new BridgeServer();
@@ -966,7 +985,7 @@ public static class Program
             feed!(new byte[] { 1, 2, 3, 4 });
             var audio = ws.ReceiveAsync(buf, new System.Threading.CancellationTokenSource(3000).Token).Result;
             Check("mic: PCM chega em mensagem binária", audio.MessageType == System.Net.WebSockets.WebSocketMessageType.Binary
-                && audio.Count == 4 && buf[0] == 1 && buf[3] == 4);
+                && audio.Count == 20 && buf[16] == 1 && buf[19] == 4);
             Check("mic: ouvir avisa a ilha", states.Any(st => st.Listening));
             http.PostAsync("/api/mic/close", null).Result.Dispose();
             for (int i = 0; i < 50 && !stopped; i++) System.Threading.Thread.Sleep(20);
@@ -974,6 +993,20 @@ public static class Program
             Check("mic: parar solta o microfone", stopped && states.Last() == new RemoteState(false, false, false));
         }
         Check("mic: tíquete de uso único", !TryConnect($"ws://127.0.0.1:{server.Port}/api/mic/stream?ticket={tk}"));
+        var nextTicket = http.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1" }).Result
+            .Content.ReadFromJsonAsync<JsonElement>().Result.GetProperty("ticket").GetString();
+        using (var ws = new System.Net.WebSockets.ClientWebSocket())
+        {
+            stopped = false;
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/mic/stream?ticket={nextTicket}"), System.Threading.CancellationToken.None).Wait();
+            ws.ReceiveAsync(new byte[1024], new System.Threading.CancellationTokenSource(3000).Token).Wait();
+            http.PostAsync($"/api/mic/close?id={tk}", null).Result.Dispose();
+            Check("mic: close antigo poupa nova sessão HTTP", http.GetStringAsync($"/api/mic/status?id={nextTicket}").Result.Contains("\"active\":true"));
+            finish!(null);
+            var ended = ws.ReceiveAsync(new byte[1024], new System.Threading.CancellationTokenSource(3000).Token).Result;
+            Check("mic: RecordingStopped encerra socket e solta captura", ended.MessageType == System.Net.WebSockets.WebSocketMessageType.Close && stopped
+                && http.GetStringAsync($"/api/mic/status?id={nextTicket}").Result.Contains("\"allowed\":false"));
+        }
         server.StopAsync().GetAwaiter().GetResult();
 
         // Consentimento do Windows pendente: abrir fica parado; o iPhone recebe o motivo e, quando
@@ -984,7 +1017,7 @@ public static class Program
         var waiting = new BridgeHandlers
         {
             MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
-            OpenMic = (_, _) => { gate.Wait(); return (24000, new Disposer(() => lateStopped = true)); },
+            OpenMic = (_, _, _) => { gate.Wait(); return (24000, new Disposer(() => lateStopped = true)); },
             Notify = e => events.Enqueue(e),
         };
         var oldTimeout = MicStream.ConsentTimeout;
@@ -1233,6 +1266,60 @@ public static class Program
         var appjs = File.ReadAllText(Path.Combine(web, "app.js"));
         Check("pwa: foto via share", appjs.Contains("navigator.share"));
         Check("pwa: tíquete na URL do stream", appjs.Contains("/api/camera/stream?ticket="));
+        var jsCheck = new System.Diagnostics.ProcessStartInfo("node") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        jsCheck.ArgumentList.Add("-e");
+        jsCheck.ArgumentList.Add("""
+            const fs=require('fs'),vm=require('vm');
+            const s=fs.readFileSync(process.argv[1],'utf8'),ctx={};
+            vm.runInNewContext(s.slice(s.indexOf('function micSlot('),s.indexOf('function micPlay(')),ctx);
+            let next=0,last=-1,count=0;
+            for(let i=0;i<20;i++){
+              const at=ctx.micSlot(next,0,.05);if(at===null)continue;
+              if(at<last||at+.05>.30001)process.exit(1);
+              last=at+.05;next=last;count++;
+            }
+            if(count<1||count>6||ctx.micSlot(0,10,.05)!==10.08)process.exit(1);
+            console.log('buffer-ok');
+            let stopped=0,disconnected=0,closed=0,inset='';
+            const nodes=new Map(),$=k=>{
+              if(!nodes.has(k)){
+                const classes=new Set();
+                nodes.set(k,{value:'2',style:{},getBoundingClientRect(){return{height:76}},classList:{
+                  contains:k=>classes.has(k),toggle(k,on){if(on)classes.add(k);else classes.delete(k)}
+                }});
+              }
+              return nodes.get(k);
+            };
+            const media={$,camPref:()=>null,setInterval(){},clearTimeout(){},mediaClose(){},
+              document:{addEventListener(){},documentElement:{style:{setProperty(k,v){inset=v}}}},
+              window:{addEventListener(){}},stopped:()=>stopped++,disconnected:()=>disconnected++,closed:()=>closed++};
+            vm.createContext(media);
+            vm.runInContext(s.slice(s.indexOf('const mic = {'),s.indexOf('// --- Foto direto pro clipboard')),media);
+            const clean=vm.runInContext("mic.want=true;mic.confirmed=true;mic.id='old';mic.next=100;mic.ctx={close(){closed();return Promise.resolve()}};mic.sources.add({stop(){stopped()},disconnect(){disconnected()}});mic.ws={close(){closed()}};micUi();micRecovery(true);",media);
+            if(inset!=='76px')process.exit(1);
+            const empty=vm.runInContext("micStop();!mic.want&&!mic.ctx&&!mic.ws&&mic.next===0&&mic.sources.size===0",media);
+            if(!empty||stopped!==1||disconnected!==1||closed!==2||inset!=='0px')process.exit(1);
+            console.log('stop-ok');
+            (async()=>{
+              let requests=0,releases=0,resolve;
+              const wake={navigator:{wakeLock:{request(){requests++;return new Promise(r=>resolve=r)}}},document:{hidden:false}};
+              vm.createContext(wake);
+              vm.runInContext(s.slice(s.indexOf('let wakeLock ='),s.indexOf('async function scrStart(')),wake);
+              const first=wake.scrWake(true);await wake.scrWake(true);await wake.scrWake(false);
+              resolve({release(){releases++},addEventListener(){}});await first;
+              if(requests!==1||releases!==1)process.exit(1);
+              console.log('wake-ok');
+            })().catch(()=>process.exit(1));
+            """);
+        jsCheck.ArgumentList.Add(Path.Combine(web, "app.js"));
+        using (var node = System.Diagnostics.Process.Start(jsCheck)!)
+        {
+            var jsResult = node.StandardOutput.ReadToEnd();
+            node.WaitForExit();
+            Check("pwa: rajada não sobrepõe áudio e respeita 300 ms", node.ExitCode == 0 && jsResult.Contains("buffer-ok"));
+            Check("pwa: Parar solta fontes/socket/contexto e reserva espaço da barra", node.ExitCode == 0 && jsResult.Contains("stop-ok"));
+            Check("pwa: wake lock pendente não duplica nem sobrevive à parada", node.ExitCode == 0 && jsResult.Contains("wake-ok"));
+        }
         var manifest = http.GetAsync("/manifest.webmanifest").Result;
         Check("pwa: manifest com content-type", manifest.IsSuccessStatusCode
             && manifest.Content.Headers.ContentType?.MediaType == "application/manifest+json");
@@ -1744,10 +1831,54 @@ public static class Program
         var tk3 = t.Issue("dono", "dev-C", CameraPreset.Default, now);
         t.Issue("dono", "dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
         Check("tíquete: emitir substitui", t.Claim(tk3, now) is null);
+        var valid = t.Issue("B", "dev-B", CameraPreset.Default, now);
+        var rejected = t.Issue("A", "dev-A", CameraPreset.Default, now, _ => false);
+        Check("tíquete: retomada recusada poupa novo dono", rejected is null && t.Claim(valid, now)?.Owner == "B");
     }
 
     private static void CameraTests()
     {
+        var pacer = new FramePacer();
+        int accepted = Enumerable.Range(0, 300).Count(i => pacer.Accept(i * 1000.0 / 30, 24));
+        Check("câmera: 30 Hz amostrado a 24 fps não cai a 15", accepted == 240);
+        Check("câmera: pausa longa não gera rajada", pacer.Accept(20000, 24) && !pacer.Accept(20001, 24));
+        Check("câmera: econômico limita largura, taxa e JPEG", CameraPreset.Parse("eco", null) is { Width: 640, Fps: 12, JpegQuality: .55f });
+        Check("câmera: automático permite redução", CameraPreset.Parse("auto", null).Automatic && CameraPreset.Parse("auto", null).Reduced.Width == 640);
+        Check("câmera: formato considera taxa além da largura", CameraPreset.FormatCost(1280, 24, CameraPreset.Default)
+            < CameraPreset.FormatCost(1280, 60, CameraPreset.Default));
+        var automatic = CameraPreset.Parse("auto", null);
+        var adaptive = automatic; int slow = 0, fast = 0;
+        for (int i = 0; i < 3; i++) adaptive = adaptive.Adapt(100, ref slow, ref fast, automatic);
+        Check("câmera: rede lenta reduz trabalho", adaptive.Width == 640 && adaptive.Fps == 12);
+        for (int i = 0; i < 120; i++) adaptive = adaptive.Adapt(1, ref slow, ref fast, automatic);
+        Check("câmera: folga restaura apenas o preset pedido", adaptive == automatic);
+        var sessions = new RemoteSessions(_ => { });
+        var owner = new SessionOwner("A", "iPhone");
+        sessions.PrepareMedia("camera", "old", owner);
+        using var old = sessions.BeginMedia("camera", "old", System.Threading.CancellationToken.None, owner)!;
+        sessions.PrepareMedia("camera", "new", owner);
+        using var current = sessions.BeginMedia("camera", "new", System.Threading.CancellationToken.None, owner)!;
+        sessions.StopMedia("camera", "A", "old");
+        Check("câmera: close atrasado não cancela a abertura nova", old.IsCancellationRequested && !current.IsCancellationRequested);
+        sessions.End(old);
+        Check("câmera: fim antigo conserva sessão atual", sessions.MediaStatus("camera", "A", "new").Active);
+        sessions.StopAll();
+        Check("câmera: Encerrar impede reconexão", current.IsCancellationRequested
+            && !sessions.PrepareMedia("camera", "retry", owner, "new"));
+        sessions.End(current);
+        sessions.PrepareMedia("mic", "pending", owner);
+        sessions.StopMedia("mic", "A", "pending");
+        Check("mic: parar antes do stream impede abrir sensor", sessions.BeginMedia("mic", "pending", System.Threading.CancellationToken.None, owner) is null);
+        sessions.PrepareMedia("mic", "network", owner);
+        var dropped = sessions.BeginMedia("mic", "network", System.Threading.CancellationToken.None, owner)!;
+        sessions.End(dropped);
+        Check("mic: queda permite tíquete novo enquanto autorizado", sessions.PrepareMedia("mic", "retry", owner, "network"));
+        sessions.StopDevice("A");
+        Check("mic: revogação invalida abertura pendente e retomada", !sessions.MediaStatus("mic", "A", "retry").Allowed
+            && sessions.BeginMedia("mic", "retry", System.Threading.CancellationToken.None, owner) is null);
+        sessions.PrepareMedia("camera", "taken", owner);
+        sessions.PrepareMedia("camera", "other", new("B", "iPad"));
+        Check("câmera: outro aparelho invalida retomada antiga", !sessions.PrepareMedia("camera", "late", owner, "taken"));
         var ordered = Camera.OrderDevices([
             new CameraDevice("b", "Logitech BRIO"),
             new CameraDevice("a", "Câmera Integrada"),

@@ -307,102 +307,198 @@ document.querySelectorAll('[data-power]').forEach(b => b.onclick = async () => {
 // --- Câmera ---
 const camImg = $('#camImg'), camToggle = $('#camToggle'), camShot = $('#camShot');
 const camDevice = $('#camDevice'), camQuality = $('#camQuality'), camView = $('#camView'), camMsg = $('#camMsg');
-let camStreaming = false, camLoaded = false;
-// Geração de cada abertura: Parar/sair da página/segundo plano invalida a que ainda está no await,
-// senão a resposta atrasada religaria câmera, tela ou microfone depois de você sair.
-let camGen = 0;
+let camStreaming = false, camGen = 0, camId = null, camWatch = null, camBroken = false, camOpening = 0;
 const stillWanted = (gen, cur, want) => gen === cur && page === want && !document.hidden;
 const camName = () => camDevice.selectedOptions[0]?.textContent || '';
-
-function camSay(msg) {
-  camMsg.textContent = msg || '';
-  camMsg.classList.toggle('hidden', !msg);
+const camPref = (k, v) => {
+  try {
+    if (v === undefined) return JSON.parse(localStorage.getItem('cam.' + k));
+    localStorage.setItem('cam.' + k, JSON.stringify(v));
+  } catch { return null; }
+};
+const mediaClose = (kind, id) => {
+  if (token && id) return fetch('/api/' + kind + '/close?id=' + encodeURIComponent(id), {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token }, keepalive: true,
+  }).catch(() => {});
+};
+// Serializa pedidos: respostas de aberturas antigas nunca invalidam a mais nova no PC.
+const mediaOpening = { camera: Promise.resolve(), mic: Promise.resolve() };
+function mediaOpen(kind, wanted, json) {
+  const pending = mediaOpening[kind].catch(() => {}).then(async () => {
+    if (!wanted()) return null;
+    const result = await api('/' + kind + '/open', { method: 'POST', json });
+    if (!wanted()) { await mediaClose(kind, result.ticket); return null; }
+    return result;
+  });
+  mediaOpening[kind] = pending;
+  return pending;
 }
+function camSay(msg) { camMsg.textContent = msg || ''; camMsg.classList.toggle('hidden', !msg); }
 
-// Lista as câmeras do PC (não abre nenhuma: a luz não acende aqui). Repetida pelo loop até dar certo,
-// então para; não recarrega durante o stream pra não zerar o seletor.
+// Não troca silenciosamente o dispositivo que desapareceu.
+function mediaDevices(sel, list, saved) {
+  const chosen = sel.value || saved;
+  sel.replaceChildren(...list.map(d => Object.assign(document.createElement('option'), { value: d.id, textContent: d.name })));
+  if (chosen && list.some(d => d.id === chosen)) sel.value = chosen;
+  else if (chosen) {
+    sel.prepend(Object.assign(document.createElement('option'), { value: '', textContent: 'Dispositivo desconectado — escolha outro' }));
+    sel.value = '';
+  }
+}
 async function camLoadDevices() {
-  if (!token || camStreaming) return;
+  if (!token || camStreaming || camLoadDevices.busy) return;
+  camLoadDevices.busy = true;
+  const gen = camGen;
   try {
-    const r = await fetch('/api/camera/devices', { headers: { Authorization: `Bearer ${token}` } });
-    if (r.status === 403) { camSay('Ligue "Câmera" na aba Dispositivos do PC.'); return; }
-    if (!r.ok) return;
-    const list = await r.json();
-    camDevice.innerHTML = '';
-    for (const d of list) {
-      const o = document.createElement('option');
-      o.value = d.id; o.textContent = d.name;
-      camDevice.appendChild(o);
-    }
-    camLoaded = true;
-    camSay(list.length ? '' : 'Nenhuma câmera encontrada.');
-  } catch { /* offline: o loop tenta de novo */ }
+    const list = await api('/camera/devices');
+    if (gen !== camGen || camStreaming) return;
+    mediaDevices(camDevice, list, camPref('device'));
+    camSay(list.length ? (camDevice.value ? '' : 'Escolha uma câmera conectada.') : 'Nenhuma câmera encontrada. Atualize após conectar.');
+  } catch (e) { camSay(/403/.test(e.message) ? 'Ligue "Câmera" na aba Dispositivos do PC.' : e.message); }
+  finally { camLoadDevices.busy = false; }
 }
-
-async function camStart() {
+async function camStart(resume = null) {
+  if (!camDevice.value) { camSay('Escolha uma câmera conectada.'); return; }
+  if (!resume) camStop();
   const gen = ++camGen;
+  camStreaming = true; camBroken = false; camOpening = Date.now();
+  camToggle.textContent = 'Parar'; camSay(resume ? 'Reconectando…' : 'Abrindo…');
   try {
-    const r = await fetch('/api/camera/open', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: camDevice.value, name: camName(), quality: camQuality.value, fps: '24' }),
+    const opened = await mediaOpen('camera', () => stillWanted(gen, camGen, 'camera') && camStreaming, {
+      deviceId: camDevice.value, name: camName(), quality: camQuality.value, resume,
     });
-    if (r.status === 403) { camSay('Ligue "Câmera" na aba Dispositivos do PC.'); return; }
-    if (!r.ok) { camSay('Não consegui abrir a câmera.'); return; }
-    const { ticket } = await r.json();
-    if (!stillWanted(gen, camGen, 'camera')) return;
-    camImg.onerror = () => { camSay('Câmera em uso por outro programa, ou o stream caiu.'); camStop(); };
-    // só o tíquete (descartável) vai na URL; o token fica no cabeçalho do /open
-    camImg.src = `/api/camera/stream?ticket=${encodeURIComponent(ticket)}`;
-    camStreaming = true;
-    camToggle.textContent = 'Parar';
-    camView.classList.add('live');
-    camSay('');
-  } catch { camSay('PC fora do ar'); }
+    if (!opened) return;
+    const { ticket } = opened;
+    if (!stillWanted(gen, camGen, 'camera') || !camStreaming) { mediaClose('camera', ticket); return; }
+    camId = ticket;
+    camImg.onload = () => { if (gen === camGen && camImg.naturalWidth > 1) camLive(); };
+    camImg.onerror = () => { if (gen === camGen) { camBroken = true; camSay('Sem sinal · verificando conexão…'); } };
+    camImg.src = '/api/camera/stream?ticket=' + encodeURIComponent(ticket);
+    clearInterval(camWatch); camWatch = setInterval(camCheck, 2000);
+    scrWake($('#camWake').checked);
+  } catch (e) {
+    if (gen !== camGen) return;
+    if (resume && !/401|403|409/.test(e.message)) { camSay('Sem sinal · reconectando…'); camBroken = true; }
+    else { camStop(); camSay(/403/.test(e.message) ? 'Ligue "Câmera" na aba Dispositivos do PC.' : e.message); }
+  }
 }
-
-// GIF 1x1 transparente: atribuir um src NOVO aborta a conexão MJPEG (o Safari não a fecha só
-// removendo o atributo), e aí o PC solta a câmera e apaga a luz.
+function camLive() {
+  if (!camStreaming) return;
+  if (!camView.classList.contains('live')) {
+    camView.classList.add('live'); camRestore();
+    if (landscape.matches) camImmersive(true);
+  }
+  camSay('Ao vivo');
+}
+async function camCheck() {
+  if (!camStreaming || !camId || document.hidden || camCheck.busy) return;
+  camCheck.busy = true;
+  const id = camId, gen = camGen;
+  try {
+    const state = await api('/camera/status?id=' + encodeURIComponent(id));
+    if (id !== camId || gen !== camGen || !camStreaming) return;
+    if (!state.allowed) { camStop(); camSay(state.name ? 'O ' + state.name + ' assumiu a câmera.' : 'Transmissão encerrada no PC.'); return; }
+    if (!state.active || camBroken) {
+      if (!state.active && Date.now() - camOpening < 15000 && !camView.classList.contains('live')) return;
+      await camStart(id); return;
+    }
+    if (state.width && camImg.naturalWidth > 1) camLive();
+    $('#camStats').textContent = state.width ? state.width + ' × ' + state.height + ' · ' + state.fps + ' fps' + (state.reduced ? ' · rede lenta' : '') : '';
+  } catch (e) {
+    if (gen !== camGen) return;
+    if (/401|403/.test(e.message)) { camStop(); camSay('Permissão encerrada no PC.'); }
+    else { camBroken = true; camSay('Sem sinal · verificando conexão…'); }
+  } finally { camCheck.busy = false; }
+}
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 function camStop() {
-  camGen++;
-  camImg.onerror = null;
-  camImg.src = BLANK; // solta a <img>
-  camStreaming = false;
-  camToggle.textContent = 'Ver câmera';
-  camView.classList.remove('live');
-  // o Safari não aborta a conexão MJPEG sozinho: manda o PC fechar a câmera (apaga a luz)
-  if (token) fetch('/api/camera/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+  camGen++; camStreaming = false; clearInterval(camWatch); camWatch = null;
+  const id = camId; camId = null; mediaClose('camera', id);
+  camImg.onerror = camImg.onload = null; camImg.src = BLANK;
+  camView.classList.remove('live'); camToggle.textContent = 'Ver câmera';
+  $('#camStats').textContent = ''; camSay('Câmera desligada');
+  camImmersive(false); scrWake(false); camDiscard();
 }
-
 camToggle.onclick = () => camStreaming ? camStop() : camStart();
-
-// Trocar câmera/qualidade com o stream ligado reabre direto na nova (novo tíquete; o <img> novo
-// aborta o anterior e o PC solta a câmera antiga).
-const camSwitch = () => { if (camStreaming) camStart(); };
-camDevice.onchange = camSwitch;
-camQuality.onchange = camSwitch;
-
+camDevice.onchange = () => { camPref('device', camDevice.value); if (camStreaming) camStart(); };
+camQuality.onchange = () => { camPref('quality', camQuality.value); if (camStreaming) camStart(); };
+if (['auto', 'eco', 'fluid'].includes(camPref('quality'))) camQuality.value = camPref('quality');
+$('#camWake').checked = camPref('wake') === true;
+$('#camWake').onchange = e => { camPref('wake', e.target.checked); if (camStreaming) scrWake(e.target.checked); };
+$('#camRefresh').onclick = () => { camLoadDevices(); micLoad(); };
+let camPhoto = null, camPhotoUrl = null, camPhotoAbort = null, camPhotoGen = 0;
+function camDiscard() {
+  camPhotoGen++; camPhotoAbort?.abort(); camPhotoAbort = null;
+  if (camPhotoUrl) URL.revokeObjectURL(camPhotoUrl);
+  camPhoto = camPhotoUrl = null; $('#camPhotoImg').removeAttribute('src');
+  $('#camPhoto').classList.add('hidden'); camShot.disabled = false;
+}
+$('#camDiscard').onclick = camDiscard;
 camShot.onclick = async () => {
+  camDiscard();
+  const gen = camPhotoGen, controller = new AbortController();
+  camPhotoAbort = controller; camShot.disabled = true;
   try {
-    const r = await fetch('/api/camera/photo', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: camDevice.value, name: camName() }),
-    });
-    if (!r.ok) { toast('Não consegui tirar a foto'); return; }
+    const r = await fetch('/api/camera/photo', { method: 'POST', signal: controller.signal,
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: camDevice.value, name: camName() }) });
+    if (!r.ok) throw new Error('Não consegui tirar a foto.');
     const blob = await r.blob();
-    const file = new File([blob], `orbit-${Date.now()}.jpg`, { type: 'image/jpeg' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file] }); // iOS: "Salvar imagem" → Fotos
-    } else {
-      window.open(URL.createObjectURL(blob), '_blank'); // fallback: segurar a imagem → Adicionar às Fotos
-    }
-  } catch (e) {
-    if (e && e.name === 'AbortError') return; // folha cancelada
-    toast('Não consegui salvar a foto');
-  }
+    if (gen !== camPhotoGen || page !== 'camera' || document.hidden) return;
+    camPhoto = new File([blob], 'orbit-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+    camPhotoUrl = URL.createObjectURL(blob); $('#camPhotoImg').src = camPhotoUrl;
+    $('#camPhoto').classList.remove('hidden'); $('#camShare').focus();
+  } catch (e) { if (gen === camPhotoGen && e.name !== 'AbortError') toast(e.message); }
+  finally { if (gen === camPhotoGen) { camPhotoAbort = null; camShot.disabled = false; } }
 };
+$('#camShare').onclick = async () => {
+  if (!camPhoto) return;
+  try {
+    if (navigator.canShare?.({ files: [camPhoto] })) await navigator.share({ files: [camPhoto] });
+    else window.open(camPhotoUrl, '_blank', 'noopener');
+  } catch (e) { if (e.name !== 'AbortError') toast('Toque em compartilhar de novo.'); }
+};
+const camZoom = { z: 1, tx: 0, ty: 0 };
+const camApply = () => applyView(true, camZoom, camView, camImg, camPref, camDevice.value, $('#camZoomReset'));
+const camRestore = () => restoreView(camZoom, camView, camImg, camPref, camDevice.value, $('#camZoomReset'));
+function camImmersive(on) {
+  $('#cam-card').classList.toggle('immersive', on);
+  document.body.classList.toggle('immersive', on || scr.live && $('section[data-page="tela"]').classList.contains('immersive'));
+  $('#camFs').textContent = on ? 'Sair da tela cheia' : 'Tela cheia';
+  requestAnimationFrame(camRestore);
+  requestAnimationFrame(micInset);
+}
+$('#camFs').onclick = () => camImmersive(!$('#cam-card').classList.contains('immersive'));
+$('#camZoomReset').onclick = () => { camZoom.z = 1; camZoom.tx = camZoom.ty = 0; camApply(); };
+$('#camControls').onclick = () => {
+  const folded = $('#cam-card').classList.toggle('folded');
+  $('#camControls').textContent = folded ? 'Controles' : 'Recolher';
+  $('#camControls').setAttribute('aria-expanded', String(!folded));
+};
+let camGesture = null;
+camView.addEventListener('touchstart', e => {
+  if (!camStreaming || e.target.closest('button')) return;
+  if (e.touches.length < 2 && camZoom.z <= 1) return;
+  e.preventDefault(); edge.on = false;
+  const two = e.touches.length > 1, t = two ? mid(e.touches) : { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  const r = camView.getBoundingClientRect();
+  camGesture = { two, x: t.x, y: t.y, d: two ? dist(e.touches) : 1, z: camZoom.z,
+    tx: camZoom.tx, ty: camZoom.ty, px: t.x - r.left, py: t.y - r.top };
+}, { passive: false });
+camView.addEventListener('touchmove', e => {
+  if (!camGesture) return;
+  e.preventDefault(); edge.on = false;
+  const g = camGesture;
+  if (g.two && e.touches.length < 2) { camGesture = null; return; }
+  const t = g.two ? mid(e.touches) : { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  camZoom.z = g.two ? Math.max(1, Math.min(MAX_ZOOM, g.z * dist(e.touches) / Math.max(1, g.d))) : g.z;
+  const ratio = camZoom.z / g.z;
+  camZoom.tx = g.px - (g.px - g.tx) * ratio + t.x - g.x;
+  camZoom.ty = g.py - (g.py - g.ty) * ratio + t.y - g.y;
+  camApply();
+}, { passive: false });
+['touchend', 'touchcancel'].forEach(t => camView.addEventListener(t, () => { camGesture = null; }, { passive: true }));
+window.addEventListener('resize', () => { if (page === 'camera') camRestore(); });
 
 // --- Arquivos do PC (só leitura) ---
 // Nomes vindos do PC só entram por textContent; innerHTML só recebe os ícones constantes abaixo.
@@ -618,15 +714,18 @@ function scrFrozen(on) {
 
 // Sem tocar por um tempo o iPhone apagaria a tela no meio do controle. A trava some sozinha se o app
 // for pro segundo plano (e aí a tela remota também para).
-let wakeLock = null, wakeWanted = false;
+let wakeLock = null, wakeWanted = false, wakePending = false;
 async function scrWake(on) {
   wakeWanted = on;
   try {
-    if (on && !wakeLock && navigator.wakeLock) {
-      const lock = await navigator.wakeLock.request('screen');
-      if (!wakeWanted) { lock.release(); return; } // parou enquanto o pedido estava pendente
-      wakeLock = lock;
-      lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+    if (on && !wakeLock && !wakePending && navigator.wakeLock) {
+      wakePending = true;
+      try {
+        const lock = await navigator.wakeLock.request('screen');
+        if (!wakeWanted || document.hidden) { lock.release(); return; } // parou enquanto o pedido estava pendente
+        wakeLock = lock;
+        lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+      } finally { wakePending = false; }
     } else if (!on && wakeLock) { const lock = wakeLock; wakeLock = null; await lock.release(); }
   } catch { /* sem suporte ou negado: segue sem */ }
 }
@@ -742,21 +841,21 @@ function scrPoint(t) {
 const view = { z: 1, tx: 0, ty: 0 };
 const MAX_ZOOM = 5;
 
-function applyView(save = true) {
-  const r = scrView.getBoundingClientRect();
-  view.z = Math.min(MAX_ZOOM, Math.max(1, view.z));
+function applyView(save = true, state = view, area = scrView, img = scrImg, pref = scrPref, device = $('#scrScreen').value, reset = $('#scrZoomReset')) {
+  const r = area.getBoundingClientRect();
+  state.z = Math.min(MAX_ZOOM, Math.max(1, state.z));
   // não deixa a imagem sair da área: com zoom 1 fica parada; com zoom, as bordas não descolam
-  view.tx = Math.min(0, Math.max(r.width - r.width * view.z, view.tx));
-  view.ty = Math.min(0, Math.max(r.height - r.height * view.z, view.ty));
-  scrImg.style.width = scrImg.style.height = `${view.z * 100}%`;
-  scrImg.style.left = `${view.tx}px`;
-  scrImg.style.top = `${view.ty}px`;
-  $('#scrZoomReset').classList.toggle('hidden', view.z <= 1.01);
-  $('#scrZoomReset').textContent = `${view.z.toFixed(1).replace('.', ',')}× ✕`;
+  state.tx = Math.min(0, Math.max(r.width - r.width * state.z, state.tx));
+  state.ty = Math.min(0, Math.max(r.height - r.height * state.z, state.ty));
+  img.style.width = img.style.height = `${state.z * 100}%`;
+  img.style.left = `${state.tx}px`;
+  img.style.top = `${state.ty}px`;
+  reset.classList.toggle('hidden', state.z <= 1.01);
+  reset.textContent = `${state.z.toFixed(1).replace('.', ',')}× ✕`;
   // Guarda 300 ms depois do último movimento: a pinça chama isto a cada quadro.
-  clearTimeout(view.saveT);
-  if (save && r.width && r.height) view.saveT = setTimeout(() => scrPref('view',
-    { z: view.z, tx: view.tx, ty: view.ty, w: Math.round(r.width), h: Math.round(r.height), screen: $('#scrScreen').value }), 300);
+  clearTimeout(state.saveT);
+  if (save && r.width && r.height) state.saveT = setTimeout(() => pref('view',
+    { z: state.z, tx: state.tx, ty: state.ty, w: Math.round(r.width), h: Math.round(r.height), screen: device }), 300);
 }
 // Trackpad com zoom: o cursor (posição que o PC manda) chegou perto da borda da parte visível →
 // arrasta o enquadramento pra ele continuar à vista.
@@ -777,13 +876,13 @@ function scrFollow(nx, ny) {
 function resetView(save = true) { view.z = 1; view.tx = 0; view.ty = 0; applyView(save); }
 // Volta o zoom de antes ao abrir a tela: só no MESMO monitor e com a área do mesmo tamanho (girar o
 // aparelho ou trocar de monitor muda o enquadramento: aí começa sem zoom).
-function restoreView() {
-  const v = scrPref('view'), r = scrView.getBoundingClientRect();
-  const same = v && v.z > 1 && v.screen === $('#scrScreen').value
+function restoreView(state = view, area = scrView, img = scrImg, pref = scrPref, device = $('#scrScreen').value, reset = $('#scrZoomReset')) {
+  const v = pref('view'), r = area.getBoundingClientRect();
+  const same = v && Number.isFinite(v.z) && Number.isFinite(v.tx) && Number.isFinite(v.ty) && v.z > 1 && v.screen === device
     && Math.abs(v.w - r.width) <= 2 && Math.abs(v.h - r.height) <= 2;
-  if (!same) return resetView(false); // sem gravar: o zoom salvo pro outro tamanho continua guardado
-  view.z = v.z; view.tx = v.tx; view.ty = v.ty;
-  applyView();
+  if (!same) { state.z = 1; state.tx = state.ty = 0; return applyView(false, state, area, img, pref, device, reset); } // sem gravar: o zoom salvo pro outro tamanho continua guardado
+  state.z = v.z; state.tx = v.tx; state.ty = v.ty;
+  applyView(true, state, area, img, pref, device, reset);
 }
 $('#scrZoomReset').onclick = resetView;
 
@@ -822,9 +921,9 @@ function scrInertia(v) {
 // Um dedo: toque/trackpad (ver acima). Dois dedos: pinça = zoom (ancorado nos dedos);
 // arrastar = move a imagem se houver zoom, senão rola no PC. Toque rápido de dois dedos = botão direito.
 let gesture = null;
-// O Safari ignora user-scalable=no fora do modo app: barra a pinça da página toda (a imagem tem zoom próprio).
-['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
-document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// Só a imagem recebe a pinça local; os textos conservam o zoom do navegador.
+['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => { if (e.target.closest?.('#camView, #scrView')) e.preventDefault(); }, { passive: false }));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1 && e.target.closest?.('#camView, #scrView')) e.preventDefault(); }, { passive: false });
 const mid =ts => ({ x: (ts[0].clientX + ts[1].clientX) / 2, y: (ts[0].clientY + ts[1].clientY) / 2 });
 const dist = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
 
@@ -959,7 +1058,8 @@ function scrImmersive(on) {
   $('section[data-page="tela"]').classList.toggle('immersive', on);
   document.body.classList.toggle('immersive', on);
   $('#scrFs').setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
-  requestAnimationFrame(restoreView); // a área mudou de tamanho: volta o zoom salvo pra esse tamanho, ou sem zoom
+  requestAnimationFrame(micInset);
+  requestAnimationFrame(() => restoreView()); // a área mudou de tamanho: volta o zoom salvo pra esse tamanho, ou sem zoom
 }
 $('#scrFs').onclick = () => scrImmersive(!document.body.classList.contains('immersive'));
 
@@ -973,14 +1073,14 @@ if (window.visualViewport) {
     if (open) { sec.style.setProperty('--vvtop', vv.offsetTop + 'px'); sec.style.setProperty('--vvh', vv.height + 'px'); }
     if (open !== sec.classList.contains('kbd')) {
       sec.classList.toggle('kbd', open);
-      requestAnimationFrame(restoreView);
+      requestAnimationFrame(() => restoreView());
     }
   };
   vv.addEventListener('resize', fit);
   vv.addEventListener('scroll', fit);
   document.addEventListener('focusout', () => setTimeout(fit, 50));
 }
-landscape.addEventListener('change', e => { if (scr.live) scrImmersive(e.matches); });
+landscape.addEventListener('change', e => { if (scr.live) scrImmersive(e.matches); if (camStreaming) camImmersive(e.matches); });
 
 function scrSetMode(m) {
   scr.mode = m;
@@ -1134,101 +1234,195 @@ scrIn.addEventListener('beforeinput', e => {
 });
 
 // --- Microfone (independente da câmera) ---
-// PCM 16 bits mono pelo WebSocket, tocado com Web Audio num buffer curto (~150 ms) que se
-// re-sincroniza se atrasar. No iPhone a Web Audio obedece a chave de silêncio: audioSession
-// 'playback' (iOS 17+) faz tocar como mídia, igual a um vídeo.
-const mic = { ws: null, ctx: null, gain: null, next: 0, rate: 24000, gen: 0 };
+const mic = { ws: null, ctx: null, gain: null, next: 0, rate: 24000, gen: 0, want: false, confirmed: false,
+  id: null, sources: new Set(), sequence: 0, offset: Infinity, meterAt: 0, retry: null, opening: 0 };
 const micSay = msg => { $('#micMsg').textContent = msg || ''; $('#micMsg').classList.toggle('hidden', !msg); };
-
 async function micLoad() {
-  if (!token) return;
+  if (!token || mic.want || micLoad.busy) return;
+  micLoad.busy = true;
+  const gen = mic.gen;
   try {
     const list = await api('/mic/devices');
-    $('#micDevice').replaceChildren(...list.map(d => Object.assign(document.createElement('option'), { value: d.id, textContent: d.name })));
-    micSay(list.length ? '' : 'Nenhum microfone no PC.');
+    if (gen !== mic.gen || mic.want) return;
+    mediaDevices($('#micDevice'), list, camPref('mic'));
+    micSay(list.length ? ($('#micDevice').value ? '' : 'Escolha um microfone conectado.') : 'Nenhum microfone no PC.');
   } catch (e) { micSay(/403/.test(e.message) ? 'Ligue "Microfone" na aba Dispositivos do PC.' : e.message); }
+  finally { micLoad.busy = false; }
 }
-
-function micUi(on) {
-  $('#micToggle').textContent = on ? 'Parar de ouvir' : 'Ouvir';
-  $('#tileCam').textContent = on ? 'Ouvindo agora' : 'Ver e ouvir';
-  if (!on) $('#micLevel').style.width = '0';
+function micInset() {
+  const bar = $('#micGlobal');
+  document.documentElement.style.setProperty('--mic-bar-height', (bar.classList.contains('hidden') ? 0 : bar.getBoundingClientRect().height) + 'px');
 }
-
+if (window.ResizeObserver) new ResizeObserver(micInset).observe($('#micGlobal'));
+window.addEventListener('resize', micInset);
+function micUi() {
+  $('#micToggle').textContent = mic.want ? 'Parar de ouvir' : 'Ouvir';
+  $('#camAudio').textContent = mic.want ? 'Parar áudio' : 'Ouvir';
+  $('#tileCam').textContent = mic.confirmed ? 'Ouvindo agora' : 'Ver e ouvir';
+  $('#micGlobal').classList.toggle('hidden', !mic.want);
+  $('#micGlobalState').textContent = mic.confirmed ? 'Ouvindo o PC' : 'Abrindo áudio…';
+  if (!mic.want) $('#micLevel').style.transform = 'scaleX(0)';
+  micInset();
+}
+function micRecovery(on) {
+  ['#micResume', '#micGlobalResume'].forEach(id => $(id).classList.toggle('hidden', !on));
+  if (on) { micSay('Áudio pausado pelo iPhone. Toque em Retomar áudio.'); $('#micGlobalState').textContent = 'Áudio pausado'; }
+  micInset();
+}
+function micClearSources() {
+  for (const src of mic.sources) { try { src.stop(); } catch {} src.disconnect(); }
+  mic.sources.clear(); mic.next = 0;
+}
+function micContext() {
+  if (mic.ctx) return;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  mic.ctx = ctx; mic.gain = ctx.createGain(); mic.gain.gain.value = +$('#micGain').value;
+  mic.gain.connect(ctx.destination);
+  ctx.onstatechange = () => {
+    if (mic.ctx !== ctx || !mic.want) return;
+    if (ctx.state !== 'running') micClearSources();
+    micRecovery(ctx.state !== 'running');
+  };
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+}
+async function micResume() {
+  const ctx = mic.ctx;
+  if (!ctx) return;
+  try { await ctx.resume(); if (mic.ctx === ctx && mic.want) { micRecovery(ctx.state !== 'running'); if (ctx.state === 'running') micSay(mic.confirmed ? 'Ao vivo' : 'Abrindo…'); } }
+  catch { if (mic.ctx === ctx && mic.want) micRecovery(true); }
+}
+// Descarta excesso antes de criar a fonte: nunca rebobina fontes já agendadas.
+function micSlot(next, now, duration) {
+  const start = next < now + .02 ? now + .08 : next;
+  return start + duration <= now + .3 ? start : null;
+}
 function micPlay(buf) {
-  const pcm = new Int16Array(buf), f = new Float32Array(pcm.length);
+  if (!mic.ctx || mic.ctx.state !== 'running' || buf.byteLength <= 16 || buf.byteLength % 2) return;
+  const header = new DataView(buf), sequence = header.getUint32(0, true), age = header.getUint32(4, true), timestamp = header.getFloat64(8, true);
+  if (!Number.isFinite(timestamp) || sequence <= mic.sequence) return;
+  mic.sequence = sequence;
+  const arrived = performance.now();
+  mic.offset = Math.min(mic.offset, arrived - timestamp);
+  if (age > 300 || arrived - timestamp - mic.offset > 300) return;
+  const pcm = new Int16Array(buf, 16), now = mic.ctx.currentTime, at = micSlot(mic.next, now, pcm.length / mic.rate);
+  if (at === null) return;
+  const f = new Float32Array(pcm.length);
   let sum = 0;
   for (let i = 0; i < pcm.length; i++) { f[i] = pcm[i] / 32768; sum += f[i] * f[i]; }
-  $('#micLevel').style.width = Math.min(100, Math.sqrt(sum / (pcm.length || 1)) * 400 * mic.gain.gain.value) + '%';
-  if (!pcm.length) return;
-  const b = mic.ctx.createBuffer(1, f.length, mic.rate);
-  b.copyToChannel(f, 0);
-  const src = mic.ctx.createBufferSource();
-  src.buffer = b;
-  src.connect(mic.gain);
-  const now = mic.ctx.currentTime;
-  if (mic.next < now + 0.03 || mic.next > now + 0.8) mic.next = now + 0.15; // começo, engasgo ou atraso acumulado
-  src.start(mic.next);
-  mic.next += b.duration;
-}
-
-function micStart() {
-  // o AudioContext tem de nascer/destravar dentro do toque (iOS), antes de qualquer await
-  if (!mic.ctx) {
-    mic.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    mic.gain = mic.ctx.createGain();
-    mic.gain.gain.value = +$('#micGain').value;
-    mic.gain.connect(mic.ctx.destination);
+  if (arrived - mic.meterAt > 80) {
+    mic.meterAt = arrived;
+    $('#micLevel').style.transform = 'scaleX(' + Math.min(1, Math.sqrt(sum / pcm.length) * 4 * mic.gain.gain.value) + ')';
   }
-  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
-  mic.ctx.resume();
-  const friendly = fn => async () => {
-    try { await fn(); }
-    catch (e) { if (/403/.test(e.message)) { micSay('Ligue "Microfone" na aba Dispositivos do PC.'); return; } throw e; }
-  };
+  const b = mic.ctx.createBuffer(1, f.length, mic.rate); b.copyToChannel(f, 0);
+  const src = mic.ctx.createBufferSource(); src.buffer = b; src.connect(mic.gain);
+  mic.sources.add(src); src.onended = () => { mic.sources.delete(src); src.disconnect(); };
+  src.start(at); mic.next = at + b.duration;
+  if (!mic.confirmed) { mic.confirmed = true; micUi(); micSay('Ao vivo'); }
+}
+function micStart(resume = null) {
+  if (!$('#micDevice').value) { micSay('Escolha um microfone conectado.'); return; }
+  if (!resume) micStop();
+  mic.confirmed = false;
+  mic.want = true; mic.opening = Date.now(); micUi(); micSay(resume ? 'Reconectando…' : 'Abrindo…');
+  // Nasce e destrava no toque, antes da requisição.
+  try { micContext(); micResume(); } catch { micStop(); micSay('Este navegador não abriu o áudio.'); return; }
   const gen = ++mic.gen;
-  run(friendly(async () => {
-    const sel = $('#micDevice');
-    const { ticket } = await api('/mic/open', { method: 'POST', json: { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent } });
-    if (!stillWanted(gen, mic.gen, 'camera')) return;
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}/api/mic/stream?ticket=${encodeURIComponent(ticket)}`);
-    ws.binaryType = 'arraybuffer';
-    ws.onmessage = e => { if (typeof e.data === 'string') mic.rate = JSON.parse(e.data).rate; else micPlay(e.data); };
-    ws.onclose = e => {
-      if (e.code === TAKEN) micSay(`O ${e.reason} assumiu o microfone`);
-      else if (e.reason === 'autorize no PC') micSay('Autorize o microfone na tela do PC (aviso do Windows) e toque Ouvir de novo.');
-      else if (e.code === 1011) micSay('O microfone do PC não abriu (em uso por outro programa?).');
-      if (mic.ws === ws) { mic.ws = null; micUi(false); }
-    };
-    mic.ws = ws;
-    mic.next = 0;
-    micSay('');
-    micUi(true);
-  }));
+  clearTimeout(mic.retry);
+  (async () => {
+    try {
+      const sel = $('#micDevice');
+      const opened = await mediaOpen('mic', () => gen === mic.gen && mic.want && !document.hidden && (resume || page === 'camera'),
+        { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent, resume });
+      if (!opened) return;
+      const { ticket } = opened;
+      if (gen !== mic.gen || !mic.want || document.hidden || !resume && page !== 'camera') { mediaClose('mic', ticket); return; }
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(proto + '//' + location.host + '/api/mic/stream?ticket=' + encodeURIComponent(ticket));
+      mic.id = ticket; mic.ws = ws; mic.sequence = 0; mic.offset = Infinity; micClearSources();
+      ws.binaryType = 'arraybuffer';
+      ws.onmessage = e => {
+        if (gen !== mic.gen || mic.ws !== ws || !mic.want) return;
+        try {
+          if (typeof e.data === 'string') {
+            const rate = JSON.parse(e.data).rate;
+            if (!Number.isFinite(rate) || rate < 8000 || rate > 192000) throw new Error('Taxa inválida');
+            mic.rate = rate;
+          } else micPlay(e.data);
+        } catch { micStop(); micSay('Áudio inválido recebido do PC.'); }
+      };
+      ws.onclose = e => {
+        if (gen !== mic.gen || mic.ws !== ws) return;
+        mic.ws = null; micClearSources();
+        if (e.code === 1006) { mic.confirmed = false; micUi(); micSay('Sem sinal · reconectando…'); micRetry(gen, ticket); return; }
+        micStop();
+        micSay(e.code === TAKEN ? 'O ' + e.reason + ' assumiu o microfone.' : e.reason === 'autorize no PC'
+          ? 'Autorize o microfone na tela do PC e toque Ouvir de novo.' : e.code === 1011 ? 'Microfone indisponível no PC.' : 'Áudio encerrado no PC.');
+      };
+    } catch (e) {
+      if (gen !== mic.gen) return;
+      if (resume && !/401|403|409/.test(e.message)) micRetry(gen, resume);
+      else { micStop(); micSay(/403/.test(e.message) ? 'Ligue "Microfone" na aba Dispositivos do PC.' : e.message); }
+    }
+  })();
 }
-
+function micRetry(gen, id) {
+  clearTimeout(mic.retry);
+  mic.retry = setTimeout(async () => {
+    if (gen !== mic.gen || !mic.want || document.hidden) return;
+    try {
+      const state = await api('/mic/status?id=' + encodeURIComponent(id));
+      if (gen !== mic.gen || !mic.want || document.hidden) return;
+      if (!state.allowed) { micStop(); micSay(state.name ? 'O ' + state.name + ' assumiu o microfone.' : 'Áudio encerrado no PC.'); return; }
+      micStart(id);
+    } catch (e) {
+      if (gen !== mic.gen) return;
+      if (/401|403|409/.test(e.message)) { micStop(); micSay('Permissão encerrada no PC.'); }
+      else micRetry(gen, id);
+    }
+  }, 1500);
+}
+async function micCheck() {
+  if (!mic.want || !mic.id || document.hidden || micCheck.busy) return;
+  micCheck.busy = true;
+  const gen = mic.gen, id = mic.id;
+  try {
+    const state = await api('/mic/status?id=' + encodeURIComponent(id));
+    if (gen !== mic.gen || !mic.want) return;
+    if (!state.allowed) { micStop(); micSay(state.name ? 'O ' + state.name + ' assumiu o microfone.' : 'Áudio encerrado no PC.'); }
+    else if (!state.active && mic.ws && Date.now() - mic.opening > 25000) { micStop(); micSay('Microfone sem sinal. Toque Ouvir de novo.'); }
+  } catch (e) { if (gen === mic.gen && /401|403/.test(e.message)) { micStop(); micSay('Permissão encerrada no PC.'); } }
+  finally { micCheck.busy = false; }
+}
 function micStop() {
-  mic.gen++;
-  if (token) fetch('/api/mic/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
-  if (mic.ws) { mic.ws.close(); mic.ws = null; }
-  micUi(false);
+  mic.gen++; mic.want = false; mic.confirmed = false; clearTimeout(mic.retry);
+  const id = mic.id; mic.id = null; mediaClose('mic', id);
+  const ws = mic.ws; mic.ws = null; if (ws) { ws.onmessage = ws.onclose = null; ws.close(); }
+  micClearSources();
+  const ctx = mic.ctx; mic.ctx = mic.gain = null;
+  if (ctx) { ctx.onstatechange = null; ctx.close().catch(() => {}); }
+  micRecovery(false); micUi(); micSay('Microfone desligado');
 }
-
-$('#micToggle').onclick = () => mic.ws ? micStop() : micStart();
-$('#micDevice').onchange = () => { if (mic.ws) { micStop(); micStart(); } };
+$('#micToggle').onclick = $('#camAudio').onclick = () => mic.want ? micStop() : micStart();
+$('#micGlobalStop').onclick = micStop;
+$('#micResume').onclick = $('#micGlobalResume').onclick = micResume;
+$('#micDevice').onchange = () => { camPref('mic', $('#micDevice').value); if (mic.want) micStart(); };
 $('#micGain').oninput = e => {
-  $('#micGainVal').textContent = `${String(+e.target.value).replace('.', ',')}×`;
-  if (mic.gain) mic.gain.gain.value = +e.target.value;
+  const value = +e.target.value;
+  $('#micGainVal').textContent = value ? String(value).replace('.', ',') + '×' : 'Mudo';
+  if (mic.gain) mic.gain.gain.value = value;
+  camPref('gain', value);
 };
-// App em segundo plano: o iOS corta o áudio; solta o microfone do PC também (privacidade).
-// App em segundo plano: câmera e tela também param (privacidade; o iOS congela a página de qualquer jeito).
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) return;
-  if (mic.ws) micStop(); else mic.gen++;
-  if (camStreaming) camStop(); else camGen++;
+const savedGain = camPref('gain');
+if (typeof savedGain === 'number' && savedGain >= 0 && savedGain <= 6) $('#micGain').value = savedGain;
+$('#micGain').oninput({ target: $('#micGain') });
+setInterval(micCheck, 3000);
+// Segundo plano invalida também a abertura que ainda aguarda o Windows.
+function stopSensors() {
+  micStop(); camStop();
   if (scr.live) scrStop(); else scr.gen++;
-});
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopSensors(); });
+window.addEventListener('pagehide', stopSensors);
 
 // --- Foto direto pro clipboard do PC ---
 async function photoToClipboard(input) {
@@ -1463,10 +1657,10 @@ function route() {
   window.scrollTo(0, 0);
   // Saiu da página: encerra o que está ligado e invalida o que ainda está abrindo (voltar rápido
   // não pode aceitar a resposta atrasada da abertura antiga).
-  if (page !== 'camera') { if (camStreaming) camStop(); else camGen++; if (!mic.ws) mic.gen++; }
+  if (page !== 'camera') { if (camStreaming || camPhotoAbort || camPhoto) camStop(); else camGen++; if (mic.want && !mic.confirmed) micStop(); }
   if (page !== 'tela') { if (scr.live) scrStop(); else scr.gen++; }
   if (page === 'tela' && !scr.loaded) scrLoad();
-  if (page === 'camera' && !mic.ws) micLoad();
+  if (page === 'camera') { camLoadDevices(); if (!mic.want) micLoad(); }
   if (page === 'recebidos') inLoad();
   if (page !== 'teclado') kbClose(); // fora da página, o PC não fica aceitando teclas
   if (page === 'notas' && token && !notesDirty) loadNotes().catch(e => toast(e.message));
@@ -1503,7 +1697,7 @@ function refresh() {
   if (page === '' || page === 'midia') refreshMedia();
   if (page === '' || page === 'pc') refreshStats();
   if (page === '') { inLoad(); if (!me || ++refresh.n % 6 === 0) refreshMe(); } // a cada ~30 s
-  if (page === 'camera' && !camLoaded) camLoadDevices();
+  if (page === 'camera' && !camStreaming) { camLoadDevices(); if (!mic.want) micLoad(); }
 }
 let loop;
 function startLoop() { clearInterval(loop); refresh(); loop = setInterval(refresh, 5000); }
@@ -1526,11 +1720,13 @@ document.addEventListener('visibilitychange', () => {
 const edge = { x: 0, y: 0, on: false };
 document.addEventListener('touchstart', e => {
   const t = e.touches[0];
-  edge.on = e.touches.length === 1 && page && page !== 'tela' && t.clientX < 24;
+  edge.on = e.touches.length === 1 && page && page !== 'tela' && !camGesture
+    && !(page === 'camera' && camZoom.z > 1 && e.target.closest('#camView')) && t.clientX < 24;
   edge.x = t.clientX; edge.y = t.clientY;
 }, { passive: true });
+document.addEventListener('touchcancel', () => { edge.on = false; }, { passive: true });
 document.addEventListener('touchend', e => {
-  if (!edge.on) return;
+  if (!edge.on || camGesture || e.touches.length) return;
   edge.on = false;
   const t = e.changedTouches[0];
   if (t.clientX - edge.x > 80 && Math.abs(t.clientY - edge.y) < 60) location.hash = '';

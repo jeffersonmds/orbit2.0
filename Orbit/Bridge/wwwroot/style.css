@@ -112,7 +112,7 @@ button.danger { color: var(--danger); }
 .row > select { flex: 1; }
 select { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid #2a2a2e;
   border-radius: 12px; padding: 12px; font: inherit; min-height: 44px; }
-#camQuality { flex: 0 0 96px; }
+#camQuality { flex: 0 0 140px; }
 /* Câmera: a área de vídeo existe desde o início (placeholder) e estica na página. */
 .cam-view { position: relative; flex: 1; min-height: 220px; margin-top: 10px; border-radius: 12px; background: #000;
   overflow: hidden; display: grid; place-items: center; }
@@ -203,7 +203,7 @@ select { width: 100%; background: var(--bg); color: var(--ink); border: 1px soli
 
 /* Tela cheia: a página cobre tudo (cabeçalho incluso), a imagem ocupa a tela e as teclas flutuam embaixo. */
 body.immersive { overflow: hidden; }
-.page[data-page="tela"].immersive { position: fixed; inset: 0; z-index: 30; margin: 0; background: #000;
+.page[data-page="tela"].immersive, .page[data-page="camera"].immersive { position: fixed; inset: 0; z-index: 30; margin: 0; background: #000;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .immersive > .row, .immersive > #scrToggle { display: none !important; }
 /* na tela cheia o aviso (reconectando, imagem parada, só visualização) flutua no topo e o Parar fica à mão */
@@ -216,7 +216,7 @@ body.immersive { overflow: hidden; }
 .immersive .scr-view { margin: 0; border-radius: 0; min-height: 0; }
 /* tela cheia com o teclado aberto: vale o encaixe no visualViewport, não o inset: 0 da tela cheia */
 .page[data-page="tela"].immersive.kbd { inset: auto 0 auto 0; top: var(--vvtop, 0px); height: var(--vvh, 100dvh); }
-.immersive .scr-bar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 8px);
+.immersive .scr-bar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 8px + var(--mic-bar-height, 0px));
   max-width: calc(100% - 24px); margin: 0; padding: 6px; border-radius: 14px; background: rgba(0, 0, 0, .55);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); z-index: 2; }
 .immersive .scr-bar button { background: rgba(255, 255, 255, .12); min-height: 38px; padding: 6px 10px; }
@@ -228,11 +228,11 @@ body.immersive { overflow: hidden; }
 .mic-select { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid #2a2a2e; border-radius: 12px;
   padding: 12px; font: inherit; min-height: 44px; }
 .mic-vol { margin-top: 12px; }
-#micGain { -webkit-appearance: none; appearance: none; flex: 1; height: 28px; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; }
+#micGain { -webkit-appearance: none; appearance: none; flex: 1; height: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent; }
 #micGain::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #2a2a2e; }
 #micGain::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%; background: var(--ink); }
 .mic-level { height: 6px; margin-top: 10px; border-radius: 3px; background: var(--bg); overflow: hidden; }
-.mic-level div { height: 100%; width: 0; background: #5ccf8a; transition: width .08s linear; }
+.mic-level div { height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; background: #5ccf8a; transition: transform .08s linear; }
 /* Foto pro clipboard: botões que são <label> de um input de arquivo escondido */
 .btnlike { flex: 1; display: grid; place-items: center; min-height: 44px; border-radius: 12px; background: var(--hover);
   font-weight: 600; position: relative; overflow: hidden; }
@@ -308,3 +308,29 @@ textarea.fill { flex: 1; min-height: 200px; resize: none; }
   main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* A imagem tem gestos locais; o restante da página conserva o zoom de acessibilidade. */
+.cam-view.live { touch-action: none; }
+.cam-view.live #camImg { touch-action: none; }
+.cam-tools { flex-wrap: wrap; margin-top: 8px; }
+#camControls, #camAudio { display: none; }
+#camPhotoImg { display: block; width: 100%; max-height: 35dvh; object-fit: contain; }
+.mic-global { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 8px; padding: 4px 12px;
+  background: var(--card); border-bottom: 1px solid var(--accent); }
+.mic-global span { flex: 1; }
+body.immersive .mic-global { position: fixed; top: auto; bottom: env(safe-area-inset-bottom); left: 0; right: 0; }
+#cam-card.immersive { height: 100dvh; box-sizing: border-box; border-radius: 0; display: flex; flex-direction: column; }
+#cam-card.immersive > :not(.cam-view):not(.cam-tools):not(#camToggle):not(#camMsg):not(#camPhoto) { display: none; }
+#cam-card.immersive .cam-view { margin: 0; min-height: 0; border-radius: 0; }
+#cam-card.immersive .cam-tools { display: flex !important; position: absolute; top: calc(env(safe-area-inset-top) + 8px); left: 12px; right: 12px; z-index: 3; }
+#cam-card.immersive #camControls, #cam-card.immersive #camAudio { display: block; }
+#cam-card.immersive #camToggle { position: absolute; bottom: calc(env(safe-area-inset-bottom) + max(64px, var(--mic-bar-height, 0px) + 12px)); right: 12px; width: auto; z-index: 3; }
+#cam-card.immersive #camMsg { position: absolute; top: calc(env(safe-area-inset-top) + 112px); left: 12px; right: 12px; background: #000b; padding: 8px; z-index: 2; }
+#cam-card.immersive #camPhoto { position: absolute; inset: 10% 12px; background: var(--card); padding: 12px; overflow: auto; z-index: 5; }
+#cam-card.immersive.folded .cam-tools > :not(#camControls) { display: none; }
+#cam-card.immersive.folded .cam-shot { opacity: .65; }
+@media (prefers-reduced-motion: reduce) { .mic-level div { transition: none; } }
+
+#cam-card.immersive .cam-shot { bottom: calc(env(safe-area-inset-bottom) + max(64px, var(--mic-bar-height, 0px) + 12px)); }
+
+.mic-global button { flex-shrink: 0; }

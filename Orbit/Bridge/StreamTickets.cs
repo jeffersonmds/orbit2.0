@@ -17,11 +17,13 @@ public sealed class StreamTickets
     private CameraPreset _preset = CameraPreset.Default;
     private DateTime _expires;
 
-    public string Issue(string owner, string deviceId, CameraPreset preset, DateTime now)
+    public string? Issue(string owner, string deviceId, CameraPreset preset, DateTime now, Func<string, bool>? accept = null)
     {
         var tk = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         lock (_gate)
         {
+            // Uma retomada recusada não invalida o tíquete de quem assumiu.
+            if (accept is not null && !accept(tk)) return null;
             _ticket = tk;
             _owner = owner;
             _deviceId = deviceId;

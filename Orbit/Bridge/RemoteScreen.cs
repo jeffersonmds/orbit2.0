@@ -70,6 +70,15 @@ public sealed class RemoteSessions
     private CancellationTokenSource? _video, _input, _audio, _camera;
     private readonly Dictionary<CancellationTokenSource, SessionOwner> _owners = new();
     private readonly Dictionary<CancellationTokenSource, string> _displaced = new();
+    private sealed class MediaIntent(string id, SessionOwner owner)
+    {
+        public string Id = id;
+        public SessionOwner Owner = owner;
+        public long Until = Environment.TickCount64 + 30000;
+        public bool Allowed = true;
+    }
+    private readonly Dictionary<string, MediaIntent> _media = new();
+    private readonly Dictionary<CancellationTokenSource, string> _mediaIds = new();
     private readonly Dictionary<string, CancellationTokenSource> _transfers = new(); // por aparelho
 
     public RemoteSessions(Action<RemoteState> changed) => _changed = changed;
@@ -90,6 +99,58 @@ public sealed class RemoteSessions
     // Câmera: a vaga serve pro indicador e pra revogação/Encerrar alcançarem o stream (que pode estar
     // parado esperando um quadro que nunca vem).
     public CancellationTokenSource BeginCamera(CancellationToken aborted, SessionOwner owner) => Begin(ref _camera, aborted, owner);
+
+    // A intenção sobrevive à queda da conexão, mas nunca a Parar/Encerrar/revogar.
+    public bool PrepareMedia(string kind, string id, SessionOwner owner, string? resume = null)
+    {
+        lock (_gate)
+        {
+            if (resume is not null && !MediaAllowed(kind, owner.Hash, resume)) return false;
+            _media[kind] = new(id, owner);
+            return true;
+        }
+    }
+
+    private bool MediaAllowed(string kind, string hash, string id) =>
+        _media.TryGetValue(kind, out var m) && m.Id == id && m.Owner.Hash == hash && m.Allowed && Environment.TickCount64 < m.Until;
+
+    public CancellationTokenSource? BeginMedia(string kind, string id, CancellationToken aborted, SessionOwner owner)
+    {
+        lock (_gate)
+        {
+            if (!MediaAllowed(kind, owner.Hash, id)) return null;
+            var s = kind == "camera" ? BeginCamera(aborted, owner) : BeginAudio(aborted, owner);
+            _mediaIds[s] = id;
+            s.CancelAfter(TimeSpan.FromSeconds(30));
+            return s;
+        }
+    }
+
+    public (bool Allowed, bool Active, string? Name) MediaStatus(string kind, string hash, string id, bool renew = true)
+    {
+        lock (_gate)
+        {
+            bool allowed = MediaAllowed(kind, hash, id);
+            var slot = kind == "camera" ? _camera : _audio;
+            bool active = allowed && slot is not null && !slot.IsCancellationRequested && _mediaIds.GetValueOrDefault(slot) == id;
+            if (allowed && renew)
+            {
+                _media[kind].Until = Environment.TickCount64 + 30000;
+                if (active) slot!.CancelAfter(TimeSpan.FromSeconds(30));
+            }
+            return (allowed, active, Owner(slot)?.Hash != hash ? Owner(slot)?.Name : null);
+        }
+    }
+
+    public void StopMedia(string kind, string hash, string? id)
+    {
+        lock (_gate)
+        {
+            if (_media.TryGetValue(kind, out var m) && m.Owner.Hash == hash && (id is null || m.Id == id)) m.Allowed = false;
+            var slot = kind == "camera" ? _camera : _audio;
+            if (slot is not null && Owner(slot)?.Hash == hash && (id is null || _mediaIds.GetValueOrDefault(slot) == id)) slot.Cancel();
+        }
+    }
 
     private CancellationTokenSource Begin(ref CancellationTokenSource? slot, CancellationToken aborted, SessionOwner owner)
     {
@@ -139,6 +200,7 @@ public sealed class RemoteSessions
             if (_audio == s) _audio = null;
             if (_camera == s) _camera = null;
             _owners.Remove(s);
+            _mediaIds.Remove(s);
             _displaced.Remove(s);
         }
         s.Dispose();
@@ -154,13 +216,14 @@ public sealed class RemoteSessions
 
     public void StopAudio(string hash)
     {
-        lock (_gate) if (Owner(_audio)?.Hash == hash) _audio!.Cancel();
+        StopMedia("mic", hash, null);
     }
 
     public void StopAll()
     {
         lock (_gate)
         {
+            foreach (var m in _media.Values) m.Allowed = false;
             _video?.Cancel();
             _input?.Cancel();
             _audio?.Cancel();
@@ -175,6 +238,7 @@ public sealed class RemoteSessions
     {
         lock (_gate)
         {
+            foreach (var m in _media.Values) if (m.Owner.Hash == hash) m.Allowed = false;
             foreach (var s in new[] { _video, _input, _audio, _camera })
                 if (s is not null && Owner(s)?.Hash == hash) s.Cancel();
             if (_transfers.Remove(hash, out var t)) t.Cancel();
