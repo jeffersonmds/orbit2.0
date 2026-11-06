@@ -950,11 +950,18 @@ $('#scrPasteFrom').onclick = () => run(async () => {
 // Copiar pro celular: Ctrl+C no PC e o texto vem pro clipboard daqui. O Safari só aceita gravar
 // dentro do toque: ClipboardItem com promessa segura o gesto enquanto o PC responde.
 $('#scrCopyTo').onclick = () => {
-  scrSend({ t: 'key', k: 'c', mods: ['ctrl'] });
-  const text = new Promise(r => setTimeout(r, 400)).then(() => api('/clipboard')).then(c => {
-    if (!c || !c.text) throw new Error('Nada copiado no PC');
-    return c.text;
-  });
+  // Lê o clipboard antes, manda o Ctrl+C e espera ele mudar (até 2 s; igual = copiou o mesmo texto).
+  const text = (async () => {
+    const before = (await api('/clipboard'))?.text;
+    scrSend({ t: 'key', k: 'c', mods: ['ctrl'] });
+    let now = before;
+    for (let i = 0; i < 8 && now === before; i++) {
+      await new Promise(r => setTimeout(r, 250));
+      now = (await api('/clipboard'))?.text;
+    }
+    if (!now) throw new Error('Nada copiado no PC');
+    return now;
+  })();
   const done = window.ClipboardItem && navigator.clipboard.write
     ? navigator.clipboard.write([new ClipboardItem({ 'text/plain': text.then(t => new Blob([t], { type: 'text/plain' })) })])
     : text.then(t => navigator.clipboard.writeText(t));
@@ -971,12 +978,16 @@ $('#scrTypeSend').onclick = () => {
   const f = $('#scrTypeText'), text = f.value;
   if (!text) return toast('Escreva ou dite algo primeiro');
   if (!scr.ws || scr.ws.readyState !== 1) return toast('Sem controle do PC agora');
+  const msgs = [];
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   lines.forEach((line, i) => {
-    for (const s of kbChunks(line)) scrSend({ t: 'text', s });
-    if (i < lines.length - 1) scrSend({ t: 'key', k: 'enter' });
+    for (const s of kbChunks(line)) msgs.push({ t: 'text', s });
+    if (i < lines.length - 1) msgs.push({ t: 'key', k: 'enter' });
   });
-  if ($('#scrTypeEnter').checked) scrSend({ t: 'key', k: 'enter' });
+  if ($('#scrTypeEnter').checked) msgs.push({ t: 'key', k: 'enter' });
+  // O PC descarta acima de 300 mensagens/s: texto enorme fica no campo, não some pela metade.
+  if (msgs.length > 200) return toast('Texto longo demais: use Teclado → Colar');
+  msgs.forEach(scrSend);
   f.value = '';
   toast('Digitado no PC');
 };
@@ -1377,7 +1388,9 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   // toque numa notificação com o app aberto: troca de página sem recarregar
   navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data && typeof e.data.go === 'string' && location.hash !== e.data.go) location.hash = e.data.go;
+    if (!e.data || typeof e.data.go !== 'string') return;
+    if (location.hash !== e.data.go) location.hash = e.data.go;
+    else if (page === 'recebidos') inLoad(); // já está lá: mostra o arquivo novo
   });
 }
 
