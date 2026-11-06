@@ -178,13 +178,18 @@ public sealed class RemoteSessions
         }
     }
 
+    // Avisa dentro do lock: dois avisos seguidos chegam na ilha na mesma ordem (fora dele, o
+    // "parou" podia passar na frente do "começou" e a pílula ficar errada). _changed só enfileira
+    // (BeginInvoke), então não segura o lock.
     private void Notify()
     {
-        RemoteState state;
-        lock (_gate) state = new(_video is not null, _input is not null, _audio is not null,
-            Owner(_video)?.Name, Owner(_input)?.Name, Owner(_audio)?.Name,
-            _camera is null ? null : Owner(_camera)?.Name ?? "Aparelho");
-        try { _changed(state); } catch (Exception ex) { Log.Warning(ex, "Tela remota: falha ao avisar a ilha"); }
+        lock (_gate)
+        {
+            var state = new RemoteState(_video is not null, _input is not null, _audio is not null,
+                Owner(_video)?.Name, Owner(_input)?.Name, Owner(_audio)?.Name,
+                _camera is null ? null : Owner(_camera)?.Name ?? "Aparelho");
+            try { _changed(state); } catch (Exception ex) { Log.Warning(ex, "Tela remota: falha ao avisar a ilha"); }
+        }
     }
 }
 

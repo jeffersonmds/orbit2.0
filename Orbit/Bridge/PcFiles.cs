@@ -52,6 +52,12 @@ public static class PcFiles
         return full;
     }
 
+    // Na hora do download: o caminho do tíquete ainda passa no Resolve? (uma pasta trocada por atalho/junção
+    // depois do tíquete, ou a pasta tirada das raízes, não passa). ponytail: sobra a janela até abrir o arquivo.
+    public static bool StillAllowed(IReadOnlyList<PcRoot> roots, string full) =>
+        roots.Any(r => Resolve(roots, r.Id, Path.GetRelativePath(r.Path, full)) is { } again
+            && string.Equals(again, full, StringComparison.OrdinalIgnoreCase));
+
     // Pastas primeiro (por nome), arquivos do mais novo pro mais antigo (o que acabou de baixar no topo).
     // Ordena ANTES de cortar: numa Downloads enorme o corte sem ordem perdia justamente os recentes.
     // Lista com MaxEntries itens = cortada (o PWA avisa).

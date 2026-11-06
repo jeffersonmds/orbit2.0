@@ -31,6 +31,7 @@ public sealed class Camera : IDisposable
 
     private readonly object _frameLock = new();
     private byte[]? _latest;
+    private int _gen; // sobe ao fechar: quadro que terminou de codificar depois disso é da sessão velha
     private TaskCompletionSource<byte[]> _next = NewSignal();
     private long _lastEncodeTicks;
     private int _minIntervalMs;
@@ -159,10 +160,10 @@ public sealed class Camera : IDisposable
         var bmp = frame?.VideoMediaFrame?.SoftwareBitmap;
         if (bmp is null) return;
         Interlocked.Exchange(ref _lastEncodeTicks, now);
-        _ = EncodeAsync(bmp); // SoftwareBitmap é copiado dentro; o frame é liberado ao sair
+        _ = EncodeAsync(bmp, Volatile.Read(ref _gen)); // SoftwareBitmap é copiado dentro; o frame é liberado ao sair
     }
 
-    private async Task EncodeAsync(SoftwareBitmap bmp)
+    private async Task EncodeAsync(SoftwareBitmap bmp, int gen)
     {
         try
         {
@@ -174,15 +175,16 @@ public sealed class Camera : IDisposable
             await enc.FlushAsync();
             var bytes = new byte[ms.Size];
             await ms.ReadAsync(bytes.AsBuffer(), (uint)ms.Size, InputStreamOptions.None);
-            Publish(bytes);
+            Publish(bytes, gen);
         }
         catch (Exception ex) { Log.Debug(ex, "Câmera: falha ao codificar quadro"); }
     }
 
-    private void Publish(byte[] jpeg)
+    private void Publish(byte[] jpeg, int gen)
     {
         lock (_frameLock)
         {
+            if (gen != _gen) return;
             _latest = jpeg;
             var signal = _next;
             _next = NewSignal();
@@ -234,7 +236,7 @@ public sealed class Camera : IDisposable
         _capture?.Dispose();
         _capture = null;
         _openDevice = null;
-        lock (_frameLock) _latest = null;
+        lock (_frameLock) { _latest = null; _gen++; }
         KeepAwake.Off();
         // O LED da webcam só apaga quando o objeto COM nativo da MediaCapture é liberado; o Dispose
         // gerenciado não faz isso na hora. Forçar a finalização solta o sensor (e apaga a luz) já.

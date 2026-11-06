@@ -32,7 +32,24 @@ public sealed class Outbox
     {
         _dir = dir;
         _index = Path.Combine(dir, "outbox.json");
-        _items = Load();
+        _items = Load(out var loaded);
+        if (loaded) DeleteOrphans(); // índice ilegível: não dá pra saber o que é órfão
+    }
+
+    // Na abertura (nenhuma cópia em andamento): apaga da pasta o que nenhum item cita — exclusão que
+    // falhou antes (arquivo aberto), cópia interrompida por um crash.
+    private void DeleteOrphans()
+    {
+        try
+        {
+            if (!Directory.Exists(_dir)) return;
+            var keep = _items.Where(i => i.File is not null).Select(i => i.File!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            keep.Add(Path.GetFileName(_index));
+            foreach (var f in Directory.EnumerateFiles(_dir))
+                if (!keep.Contains(Path.GetFileName(f)))
+                    try { System.IO.File.Delete(f); } catch (Exception ex) { Log.Warning(ex, "Caixa de saída: não apagou o órfão {Arquivo}", f); }
+        }
+        catch (Exception ex) { Log.Warning(ex, "Caixa de saída: falha ao limpar órfãos"); }
     }
 
     // Limpeza periódica: sem isto o "24 h" só valia quando alguém consultava a caixa.
@@ -156,10 +173,11 @@ public sealed class Outbox
         try { System.IO.File.Delete(Path.Combine(_dir, i.File)); } catch (Exception ex) { Log.Warning(ex, "Caixa de saída: não apagou {Arquivo}", i.File); }
     }
 
-    private List<OutboxItem> Load()
+    private List<OutboxItem> Load(out bool ok)
     {
+        ok = true;
         try { return System.IO.File.Exists(_index) ? JsonSerializer.Deserialize<List<OutboxItem>>(System.IO.File.ReadAllText(_index)) ?? new() : new(); }
-        catch { return new(); }
+        catch { ok = false; return new(); }
     }
 
     private void Save()

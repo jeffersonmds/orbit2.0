@@ -403,7 +403,7 @@ public sealed class BridgeServer : IAsyncDisposable
             ctx.Items["device"] = tokens.Find(found.Owner); // a auditoria mostra o aparelho do tíquete
             if (!TicketOwnerAllowed(tokens, found.Owner, ctx.Request.Path)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             var file = found.Path;
-            if (!File.Exists(file)) return Results.NotFound();
+            if (!File.Exists(file) || !PcFiles.StillAllowed(h.PcRoots(), file)) return Results.NotFound();
             if (!CutOnRevoke(ctx, sessions, tokens, found.Owner)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(file, out var type);
             ctx.Response.Headers.ContentSecurityPolicy = "sandbox"; // html/svg do PC não roda com a origem do PWA

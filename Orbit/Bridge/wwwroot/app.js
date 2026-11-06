@@ -1107,11 +1107,27 @@ async function inTicketUrl(id) {
   return `/api/outbox/download?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function inShare(item) {
-  const blob = await (await fetch(await inTicketUrl(item.id))).blob();
+async function inShare(item, btn) {
+  const label = btn.textContent;
+  btn.textContent = 'Baixando…';
+  let blob;
+  try { blob = await (await fetch(await inTicketUrl(item.id))).blob(); }
+  finally { btn.textContent = label; }
   const file = new File([blob], item.name, { type: blob.type });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file] }); } catch (e) { if (e.name !== 'AbortError') throw e; }
+    try { await navigator.share({ files: [file] }); }
+    catch (e) {
+      if (e.name === 'AbortError') return;
+      if (e.name !== 'NotAllowedError') throw e;
+      // Download demorou e o iOS não vale mais o toque como gesto: o arquivo já está aqui,
+      // um segundo toque compartilha na hora (share direto no clique, sem await antes).
+      const again = btn.onclick;
+      btn.textContent = 'Pronto · compartilhar';
+      btn.onclick = () => {
+        btn.onclick = again; btn.textContent = label;
+        navigator.share({ files: [file] }).catch(err => { if (err.name !== 'AbortError') toast('Não consegui compartilhar'); });
+      };
+    }
   } else {
     // Download como anexo (servidor manda attachment + sandbox). Nunca abrir o blob: ele herda a origem
     // do Orbit, e um .html recebido rodaria aqui dentro com acesso ao token.
@@ -1135,7 +1151,7 @@ async function inLoad() {
       act.className = 'act primary';
       if (item.file && item.size <= SHARE_MAX) {
         act.textContent = 'Compartilhar';
-        act.onclick = () => run(() => inShare(item));
+        act.onclick = () => run(() => inShare(item, act));
       } else if (item.file) {
         act.textContent = 'Baixar';
         act.onclick = () => run(async () => { location.href = await inTicketUrl(item.id); });

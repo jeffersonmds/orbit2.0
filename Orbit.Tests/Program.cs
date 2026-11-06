@@ -728,6 +728,9 @@ public static class Program
         Check("saída: nome seguro", box.AddFile(Path.Combine(dir, "nao-existe.bin"), t0, all) is null && box.AddText("   ", t0, all) is null && box.AddText("x", t0, Array.Empty<string>()) is null);
         Check("saída: sobrevive a reiniciar", new Outbox(boxDir).List(t0.AddMinutes(2), "D").Count == 2
             && new Outbox(boxDir).List(t0.AddMinutes(2), "outro").Count == 0);
+        File.WriteAllText(Path.Combine(boxDir, "sobra.bin"), "órfão");
+        Check("saída: órfão apagado ao abrir, itens ficam", new Outbox(boxDir).List(t0.AddMinutes(2), "D").Count == 2
+            && !File.Exists(Path.Combine(boxDir, "sobra.bin")) && File.Exists(box.PathOf(a.Id, t0, "D")!));
         var stored = box.PathOf(a.Id, t0, "D")!;
         Check("saída: vence em 24 h e apaga o arquivo", box.List(t0.AddHours(24).AddMinutes(1), "D").Count == 1 && !File.Exists(stored));
         Check("saída: remover", box.Remove(b.Id, "D") && box.List(t0.AddMinutes(3), "D").Count == 0 && !box.Remove(b.Id, "D"));
@@ -1137,6 +1140,8 @@ public static class Program
         Check("pcfiles: raiz", PcFiles.Resolve(roots, "r", "") == root);
         Check("pcfiles: subpasta com /", PcFiles.Resolve(roots, "r", "sub/b.txt") == Path.Combine(root, "sub", "b.txt"));
         Check("pcfiles: raiz desconhecida", PcFiles.Resolve(roots, "x", "a.txt") is null);
+        Check("pcfiles: download revalida o caminho", PcFiles.StillAllowed(roots, Path.Combine(root, "sub", "b.txt"))
+            && !PcFiles.StillAllowed(roots, Path.Combine(Path.GetTempPath(), "fora.txt")) && !PcFiles.StillAllowed(Array.Empty<PcRoot>(), Path.Combine(root, "sub", "b.txt")));
         Check("pcfiles: .. sai da raiz", PcFiles.Resolve(roots, "r", "../fora.txt") is null);
         Check("pcfiles: .. disfarçado", PcFiles.Resolve(roots, "r", "sub/../../fora.txt") is null);
         Check("pcfiles: caminho absoluto", PcFiles.Resolve(roots, "r", Path.Combine(dir, "fora.txt")) is null);
