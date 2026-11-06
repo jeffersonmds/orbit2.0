@@ -4,7 +4,7 @@
 #define AppName "Orbit 2.0"
 #define AppVersion "2.0.0"
 #define AppExe "Orbit.exe"
-#define PublishDir "..\Orbit\bin\Release\net10.0-windows10.0.17763.0\win-x64\publish"
+#define PublishDir "..\Orbit\bin\Release\net10.0-windows10.0.22621.0\win-x64\publish"
 ; Mata só o Orbit instalado em {app}: o 1.0 tem o mesmo nome de processo (taskkill /IM não serve).
 #define KillOrbit "-NoProfile -Command Get-Process Orbit -EA 0 | ? {{ $_.Path -like '{app}\*' } | Stop-Process -Force"
 

@@ -15,17 +15,17 @@ public sealed record ScreenInfo(string Id, string Name, Rectangle Bounds);
 // Qualidade do stream da tela: largura máxima, qualidade JPEG e intervalo entre quadros.
 public sealed record ScreenQuality(int MaxWidth, long JpegQuality, int FrameMs)
 {
-    public static readonly ScreenQuality Leve = new(1280, 60, 100);
-    public static readonly ScreenQuality Nitida = new(1920, 75, 150);
+    // Intervalo é o mínimo: com o WGC só sai quadro quando a tela muda (parada = só o reenvio de 1 s).
+    public static readonly ScreenQuality Leve = new(1280, 60, 50);
+    public static readonly ScreenQuality Nitida = new(1920, 75, 66);
     // Resolução nativa: o único jeito de ler texto pequeno com zoom no aparelho (reduzir borra as letras).
-    public static readonly ScreenQuality Original = new(int.MaxValue, 90, 250);
+    public static readonly ScreenQuality Original = new(int.MaxValue, 90, 100);
 
     public static ScreenQuality Parse(string? q) => q switch { "nitida" => Nitida, "original" => Original, _ => Leve };
 }
 
-// Captura do monitor por GDI (CopyFromScreen) com o cursor desenhado por cima — o GDI não o captura.
-// Processo PerMonitorV2: Bounds e cursor em pixels físicos.
-// ponytail: GDI a ~10 fps; Windows.Graphics.Capture se precisar de mais fps/menos CPU.
+// Captura do monitor: Windows.Graphics.Capture (WgcCapture) e, se não houver, GDI (CopyFromScreen)
+// com o cursor desenhado por cima — o GDI não o captura. Processo PerMonitorV2: pixels físicos.
 public static class ScreenCapture
 {
     private static readonly ImageCodecInfo Jpeg = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
@@ -43,8 +43,11 @@ public static class ScreenCapture
     public static Size Fit(Size source, int maxWidth) =>
         source.Width <= maxWidth ? source : new Size(maxWidth, Math.Max(1, (int)Math.Round(source.Height * (double)maxWidth / source.Width)));
 
-    // JPEG do monitor, ou null se não deu (PC bloqueado: a área de trabalho é outra e o BitBlt falha).
-    public static byte[]? Capture(Rectangle bounds, ScreenQuality q)
+    // JPEG do monitor, ou null se não deu (PC bloqueado: a tela de bloqueio não é capturada).
+    public static byte[]? Capture(Rectangle bounds, ScreenQuality q) =>
+        WgcCapture.Capture(bounds, q, out var locked) ?? (locked ? null : Gdi(bounds, q));
+
+    public static byte[]? Gdi(Rectangle bounds, ScreenQuality q)
     {
         try
         {

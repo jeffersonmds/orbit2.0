@@ -41,6 +41,14 @@ public static class Program
         IslandGeometryTests();
         AtomicFileTests();
         {
+            // Captura de verdade (precisa de monitor): WGC entrega JPEG e repete o mesmo quando nada mudou.
+            var b = Orbit.Services.ScreenCapture.Screens()[0].Bounds;
+            var j1 = Orbit.Services.WgcCapture.Capture(b, Orbit.Services.ScreenQuality.Leve, out _);
+            System.Threading.Thread.Sleep(300);
+            var j2 = Orbit.Services.WgcCapture.Capture(b, Orbit.Services.ScreenQuality.Leve, out _);
+            Check("tela: WGC captura o monitor em JPEG", j2 is [0xFF, 0xD8, ..] && j1 is not null);
+        }
+        {
             // OCR de verdade (API do Windows): desenha um texto num PNG e lê de volta.
             var ocrPng = Path.Combine(Path.GetTempPath(), "orbit-ocr-" + Guid.NewGuid().ToString("N") + ".png");
             using (var bmp = new System.Drawing.Bitmap(600, 120))
