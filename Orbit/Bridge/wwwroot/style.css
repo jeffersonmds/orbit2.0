@@ -22,7 +22,11 @@ body:not(.home) .logo { display: none; }
 .back svg { width: 26px; height: 26px; fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .pill { display: inline-flex; align-items: center; gap: 8px; background: #000; border-radius: 999px;
   padding: 8px 16px; font-size: 14px; font-weight: 600; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-lo); }
+/* o título nunca encolhe; quem corta é o nome do aparelho na pílula */
+header h1 { flex: 1 0 auto; }
+.pill { min-width: 0; }
+#state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-lo); }
 .dot.on { background: #5ccf8a; } .dot.off { background: var(--danger); }
 /* nas páginas o título ocupa o header: a pílula vira só o ponto */
 body:not(.home) #state { display: none; }
