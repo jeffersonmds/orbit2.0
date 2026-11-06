@@ -588,7 +588,15 @@ async function scrCheckOwner() {
     if (!scr.live) return;
     if (!o.name) { scrStop(); scrSay('Transmissão encerrada'); } // o PC não tem mais vídeo nosso
     else if (!o.mine) scrTaken(o.name);
-    else scrFrozen(!!o.frozen);
+    else {
+      scrFrozen(!!o.frozen);
+      // Qualidade automática: a rede não deu conta e o PC baixou a imagem (volta sozinho com folga).
+      if (!o.frozen && !!o.reduced !== !!scr.reduced) {
+        scr.reduced = !!o.reduced;
+        const m = 'Rede lenta: imagem em qualidade menor até melhorar.';
+        if (scr.reduced) scrSay(m); else if ($('#scrMsg').textContent === m) scrSay('');
+      }
+    }
   } catch (e) {
     if (/403/.test(e.message) && scr.live) { scrStop(); scrSay('Transmissão encerrada'); } // permissão desligada
     /* senão sem rede: o onerror da imagem cuida */

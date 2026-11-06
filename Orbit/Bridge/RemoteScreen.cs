@@ -118,6 +118,9 @@ public sealed class RemoteSessions
     // Captura falhando há um tempo (PC bloqueado, UAC, tela protegida): a imagem no aparelho está parada.
     private volatile bool _videoFrozen;
     public bool VideoFrozen { get => _videoFrozen; set => _videoFrozen = value; }
+    private volatile bool _videoReduced;
+    // Qualidade automática baixou a imagem por causa da rede (o aparelho avisa).
+    public bool VideoReduced { get => _videoReduced; set => _videoReduced = value; }
     public static readonly TimeSpan FrozenAfter = TimeSpan.FromSeconds(2);
 
     public SessionOwner? Viewer
@@ -252,6 +255,8 @@ public static class RemoteScreen
                 var sent = Stopwatch.StartNew();
                 Stopwatch? failing = null; // desde a 1ª captura falha seguida
                 var recheck = Stopwatch.StartNew();
+                var auto = new AdaptiveQuality(req.Quality);
+                var lastReport = Stopwatch.StartNew();
                 while (!ct.IsCancellationRequested)
                 {
                     // Monitor desconectado ou rearranjado no meio: os mesmos Bounds passariam a pegar OUTRO
@@ -262,18 +267,23 @@ public static class RemoteScreen
                         if (!h.Screens().Any(s => s.Id == screen.Id && s.Bounds == screen.Bounds)) break;
                     }
                     var t0 = Stopwatch.GetTimestamp();
-                    var jpeg = await Task.Run(() => h.CaptureScreen(screen.Bounds, req.Quality), ct);
+                    var q = auto.Current;
+                    var jpeg = await Task.Run(() => h.CaptureScreen(screen.Bounds, q), ct);
                     if (jpeg is null) failing ??= Stopwatch.StartNew(); else failing = null;
                     sessions.VideoFrozen = failing is not null && failing.Elapsed >= RemoteSessions.FrozenAfter;
                     if (jpeg is not null && (last is null || sent.Elapsed >= KeepAlive || !jpeg.AsSpan().SequenceEqual(last)))
                     {
+                        var s0 = Stopwatch.GetTimestamp();
                         await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), ct);
                         await body.WriteAsync(jpeg, ct);
                         await body.FlushAsync(ct);
+                        auto.Report(Stopwatch.GetElapsedTime(s0).TotalMilliseconds, lastReport.Elapsed.TotalMilliseconds);
+                        lastReport.Restart();
+                        sessions.VideoReduced = auto.Reduced;
                         last = jpeg;
                         sent.Restart();
                     }
-                    var wait = req.Quality.FrameMs - (int)Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+                    var wait = q.FrameMs - (int)Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
                     await Task.Delay(Math.Max(10, wait), ct);
                 }
             }
@@ -281,7 +291,7 @@ public static class RemoteScreen
             finally
             {
                 sessions.End(session);
-                if (sessions.Viewer is null) sessions.VideoFrozen = false;
+                if (sessions.Viewer is null) { sessions.VideoFrozen = false; sessions.VideoReduced = false; }
             }
         });
 
@@ -290,7 +300,7 @@ public static class RemoteScreen
         {
             var viewer = sessions.Viewer;
             return Results.Ok(new { name = viewer?.Name, mine = viewer?.Hash == BridgeServer.DeviceOf(ctx).Hash,
-                frozen = viewer is not null && sessions.VideoFrozen });
+                frozen = viewer is not null && sessions.VideoFrozen, reduced = viewer is not null && sessions.VideoReduced });
         });
 
         api.MapPost("/screen/close", (HttpContext ctx) => { sessions.StopVideo(BridgeServer.DeviceOf(ctx).Hash); return Results.NoContent(); });

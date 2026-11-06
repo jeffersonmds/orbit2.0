@@ -21,7 +21,42 @@ public sealed record ScreenQuality(int MaxWidth, long JpegQuality, int FrameMs)
     // Resolução nativa: o único jeito de ler texto pequeno com zoom no aparelho (reduzir borra as letras).
     public static readonly ScreenQuality Original = new(int.MaxValue, 90, 100);
 
+    // Só a qualidade automática desce até aqui (rede muito ruim); não aparece pra escolher.
+    public static readonly ScreenQuality Minima = new(960, 50, 80);
+
     public static ScreenQuality Parse(string? q) => q switch { "nitida" => Nitida, "original" => Original, _ => Leve };
+}
+
+// Qualidade automática: se mandar um quadro passa de 2× o intervalo por 2 s seguidos (a rede não
+// dá conta: o atraso só cresce), desce um degrau; com folga (< ½ intervalo) por 10 s, sobe de volta
+// até a escolhida. Medir o envio basta: o Flush espera o TCP, então rede lenta = envio lento.
+public sealed class AdaptiveQuality
+{
+    private static readonly ScreenQuality[] Steps = { ScreenQuality.Minima, ScreenQuality.Leve, ScreenQuality.Nitida, ScreenQuality.Original };
+    private readonly int _max;
+    private int _level;
+    private double _slowMs, _fastMs;
+
+    public AdaptiveQuality(ScreenQuality asked)
+    {
+        _max = Math.Max(0, Array.IndexOf(Steps, asked));
+        _level = _max;
+    }
+
+    public ScreenQuality Current => Steps[_level];
+    public bool Reduced => _level < _max;
+
+    // sendMs: quanto levou escrever o quadro; elapsedMs: tempo desde o último relato.
+    public void Report(double sendMs, double elapsedMs)
+    {
+        var frame = Current.FrameMs;
+        elapsedMs = Math.Min(elapsedMs, 500); // tela parada (sem quadro) não conta: só envios seguidos
+        if (sendMs > 2 * frame) { _slowMs += elapsedMs; _fastMs = 0; }
+        else if (sendMs < frame / 2.0) { _fastMs += elapsedMs; _slowMs = 0; }
+        else { _slowMs = 0; _fastMs = 0; }
+        if (_slowMs >= 2000 && _level > 0) { _level--; _slowMs = 0; }
+        else if (_fastMs >= 10000 && _level < _max) { _level++; _fastMs = 0; }
+    }
 }
 
 // Captura do monitor: Windows.Graphics.Capture (WgcCapture) e, se não houver, GDI (CopyFromScreen)

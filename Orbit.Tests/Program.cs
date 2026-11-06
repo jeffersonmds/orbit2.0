@@ -198,6 +198,14 @@ public static class Program
     {
         var abs = RemoteInput.Parse("{\"t\":\"abs\",\"x\":0.5,\"y\":1}");
         Check("remoto: abs", abs is { Kind: RemoteKind.Abs, X: 0.5, Y: 1 });
+        var aq = new AdaptiveQuality(ScreenQuality.Nitida);
+        for (int i = 0; i < 25; i++) aq.Report(300, 100); // 2,5 s mandando devagar
+        var down = aq.Current;
+        for (int i = 0; i < 25; i++) aq.Report(300, 100);
+        var down2 = aq.Current;
+        for (int i = 0; i < 400; i++) aq.Report(5, 100); // 40 s com folga
+        Check("tela: qualidade automática desce com rede lenta e volta só até a escolhida",
+            down == ScreenQuality.Leve && down2 == ScreenQuality.Minima && aq.Current == ScreenQuality.Nitida && !aq.Reduced);
         Check("remoto: teclas de mídia e Ctrl+Shift+T", RemoteInput.Parse("{\"t\":\"key\",\"k\":\"volup\"}") is { Kind: RemoteKind.Key, Vk: 0xAF }
             && RemoteInput.Parse("{\"t\":\"key\",\"k\":\"playpause\",\"mods\":[]}") is { Vk: 0xB3 }
             && RemoteInput.Parse("{\"t\":\"key\",\"k\":\"t\",\"mods\":[\"ctrl\",\"shift\"]}") is { Mods.Length: 2 });
