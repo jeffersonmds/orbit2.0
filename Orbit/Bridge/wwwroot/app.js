@@ -950,7 +950,8 @@ $('#scrPasteFrom').onclick = () => run(async () => {
 // Copiar pro celular: Ctrl+C no PC e o texto vem pro clipboard daqui. O Safari só aceita gravar
 // dentro do toque: ClipboardItem com promessa segura o gesto enquanto o PC responde.
 $('#scrCopyTo').onclick = () => {
-  // Lê o clipboard antes, manda o Ctrl+C e espera ele mudar (até 2 s; igual = copiou o mesmo texto).
+  // Lê o clipboard antes, manda o Ctrl+C e espera ele mudar (até 2 s). Não mudou = não dá pra saber
+  // se copiou: avisa em vez de mandar o texto velho (copiar o mesmo texto de novo cai aqui também).
   const text = (async () => {
     const before = (await api('/clipboard'))?.text;
     scrSend({ t: 'key', k: 'c', mods: ['ctrl'] });
@@ -959,6 +960,7 @@ $('#scrCopyTo').onclick = () => {
       await new Promise(r => setTimeout(r, 250));
       now = (await api('/clipboard'))?.text;
     }
+    if (now === before) throw new Error('Nada novo copiado no PC — selecione o texto antes');
     if (!now) throw new Error('Nada copiado no PC');
     return now;
   })();
@@ -974,10 +976,11 @@ $('#scrTypeBtn').onclick = () => {
   $('#scrTypeText').focus();
 };
 $('#scrTypeClose').onclick = () => { $('#scrType').classList.add('hidden'); $('#scrTypeText').blur(); };
-$('#scrTypeSend').onclick = () => {
-  const f = $('#scrTypeText'), text = f.value;
+$('#scrTypeSend').onclick = async () => {
+  const f = $('#scrTypeText'), text = f.value, ws = scr.ws;
+  if (scr.typing) return; // um envio por vez
   if (!text) return toast('Escreva ou dite algo primeiro');
-  if (!scr.ws || scr.ws.readyState !== 1) return toast('Sem controle do PC agora');
+  if (!ws || ws.readyState !== 1) return toast('Sem controle do PC agora');
   const msgs = [];
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   lines.forEach((line, i) => {
@@ -985,10 +988,16 @@ $('#scrTypeSend').onclick = () => {
     if (i < lines.length - 1) msgs.push({ t: 'key', k: 'enter' });
   });
   if ($('#scrTypeEnter').checked) msgs.push({ t: 'key', k: 'enter' });
-  // O PC descarta acima de 300 mensagens/s: texto enorme fica no campo, não some pela metade.
-  if (msgs.length > 200) return toast('Texto longo demais: use Teclado → Colar');
-  msgs.forEach(scrSend);
-  f.value = '';
+  // O PC descarta acima de 300 mensagens/s (contando o mouse): lotes de 50 com pausa, como na aba Teclado.
+  scr.typing = true;
+  try {
+    for (let i = 0; i < msgs.length; i++) {
+      if (i > 0 && i % 50 === 0) await new Promise(r => setTimeout(r, 400));
+      if (scr.ws !== ws || ws.readyState !== 1) return toast('O controle caiu no meio: o texto ficou no campo');
+      ws.send(JSON.stringify(msgs[i]));
+    }
+  } finally { scr.typing = false; }
+  if (f.value === text) f.value = ''; // o que foi ditado durante o envio fica
   toast('Digitado no PC');
 };
 
