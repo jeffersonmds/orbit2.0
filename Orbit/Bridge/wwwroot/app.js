@@ -662,7 +662,7 @@ function scrStop() {
 $('#scrResume').onclick = scrStart;
 $('#scrToggle').onclick = () => scr.live ? scrStop() : scrStart();
 const scrRestart = () => { if (scr.live) { scrStop(); scrStart(); } };
-$('#scrScreen').onchange = () => { scrPref('screen', $('#scrScreen').value); scrPref('view', null); scrRestart(); };
+$('#scrScreen').onchange = () => { scrPref('screen', $('#scrScreen').value); scrRestart(); };
 $('#scrQuality').onchange = () => { scrPref('quality', $('#scrQuality').value); scrRestart(); };
 if (['leve', 'nitida', 'original'].includes(scrPref('quality'))) $('#scrQuality').value = scrPref('quality');
 
@@ -682,7 +682,7 @@ function scrPoint(t) {
 const view = { z: 1, tx: 0, ty: 0 };
 const MAX_ZOOM = 5;
 
-function applyView() {
+function applyView(save = true) {
   const r = scrView.getBoundingClientRect();
   view.z = Math.min(MAX_ZOOM, Math.max(1, view.z));
   // não deixa a imagem sair da área: com zoom 1 fica parada; com zoom, as bordas não descolam
@@ -693,15 +693,20 @@ function applyView() {
   scrImg.style.top = `${view.ty}px`;
   $('#scrZoomReset').classList.toggle('hidden', view.z <= 1.01);
   $('#scrZoomReset').textContent = `${view.z.toFixed(1).replace('.', ',')}× ✕`;
-  // zoom guardado como fração da área (vale com outro tamanho de tela/orientação)
-  if (r.width && r.height) scrPref('view', { z: view.z, x: view.tx / r.width, y: view.ty / r.height });
+  // Guarda 300 ms depois do último movimento: a pinça chama isto a cada quadro.
+  clearTimeout(view.saveT);
+  if (save && r.width && r.height) view.saveT = setTimeout(() => scrPref('view',
+    { z: view.z, tx: view.tx, ty: view.ty, w: Math.round(r.width), h: Math.round(r.height), screen: $('#scrScreen').value }), 300);
 }
-function resetView() { view.z = 1; view.tx = 0; view.ty = 0; applyView(); }
-// Volta o zoom de antes ao abrir a tela (o mesmo monitor; trocar de monitor zera).
+function resetView(save = true) { view.z = 1; view.tx = 0; view.ty = 0; applyView(save); }
+// Volta o zoom de antes ao abrir a tela: só no MESMO monitor e com a área do mesmo tamanho (girar o
+// aparelho ou trocar de monitor muda o enquadramento: aí começa sem zoom).
 function restoreView() {
   const v = scrPref('view'), r = scrView.getBoundingClientRect();
-  if (!v || !(v.z > 1) || !r.width) return resetView();
-  view.z = v.z; view.tx = v.x * r.width; view.ty = v.y * r.height;
+  const same = v && v.z > 1 && v.screen === $('#scrScreen').value
+    && Math.abs(v.w - r.width) <= 2 && Math.abs(v.h - r.height) <= 2;
+  if (!same) return resetView(false); // sem gravar: o zoom salvo pro outro tamanho continua guardado
+  view.z = v.z; view.tx = v.tx; view.ty = v.ty;
   applyView();
 }
 $('#scrZoomReset').onclick = resetView;
@@ -878,7 +883,7 @@ function scrImmersive(on) {
   $('section[data-page="tela"]').classList.toggle('immersive', on);
   document.body.classList.toggle('immersive', on);
   $('#scrFs').setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
-  requestAnimationFrame(restoreView); // a área mudou de tamanho: mesmo zoom, na proporção nova
+  requestAnimationFrame(restoreView); // a área mudou de tamanho: volta o zoom salvo pra esse tamanho, ou sem zoom
 }
 $('#scrFs').onclick = () => scrImmersive(!document.body.classList.contains('immersive'));
 landscape.addEventListener('change', e => { if (scr.live) scrImmersive(e.matches); });
