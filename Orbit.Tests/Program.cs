@@ -670,7 +670,7 @@ public static class Program
         Check("atualizar: script escapa aspas", script.Contains(@"'C:\Users\O''Neil\Programs\Orbit2'") && script.Contains("$leaf = 'Orbit2'"));
         Check("atualizar: script espera o Orbit fechar, preserva desinstalador e volta atrás",
             script.Contains("Wait-Process -Id 1234") && script.Contains("'unins*'") && script.Contains("Rename-Item $old $leaf")
-            && script.Contains("$p.HasExited"));
+            && script.Contains("$p.HasExited") && script.Contains("Test-Path $ready") && script.Contains("Remove-Item $ready"));
     }
 
     // Teclado remoto: permissão própria e o canal só deixa passar texto e teclas (mouse é descartado).

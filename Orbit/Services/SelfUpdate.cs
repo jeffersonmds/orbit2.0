@@ -134,16 +134,27 @@ public static class SelfUpdate
         return staging;
     }
 
-    // Script que troca os arquivos depois que este Orbit fechar. Aspas simples dobradas (PowerShell).
-    public static string SwapScript(int pid, string install, string staging, string log)
+    // Sinal de "a versão nova abriu de verdade": a ilha já está na tela. O script de troca espera
+    // por ele (só "o processo não morreu em 8 s" deixava passar um Orbit travado na abertura).
+    public static string ReadyFile => Path.Combine(LocalDir, "pronto");
+
+    public static void MarkReady()
     {
+        try { if (Directory.Exists(LocalDir)) File.WriteAllText(ReadyFile, Environment.ProcessId.ToString()); }
+        catch (Exception ex) { Log.Warning(ex, "Autoatualização: não gravou o sinal de pronto"); }
+    }
+
+    // Script que troca os arquivos depois que este Orbit fechar. Aspas simples dobradas (PowerShell).
+    public static string SwapScript(int pid, string install, string staging, string log, string? ready = null)
+    {
+        ready ??= ReadyFile;
         static string Q(string s) => "'" + s.Replace("'", "''") + "'";
         var leaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(install));
         return $$"""
             $ErrorActionPreference = 'Stop'
             # Fora da pasta do Orbit: diretório atual dentro dela impede renomeá-la ("em uso").
             Set-Location -LiteralPath $env:TEMP; [Environment]::CurrentDirectory = $env:TEMP  # o 2º muda a pasta do processo pro Windows
-            $install = {{Q(install)}}; $staging = {{Q(staging)}}; $log = {{Q(log)}}; $leaf = {{Q(leaf)}}
+            $install = {{Q(install)}}; $staging = {{Q(staging)}}; $log = {{Q(log)}}; $leaf = {{Q(leaf)}}; $ready = {{Q(ready)}}
             $exe = Join-Path $install 'Orbit.exe'; $new = "$install.new"; $old = "$install.old"
             function L($m) { Add-Content -Encoding UTF8 $log ("{0:yyyy-MM-dd HH:mm:ss} $m" -f (Get-Date)) }
             # Antivírus examinando os arquivos novos segura a pasta por instantes: tenta por até 10 s.
@@ -155,9 +166,16 @@ public static class SelfUpdate
               Get-ChildItem $install -Filter 'unins*' | Copy-Item -Destination $new   # desinstalador do Inno
               Retry { Rename-Item $install "$leaf.old" }
               Retry { Rename-Item $new $leaf }
+              Remove-Item $ready -Force -ErrorAction SilentlyContinue
               $p = Start-Process $exe -PassThru
-              Start-Sleep 8
-              if ($p.HasExited) { throw "a versão nova fechou sozinha (código $($p.ExitCode))" }
+              # Espera a ilha abrir (o Orbit novo grava $ready) por até 45 s; fechou ou travou = volta atrás.
+              for ($i = 0; $i -lt 90 -and -not (Test-Path $ready); $i++) {
+                if ($p.HasExited) { throw "a versão nova fechou sozinha (código $($p.ExitCode))" }
+                Start-Sleep -Milliseconds 500
+              }
+              if (-not (Test-Path $ready)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; throw 'a versão nova não abriu a ilha em 45 s' }
+              Start-Sleep 3
+              if ($p.HasExited) { throw "a versão nova fechou logo depois de abrir (código $($p.ExitCode))" }
               Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue
               L 'atualizado'
             } catch {

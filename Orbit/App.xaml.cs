@@ -75,6 +75,7 @@ public partial class App : Application
             Accent.Start(() => settings.AccentOverride);
             _island = new IslandWindow(new IslandViewModel(settings));
             _island.Show();
+            SelfUpdate.MarkReady(); // o script de atualização espera por isto
         }
         catch (Exception ex)
         {
