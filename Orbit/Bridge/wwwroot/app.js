@@ -935,6 +935,24 @@ function scrImmersive(on) {
   requestAnimationFrame(restoreView); // a área mudou de tamanho: volta o zoom salvo pra esse tamanho, ou sem zoom
 }
 $('#scrFs').onclick = () => scrImmersive(!document.body.classList.contains('immersive'));
+
+// Teclado do iOS aberto (campo da Tela focado): encaixa a página na área visível acima dele.
+if (window.visualViewport) {
+  const vv = window.visualViewport, sec = $('section[data-page="tela"]');
+  const fit = () => {
+    const a = document.activeElement;
+    const open = page === 'tela' && a && sec.contains(a) && /^(INPUT|TEXTAREA)$/.test(a.tagName)
+      && window.innerHeight - vv.height > 120;
+    if (open) { sec.style.setProperty('--vvtop', vv.offsetTop + 'px'); sec.style.setProperty('--vvh', vv.height + 'px'); }
+    if (open !== sec.classList.contains('kbd')) {
+      sec.classList.toggle('kbd', open);
+      requestAnimationFrame(restoreView);
+    }
+  };
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+  document.addEventListener('focusout', () => setTimeout(fit, 50));
+}
 landscape.addEventListener('change', e => { if (scr.live) scrImmersive(e.matches); });
 
 function scrSetMode(m) {

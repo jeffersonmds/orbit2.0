@@ -194,6 +194,13 @@ select { width: 100%; background: var(--bg); color: var(--ink); border: 1px soli
   color: #fff; font-size: 14px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .scr-float svg { width: 20px; height: 20px; display: block; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
 
+/* Teclado do iPhone aberto na Tela do PC: a página ocupa só a parte visível acima dele (imagem e
+   barra de teclas encolhem em vez de ficarem atrás do teclado). --vvtop/--vvh vêm do visualViewport. */
+.page[data-page="tela"].kbd { position: fixed; left: 0; right: 0; top: var(--vvtop, 0px); height: var(--vvh, 100dvh);
+  z-index: 30; margin: 0; padding: 4px 8px; background: #000; }
+.kbd > .row, .kbd > #scrToggle { display: none !important; }
+.kbd .scr-view { margin: 0; min-height: 0; }
+
 /* Tela cheia: a página cobre tudo (cabeçalho incluso), a imagem ocupa a tela e as teclas flutuam embaixo. */
 body.immersive { overflow: hidden; }
 .page[data-page="tela"].immersive { position: fixed; inset: 0; z-index: 30; margin: 0; background: #000;
