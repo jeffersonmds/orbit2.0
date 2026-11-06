@@ -119,6 +119,7 @@ public static class Program
         StreamTicketTests();
         MjpegTests();
         CameraTests();
+        RtcTests();
         CameraAuditTests();
         FullscreenTests();
         TabIsolationTests();
@@ -1292,7 +1293,7 @@ public static class Program
             };
             const media={$,camPref:()=>null,setInterval(){},clearTimeout(){},mediaClose(){},
               document:{addEventListener(){},documentElement:{style:{setProperty(k,v){inset=v}}}},
-              window:{addEventListener(){}},stopped:()=>stopped++,disconnected:()=>disconnected++,closed:()=>closed++};
+              window:{addEventListener(){}},clearInterval(){},stopped:()=>stopped++,disconnected:()=>disconnected++,closed:()=>closed++};
             vm.createContext(media);
             vm.runInContext(s.slice(s.indexOf('const mic = {'),s.indexOf('// --- Foto direto pro clipboard')),media);
             const clean=vm.runInContext("mic.want=true;mic.confirmed=true;mic.id='old';mic.next=100;mic.ctx={close(){closed();return Promise.resolve()}};mic.sources.add({stop(){stopped()},disconnect(){disconnected()}});mic.ws={close(){closed()}};micUi();micRecovery(true);",media);
@@ -1884,6 +1885,157 @@ public static class Program
             new CameraDevice("a", "Câmera Integrada"),
         ]);
         Check("câmera: ordena por nome", string.Join(",", ordered.Select(d => d.Id)) == "a,b");
+    }
+
+    private static void RtcTests()
+    {
+        const string host = "candidate:1 1 UDP 2122260223 100.64.0.1 52000 typ host";
+        Check("rtc: só candidato host", RtcSignal.HostCandidate(host) && !RtcSignal.HostCandidate(host.Replace("host", "srflx"))
+            && !RtcSignal.HostCandidate(host + "\r\n") && !RtcSignal.HostCandidate("lixo"));
+        string Answer(string sdp) => JsonSerializer.Serialize(new { t = "answer", sdp });
+        Check("rtc: resposta SDP válida", RtcSignal.Valid(Answer("v=0\r\na=" + host + "\r\n"), false));
+        Check("rtc: direção e SDP inválidos recusados", !RtcSignal.Valid(Answer("v=0\r\n"), true)
+            && !RtcSignal.Valid(Answer("lixo"), false) && !RtcSignal.Valid(Answer("v=0\r\na=" + host.Replace("host", "relay") + "\r\n"), false));
+        var ice = JsonSerializer.Serialize(new { t = "ice", candidate = new { candidate = host, sdpMid = "0", sdpMLineIndex = 0, usernameFragment = "abc" } });
+        Check("rtc: ICE validado", RtcSignal.Valid(ice, false) && !RtcSignal.Valid(ice.Replace("sdpMLineIndex\":0", "sdpMLineIndex\":-1"), false)
+            && !RtcSignal.Valid(ice.Replace("host", "relay"), false));
+        Check("rtc: JSON estranho e mensagens grandes recusados", !RtcSignal.Valid("null", false) && !RtcSignal.Valid("[]", false)
+            && !RtcSignal.Valid("{\"t\":4}", false) && !RtcSignal.Valid("{", false) && !RtcSignal.Valid(new string('x', RtcSignal.MaxBytes + 1), false)
+            && !RtcSignal.Valid("{\"t\":\"start\",\"deviceId\":\"x\"}", false));
+        Check("rtc: erro só pode vir do motor", RtcSignal.Valid("{\"t\":\"error\"}", true) && !RtcSignal.Valid("{\"t\":\"error\"}", false));
+        const string page = "https://abc.orbit-media.invalid/index.html";
+        Check("rtc: origem e documento exatos", WebRtcCapture.LocalPage(page, page)
+            && !WebRtcCapture.LocalPage(page, page + "#x") && !WebRtcCapture.LocalPage(page, "https://outro/index.html")
+            && !WebRtcCapture.LocalPage(page, "https://abc.orbit-media.invalid/"));
+        var sessions = new RemoteSessions(_ => { });
+        var owner = new SessionOwner("A", "iPhone");
+        var opening = sessions.TransferToken("A");
+        sessions.StopAll();
+        Check("rtc: Encerrar durante enumeração impede abertura tardia", !sessions.PrepareMedia("camera", "late", owner, guard: opening));
+        var pending = sessions.TransferToken("A");
+        sessions.StopDevice("A");
+        Check("rtc: revogar durante enumeração impede abertura tardia", !sessions.PrepareMedia("mic", "late", owner, guard: pending));
+        Check("rtc: toque novo após Encerrar pode abrir", sessions.PrepareMedia("camera", "new", owner, guard: sessions.TransferToken("A")));
+        Check("rtc: rotas herdam permissão do sensor", BridgeRules.RequiredCapabilities("/api/camera/rtc/open").SequenceEqual(new[] { Capability.Camera })
+            && BridgeRules.RequiredCapabilities("/api/mic/rtc/signal").SequenceEqual(new[] { Capability.Mic })
+            && BridgeRules.IsTicketRoute("GET", "/api/mic/rtc/signal") && !BridgeRules.IsTicketRoute("POST", "/api/mic/rtc/open"));
+
+        var resources = typeof(WebRtcCapture).Assembly;
+        using var script = new StreamReader(resources.GetManifestResourceStream("Orbit.Media.media.js")!);
+        using var html = new StreamReader(resources.GetManifestResourceStream("Orbit.Media.page.html")!);
+        Check("rtc: página privada embutida", html.ReadToEnd().Contains("/media.js") && !File.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot", "media.js")));
+        var source = script.ReadToEnd();
+        var start = new System.Diagnostics.ProcessStartInfo("node") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        start.ArgumentList.Add("-e");
+        start.ArgumentList.Add("""
+            const fs=require('fs'),vm=require('vm'),assert=require('assert');
+            const source=process.argv[1],app=fs.readFileSync(process.argv[2],'utf8'),c={};
+            vm.runInNewContext(source,c);
+            const devices=[{kind:'videoinput',deviceId:'a',label:' Câmera  USB '},{kind:'audioinput',deviceId:'b',label:'Mic'}];
+            assert.equal(c.rtcDevice(devices,'videoinput','a','outro'),'a');
+            assert.equal(c.rtcDevice(devices,'videoinput','winrt','câmera usb'),'a');
+            assert.equal(c.rtcDevice(devices,'audioinput','wasapi','Mic'),'b');
+            assert.equal(c.rtcDevice([{kind:'videoinput',deviceId:'usb',label:'Câmera USB (1234:ABCD)'}],'videoinput','winrt','Câmera USB'),'usb');
+            assert.equal(c.rtcDevice(devices,'videoinput','x',''),null);
+            assert.equal(c.rtcDevice([...devices,{...devices[0],deviceId:'c'}],'videoinput','x','câmera usb'),null);
+            assert.equal(c.rtcDevice(devices,'audioinput','x','câmera usb'),null);
+            vm.runInNewContext(app.slice(app.indexOf('function rtcNext('),app.indexOf('const rtcAvailable')),c);
+            assert.equal(c.rtcNext('waiting','media',true),'live');
+            assert.equal(c.rtcNext('waiting','timeout',true),'fallback');
+            assert.equal(c.rtcNext('live','lost',true),'fallback');
+            assert.equal(c.rtcNext('waiting','timeout',false),'failed');
+            assert.equal(c.rtcNext('live','stop',true),'stopped');
+            for(const state of ['stopped','fallback','failed'])for(const event of ['timeout','lost','media'])assert.equal(c.rtcNext(state,event,true),state);
+            console.log('map-ok fallback-ok');
+            (async()=>{
+              const waits=[],calls=[];
+              const state={camStreaming:true,camId:'old',camGen:1,camRtc:{},camFalling:false,camCompatible:false,camBroken:false,
+                camOpening:0,camWatch:1,camVideo:{pause(){}},camView:{classList:{contains(){return true}}},document:{hidden:false},
+                clearInterval(){},stillWanted:(g,cur)=>g===cur,camSay(){},camStop(){throw Error('parada inesperada')},
+                api(){return new Promise(resolve=>waits.push(resolve))},async camStart(id,compat){calls.push([id,compat]);state.camGen++}};
+              vm.createContext(state);
+              vm.runInContext(app.slice(app.indexOf('async function camRtcFailed('),app.indexOf('camVideo.onclick')),state);
+              vm.runInContext(app.slice(app.indexOf('async function camCheck('),app.indexOf('const BLANK')),state);
+              const poll=state.camCheck(),fall=state.camRtcFailed(1,'old',true);
+              waits[0]({allowed:true,active:false});await poll;
+              assert.equal(calls.length,0);
+              waits[1]({allowed:true,active:false});await fall;
+              assert.equal(JSON.stringify(calls),JSON.stringify([['old',true]]));
+              // Parar enquanto a verificação aguarda não reabre sensores.
+              calls.length=0;state.camGen=3;state.camStreaming=true;
+              const late=state.camRtcFailed(3,'old',true);state.camGen++;state.camStreaming=false;
+              waits[2]({allowed:true,active:false});await late;assert.equal(calls.length,0);
+              console.log('race-ok');
+              let resolveCapture,entered,ended=0;const messages=[];let requestedCapture=new Promise(resolve=>entered=resolve);
+              const host={navigator:{mediaDevices:{async enumerateDevices(){return [{kind:'videoinput',deviceId:'a',label:'Camera'}]},
+                getUserMedia(){entered();return new Promise(resolve=>resolveCapture=resolve)}}},
+                window:{chrome:{webview:{postMessage(m){messages.push(m)},addEventListener(){}}},addEventListener(){}},
+                RTCRtpSender:{getCapabilities(){return null}},RTCPeerConnection:class {
+                  addTransceiver(){return {}} close(){} async createOffer(){return {type:'offer',sdp:'v=0'}}
+                  async setLocalDescription(){this.localDescription={sdp:'v=0'};this.onicecandidate({candidate:{candidate:'candidate:x',toJSON(){return {candidate:'candidate:x'}}}})}
+                }};
+              vm.createContext(host);vm.runInContext(source,host);
+              let opening=host.receive({t:'start',kind:'camera',deviceId:'a',label:'Camera',width:640,fps:12});
+              await requestedCapture;
+              resolveCapture({getTracks(){return [{kind:'video',stop(){ended++}}]}});await opening;
+              assert.equal(messages[1].t,'offer');assert.equal(messages[2].t,'ice');host.stop();assert.equal(ended,1);
+              // Consentimento concluído depois de Parar solta os tracks sem criar peer.
+              vm.runInContext('started=false;stopped=false;',host);requestedCapture=new Promise(resolve=>entered=resolve);
+              opening=host.receive({t:'start',kind:'camera',deviceId:'a',label:'Camera',width:640,fps:12});
+              await requestedCapture;host.stop();
+              const before=messages.length;resolveCapture({getTracks(){return [{stop(){ended++}}]}});await opening;
+              assert.equal(ended,2);assert.equal(messages.length,before);
+              console.log('sender-ok');
+            })().catch(e=>{console.error(e);process.exitCode=1});
+            """);
+        start.ArgumentList.Add(source);
+        start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "wwwroot", "app.js"));
+        using (var node = System.Diagnostics.Process.Start(start)!)
+        {
+            var output = node.StandardOutput.ReadToEnd();
+            var error = node.StandardError.ReadToEnd();
+            node.WaitForExit();
+            Check("rtc: mapeamento por ID ou label único", node.ExitCode == 0 && output.Contains("map-ok"));
+            Check("rtc: timeout, queda, parada e fallback único", node.ExitCode == 0 && output.Contains("fallback-ok"));
+            Check("rtc: polling não disputa fallback nem reabre após Parar", node.ExitCode == 0 && output.Contains("race-ok"));
+            Check("rtc: oferta antes do ICE e captura tardia solta tracks", node.ExitCode == 0 && output.Contains("sender-ok"));
+            if (node.ExitCode != 0) Console.WriteLine(error);
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "orbit-rtc-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tokens = new TokenStore(Path.Combine(dir, "tokens.json"));
+        var token = tokens.Create("iPhone"); var hash = TokenStore.Hash(token);
+        var server = new BridgeServer();
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "audit.jsonl")),
+            new BridgeHandlers { MicDevices = () => new[] { new MicDevice("mic", "Microfone") } }).GetAwaiter().GetResult();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
+        Check("rtc: abrir sem token negado", http.PostAsJsonAsync("/api/mic/rtc/open", new { deviceId = "mic" }).Result.StatusCode == HttpStatusCode.Unauthorized);
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Check("rtc: abrir sem permissão negado", http.PostAsJsonAsync("/api/mic/rtc/open", new { deviceId = "mic" }).Result.StatusCode == HttpStatusCode.Forbidden);
+        tokens.SetPermissions(hash, Only(Capability.Mic));
+        Check("rtc: dispositivo desconhecido recusado", http.PostAsJsonAsync("/api/mic/rtc/open", new { deviceId = "outro" }).Result.StatusCode == HttpStatusCode.NotFound);
+        string Ticket() => http.PostAsJsonAsync("/api/mic/rtc/open", new { deviceId = "mic" }).Result.Content.ReadFromJsonAsync<JsonElement>().Result.GetProperty("ticket").GetString()!;
+        var ticket = Ticket();
+        http.PostAsync("/api/mic/close?id=" + ticket, null).Wait();
+        using var ws = new System.Net.WebSockets.ClientWebSocket();
+        bool stopped = false;
+        try { ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/mic/rtc/signal?ticket={ticket}"), default).Wait(); }
+        catch { stopped = true; }
+        Check("rtc: Parar antes de conectar impede motor", stopped);
+        using var used = new System.Net.WebSockets.ClientWebSocket();
+        bool consumed = false;
+        try { used.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/mic/rtc/signal?ticket={ticket}"), default).Wait(); }
+        catch { consumed = true; }
+        Check("rtc: tíquete consumido mesmo ao recusar", consumed);
+        ticket = Ticket(); tokens.SetPermissions(hash, DevicePermissions.None);
+        using var revoked = new System.Net.WebSockets.ClientWebSocket();
+        bool denied = false;
+        try { revoked.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/mic/rtc/signal?ticket={ticket}"), default).Wait(); }
+        catch { denied = true; }
+        Check("rtc: permissão revalidada no uso do tíquete", denied);
+        server.StopAsync().GetAwaiter().GetResult();
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void CameraAuditTests()

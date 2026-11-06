@@ -33,6 +33,7 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDesc
 Name: "startup"; Description: "Iniciar o Orbit 2.0 com o Windows (substitui o 1.0)"; GroupDescription: "Inicialização:"
 
 [Files]
+; Inclui WebView2Loader.dll/runtimes do publish, sem single-file.
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]

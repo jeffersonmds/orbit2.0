@@ -304,7 +304,90 @@ document.querySelectorAll('[data-power]').forEach(b => b.onclick = async () => {
   run(() => api('/power/' + b.dataset.power, { method: 'POST' }), `${label}: enviado`);
 });
 
+// WebRTC cai uma vez para o modo compatível; Parar nunca dispara fallback.
+function rtcNext(state, event, automatic) {
+  if (event === 'stop') return 'stopped';
+  if (state === 'stopped' || state === 'fallback' || state === 'failed') return state;
+  if (event === 'media') return 'live';
+  if (event === 'timeout' || event === 'lost') return automatic ? 'fallback' : 'failed';
+  return state;
+}
+const rtcAvailable = () => window.isSecureContext && typeof RTCPeerConnection === 'function';
+const remoteMedia = typeof MediaStream === 'function' ? new MediaStream() : null;
+// O mesmo MediaStream alimenta o vídeo mudo e a saída de áudio; sensores continuam independentes.
+function rtcConnect(kind, ticket, wanted, onTrack, onLive, onFail) {
+  let pc = null, ws = null, state = 'waiting', incoming = Promise.resolve(), outgoing = [], answerSent = false;
+  let lastBytes = 0, lastMedia = Date.now(), checking = false;
+  const automatic = $('#mediaTransport').value === 'auto';
+  const tracks = new Set();
+  const close = () => {
+    state = rtcNext(state, 'stop', automatic); clearTimeout(timer); clearInterval(watch);
+    if (ws) { ws.onclose = ws.onmessage = ws.onerror = null; ws.close(); }
+    if (pc) { pc.ontrack = pc.onconnectionstatechange = pc.onicecandidate = null; pc.close(); }
+    for (const t of tracks) { remoteMedia?.removeTrack(t); t.stop(); }
+    tracks.clear();
+  };
+  const fail = event => {
+    if (!wanted() || state === 'stopped' || state === 'fallback' || state === 'failed') return;
+    const next = rtcNext(state, event, automatic);
+    close(); state = next; onFail(next === 'fallback');
+  };
+  const live = () => {
+    if (!wanted() || state !== 'waiting') return;
+    state = rtcNext(state, 'media', automatic); clearTimeout(timer); onLive();
+  };
+  const timer = setTimeout(() => fail('timeout'), 6000);
+  const watch = setInterval(async () => {
+    if (!pc || checking || state !== 'live') return;
+    checking = true;
+    try {
+      let bytes = 0;
+      (await pc.getStats()).forEach(s => { if (s.type === 'inbound-rtp' && !s.isRemote) bytes += s.bytesReceived || 0; });
+      if (bytes > lastBytes) { lastBytes = bytes; lastMedia = Date.now(); }
+      else if (Date.now() - lastMedia > 8000) fail('lost');
+    } catch { fail('lost'); }
+    finally { checking = false; }
+  }, 2000);
+  try {
+    pc = new RTCPeerConnection({ iceServers: [] });
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host
+      + '/api/' + kind + '/rtc/signal?ticket=' + encodeURIComponent(ticket));
+    pc.onicecandidate = e => {
+      if (!e.candidate?.candidate) return;
+      const json = JSON.stringify({ t: 'ice', candidate: e.candidate.toJSON() });
+      if (answerSent) { if (ws.readyState === WebSocket.OPEN) ws.send(json); }
+      else outgoing.push(json);
+    };
+    pc.onconnectionstatechange = () => { if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) fail('lost'); };
+    pc.ontrack = e => {
+      if (!wanted() || ['stopped', 'fallback', 'failed'].includes(state) || e.track.kind !== (kind === 'camera' ? 'video' : 'audio')) { e.track.stop(); return; }
+      tracks.add(e.track); remoteMedia.addTrack(e.track);
+      e.track.onended = () => fail('lost');
+      onTrack(remoteMedia, e.track, live);
+    };
+    ws.onmessage = e => {
+      incoming = incoming.then(async () => {
+        if (!wanted() || state === 'stopped' || state === 'fallback' || state === 'failed') return;
+        const m = JSON.parse(e.data);
+        if (m.t === 'error') { fail('lost'); return; }
+        if (m.t === 'offer') {
+          await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp });
+          await pc.setLocalDescription(await pc.createAnswer());
+          if (!wanted() || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ t: 'answer', sdp: pc.localDescription.sdp }));
+          answerSent = true; outgoing.forEach(json => ws.send(json)); outgoing = [];
+        } else if (m.t === 'ice') await pc.addIceCandidate(m.candidate);
+        else throw new Error('Sinalização inválida');
+      }).catch(() => fail('lost'));
+    };
+    ws.onclose = ws.onerror = () => fail('lost');
+  } catch { queueMicrotask(() => fail('lost')); }
+  return { close };
+}
+
 // --- Câmera ---
+const camVideo = $('#camVideo');
+let camRtc = null, camCompatible = false, camFalling = false;
 const camImg = $('#camImg'), camToggle = $('#camToggle'), camShot = $('#camShot');
 const camDevice = $('#camDevice'), camQuality = $('#camQuality'), camView = $('#camView'), camMsg = $('#camMsg');
 let camStreaming = false, camGen = 0, camId = null, camWatch = null, camBroken = false, camOpening = 0;
@@ -323,10 +406,10 @@ const mediaClose = (kind, id) => {
 };
 // Serializa pedidos: respostas de aberturas antigas nunca invalidam a mais nova no PC.
 const mediaOpening = { camera: Promise.resolve(), mic: Promise.resolve() };
-function mediaOpen(kind, wanted, json) {
+function mediaOpen(kind, wanted, json, rtc = false) {
   const pending = mediaOpening[kind].catch(() => {}).then(async () => {
     if (!wanted()) return null;
-    const result = await api('/' + kind + '/open', { method: 'POST', json });
+    const result = await api('/' + kind + (rtc ? '/rtc/open' : '/open'), { method: 'POST', json });
     if (!wanted()) { await mediaClose(kind, result.ticket); return null; }
     return result;
   });
@@ -357,20 +440,38 @@ async function camLoadDevices() {
   } catch (e) { camSay(/403/.test(e.message) ? 'Ligue "Câmera" na aba Dispositivos do PC.' : e.message); }
   finally { camLoadDevices.busy = false; }
 }
-async function camStart(resume = null) {
+async function camStart(resume = null, compatible = false) {
   if (!camDevice.value) { camSay('Escolha uma câmera conectada.'); return; }
   if (!resume) camStop();
+  camRtc?.close(); camRtc = null; camVideo.pause(); camVideo.srcObject = null;
+  const mode = $('#mediaTransport').value;
+  const rtc = !compatible && mode !== 'compat' && rtcAvailable();
+  if (!rtc && !compatible && mode === 'rtc') { camStop(); camSay('WebRTC indisponível neste navegador. Escolha Compatível.'); return; }
+  camCompatible = compatible || mode === 'auto' && !rtc;
+  camVideo.classList.toggle('hidden', !rtc); camImg.classList.toggle('hidden', rtc);
+  if (rtc) camVideo.play().catch(() => {}); // Safari: tentativa já no toque; vídeo mudo pode retomar ao receber mídia.
+  camFalling = false;
   const gen = ++camGen;
   camStreaming = true; camBroken = false; camOpening = Date.now();
-  camToggle.textContent = 'Parar'; camSay(resume ? 'Reconectando…' : 'Abrindo…');
+  camToggle.textContent = 'Parar'; camSay(camCompatible ? 'WebRTC indisponível · abrindo Compatível…' : resume ? 'Reconectando…' : 'Abrindo…');
   try {
     const opened = await mediaOpen('camera', () => stillWanted(gen, camGen, 'camera') && camStreaming, {
       deviceId: camDevice.value, name: camName(), quality: camQuality.value, resume,
-    });
+    }, rtc);
     if (!opened) return;
     const { ticket } = opened;
     if (!stillWanted(gen, camGen, 'camera') || !camStreaming) { mediaClose('camera', ticket); return; }
     camId = ticket;
+    if (rtc) {
+      camRtc = rtcConnect('camera', ticket, () => stillWanted(gen, camGen, 'camera') && camStreaming,
+        (stream, track, live) => {
+          camVideo.srcObject = stream;
+          camVideo.onplaying = () => { if (gen === camGen) live(); };
+          camVideo.play().catch(() => { if (gen === camGen) camSay('Toque no vídeo para reproduzir.'); });
+        }, camLive, automatic => camRtcFailed(gen, ticket, automatic));
+      clearInterval(camWatch); camWatch = setInterval(camCheck, 2000);
+      scrWake($('#camWake').checked); return;
+    }
     camImg.onload = () => { if (gen === camGen && camImg.naturalWidth > 1) camLive(); };
     camImg.onerror = () => { if (gen === camGen) { camBroken = true; camSay('Sem sinal · verificando conexão…'); } };
     camImg.src = '/api/camera/stream?ticket=' + encodeURIComponent(ticket);
@@ -388,19 +489,37 @@ function camLive() {
     camView.classList.add('live'); camRestore();
     if (landscape.matches) camImmersive(true);
   }
-  camSay('Ao vivo');
+  camSay(camRtc ? 'Ao vivo · WebRTC' : camCompatible ? 'Ao vivo · Compatível (WebRTC indisponível)' : 'Ao vivo');
 }
+async function camRtcFailed(gen, id, automatic) {
+  if (!stillWanted(gen, camGen, 'camera') || !camStreaming) return;
+  camFalling = true;
+  camRtc = null; camVideo.pause(); camVideo.srcObject = null; camVideo.onplaying = null;
+  clearInterval(camWatch);
+  try {
+    const state = await api('/camera/status?id=' + encodeURIComponent(id));
+    if (!stillWanted(gen, camGen, 'camera') || !camStreaming) return;
+    if (!state.allowed) { camStop(); camSay(state.name ? 'O ' + state.name + ' assumiu a câmera.' : 'Transmissão encerrada no PC.'); return; }
+    if (automatic) { camSay('WebRTC indisponível · abrindo Compatível…'); await camStart(id, true); }
+    else { camStop(); camSay('WebRTC sem conexão. Escolha Compatível ou Automático.'); }
+  } catch (e) { if (gen === camGen) { camStop(); camSay(e.message); } }
+}
+camVideo.onclick = () => { if (camStreaming) camVideo.play().catch(() => camSay('Toque em Parar e abra de novo.')); };
 async function camCheck() {
-  if (!camStreaming || !camId || document.hidden || camCheck.busy) return;
+  if (!camStreaming || !camId || document.hidden || camCheck.busy || camFalling) return;
   camCheck.busy = true;
   const id = camId, gen = camGen;
   try {
     const state = await api('/camera/status?id=' + encodeURIComponent(id));
-    if (id !== camId || gen !== camGen || !camStreaming) return;
+    if (id !== camId || gen !== camGen || !camStreaming || camFalling) return;
     if (!state.allowed) { camStop(); camSay(state.name ? 'O ' + state.name + ' assumiu a câmera.' : 'Transmissão encerrada no PC.'); return; }
     if (!state.active || camBroken) {
       if (!state.active && Date.now() - camOpening < 15000 && !camView.classList.contains('live')) return;
-      await camStart(id); return;
+      if (!camRtc) await camStart(id, camCompatible); return;
+    }
+    if (camRtc) {
+      $('#camStats').textContent = camVideo.videoWidth ? camVideo.videoWidth + ' × ' + camVideo.videoHeight + ' · WebRTC' : '';
+      return;
     }
     if (state.width && camImg.naturalWidth > 1) camLive();
     $('#camStats').textContent = state.width ? state.width + ' × ' + state.height + ' · ' + state.fps + ' fps' + (state.reduced ? ' · rede lenta' : '') : '';
@@ -412,8 +531,10 @@ async function camCheck() {
 }
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 function camStop() {
-  camGen++; camStreaming = false; clearInterval(camWatch); camWatch = null;
+  camGen++; camStreaming = false; camFalling = false; clearInterval(camWatch); camWatch = null;
   const id = camId; camId = null; mediaClose('camera', id);
+  camRtc?.close(); camRtc = null; camCompatible = false;
+  camVideo.onplaying = null; camVideo.pause(); camVideo.srcObject = null;
   camImg.onerror = camImg.onload = null; camImg.src = BLANK;
   camView.classList.remove('live'); camToggle.textContent = 'Ver câmera';
   $('#camStats').textContent = ''; camSay('Câmera desligada');
@@ -459,8 +580,8 @@ $('#camShare').onclick = async () => {
   } catch (e) { if (e.name !== 'AbortError') toast('Toque em compartilhar de novo.'); }
 };
 const camZoom = { z: 1, tx: 0, ty: 0 };
-const camApply = () => applyView(true, camZoom, camView, camImg, camPref, camDevice.value, $('#camZoomReset'));
-const camRestore = () => restoreView(camZoom, camView, camImg, camPref, camDevice.value, $('#camZoomReset'));
+const camApply = () => applyView(true, camZoom, camView, camRtc ? camVideo : camImg, camPref, camDevice.value, $('#camZoomReset'));
+const camRestore = () => restoreView(camZoom, camView, camRtc ? camVideo : camImg, camPref, camDevice.value, $('#camZoomReset'));
 function camImmersive(on) {
   $('#cam-card').classList.toggle('immersive', on);
   document.body.classList.toggle('immersive', on || scr.live && $('section[data-page="tela"]').classList.contains('immersive'));
@@ -1233,8 +1354,17 @@ scrIn.addEventListener('beforeinput', e => {
   }
 });
 
+const transportSelect = $('#mediaTransport');
+if (['auto', 'rtc', 'compat'].includes(scrPref('mediaTransport'))) transportSelect.value = scrPref('mediaTransport');
+transportSelect.onchange = () => {
+  scrPref('mediaTransport', transportSelect.value);
+  if (camStreaming) camStart();
+  if (mic.want) micStart();
+};
+
 // --- Microfone (independente da câmera) ---
 const mic = { ws: null, ctx: null, gain: null, next: 0, rate: 24000, gen: 0, want: false, confirmed: false,
+  rtc: null, rtcSource: null, analyser: null, meter: null, compatible: false,
   id: null, sources: new Set(), sequence: 0, offset: Infinity, meterAt: 0, retry: null, opening: 0 };
 const micSay = msg => { $('#micMsg').textContent = msg || ''; $('#micMsg').classList.toggle('hidden', !msg); };
 async function micLoad() {
@@ -1288,7 +1418,7 @@ function micContext() {
 async function micResume() {
   const ctx = mic.ctx;
   if (!ctx) return;
-  try { await ctx.resume(); if (mic.ctx === ctx && mic.want) { micRecovery(ctx.state !== 'running'); if (ctx.state === 'running') micSay(mic.confirmed ? 'Ao vivo' : 'Abrindo…'); } }
+  try { await ctx.resume(); if (mic.ctx === ctx && mic.want) { micRecovery(ctx.state !== 'running'); if (ctx.state === 'running') micSay(mic.confirmed ? micLiveText() : 'Abrindo…'); } }
   catch { if (mic.ctx === ctx && mic.want) micRecovery(true); }
 }
 // Descarta excesso antes de criar a fonte: nunca rebobina fontes já agendadas.
@@ -1317,13 +1447,18 @@ function micPlay(buf) {
   const src = mic.ctx.createBufferSource(); src.buffer = b; src.connect(mic.gain);
   mic.sources.add(src); src.onended = () => { mic.sources.delete(src); src.disconnect(); };
   src.start(at); mic.next = at + b.duration;
-  if (!mic.confirmed) { mic.confirmed = true; micUi(); micSay('Ao vivo'); }
+  if (!mic.confirmed) { mic.confirmed = true; micUi(); micSay(micLiveText()); }
 }
-function micStart(resume = null) {
+function micLiveText() { return mic.rtc ? 'Ao vivo · WebRTC' : mic.compatible ? 'Ao vivo · Compatível (WebRTC indisponível)' : 'Ao vivo'; }
+function micStart(resume = null, compatible = false) {
   if (!$('#micDevice').value) { micSay('Escolha um microfone conectado.'); return; }
   if (!resume) micStop();
+  mic.rtc?.close(); mic.rtc = null; micRtcOutputStop();
+  const mode = $('#mediaTransport').value, rtc = !compatible && mode !== 'compat' && rtcAvailable();
+  if (!rtc && !compatible && mode === 'rtc') { micStop(); micSay('WebRTC indisponível neste navegador. Escolha Compatível.'); return; }
+  mic.compatible = compatible || mode === 'auto' && !rtc;
   mic.confirmed = false;
-  mic.want = true; mic.opening = Date.now(); micUi(); micSay(resume ? 'Reconectando…' : 'Abrindo…');
+  mic.want = true; mic.opening = Date.now(); micUi(); micSay(mic.compatible ? 'WebRTC indisponível · abrindo Compatível…' : resume ? 'Reconectando…' : 'Abrindo…');
   // Nasce e destrava no toque, antes da requisição.
   try { micContext(); micResume(); } catch { micStop(); micSay('Este navegador não abriu o áudio.'); return; }
   const gen = ++mic.gen;
@@ -1332,10 +1467,29 @@ function micStart(resume = null) {
     try {
       const sel = $('#micDevice');
       const opened = await mediaOpen('mic', () => gen === mic.gen && mic.want && !document.hidden && (resume || page === 'camera'),
-        { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent, resume });
+        { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent, resume }, rtc);
       if (!opened) return;
       const { ticket } = opened;
       if (gen !== mic.gen || !mic.want || document.hidden || !resume && page !== 'camera') { mediaClose('mic', ticket); return; }
+      if (rtc) {
+        mic.id = ticket;
+        mic.rtc = rtcConnect('mic', ticket, () => gen === mic.gen && mic.want && !document.hidden,
+          (stream, track, live) => {
+            if (!mic.ctx) return;
+            mic.rtcSource = mic.ctx.createMediaStreamSource(stream);
+            mic.analyser = mic.ctx.createAnalyser(); mic.analyser.fftSize = 256;
+            mic.rtcSource.connect(mic.analyser); mic.analyser.connect(mic.gain);
+            const data = new Float32Array(256);
+            mic.meter = setInterval(() => {
+              if (gen !== mic.gen || !mic.analyser) return;
+              mic.analyser.getFloatTimeDomainData(data);
+              $('#micLevel').style.transform = 'scaleX(' + Math.min(1, Math.sqrt(data.reduce((n, v) => n + v * v, 0) / data.length) * 4 * mic.gain.gain.value) + ')';
+            }, 100);
+            track.onunmute = live; if (!track.muted) live();
+          }, () => { mic.confirmed = true; micUi(); micSay(micLiveText()); if (mic.ctx?.state !== 'running') micRecovery(true); },
+          automatic => micRtcFailed(gen, ticket, automatic));
+        return;
+      }
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(proto + '//' + location.host + '/api/mic/stream?ticket=' + encodeURIComponent(ticket));
       mic.id = ticket; mic.ws = ws; mic.sequence = 0; mic.offset = Infinity; micClearSources();
@@ -1373,13 +1527,28 @@ function micRetry(gen, id) {
       const state = await api('/mic/status?id=' + encodeURIComponent(id));
       if (gen !== mic.gen || !mic.want || document.hidden) return;
       if (!state.allowed) { micStop(); micSay(state.name ? 'O ' + state.name + ' assumiu o microfone.' : 'Áudio encerrado no PC.'); return; }
-      micStart(id);
+      micStart(id, mic.compatible);
     } catch (e) {
       if (gen !== mic.gen) return;
       if (/401|403|409/.test(e.message)) { micStop(); micSay('Permissão encerrada no PC.'); }
       else micRetry(gen, id);
     }
   }, 1500);
+}
+function micRtcOutputStop() {
+  clearInterval(mic.meter); mic.meter = null;
+  mic.rtcSource?.disconnect(); mic.analyser?.disconnect(); mic.rtcSource = mic.analyser = null;
+}
+async function micRtcFailed(gen, id, automatic) {
+  if (gen !== mic.gen || !mic.want || document.hidden) return;
+  mic.rtc = null; micRtcOutputStop(); mic.confirmed = false; micUi();
+  try {
+    const state = await api('/mic/status?id=' + encodeURIComponent(id));
+    if (gen !== mic.gen || !mic.want || document.hidden) return;
+    if (!state.allowed) { micStop(); micSay(state.name ? 'O ' + state.name + ' assumiu o microfone.' : 'Áudio encerrado no PC.'); return; }
+    if (automatic) { micSay('WebRTC indisponível · abrindo Compatível…'); micStart(id, true); }
+    else { micStop(); micSay('WebRTC sem conexão. Escolha Compatível ou Automático.'); }
+  } catch (e) { if (gen === mic.gen) { micStop(); micSay(e.message); } }
 }
 async function micCheck() {
   if (!mic.want || !mic.id || document.hidden || micCheck.busy) return;
@@ -1397,6 +1566,7 @@ function micStop() {
   mic.gen++; mic.want = false; mic.confirmed = false; clearTimeout(mic.retry);
   const id = mic.id; mic.id = null; mediaClose('mic', id);
   const ws = mic.ws; mic.ws = null; if (ws) { ws.onmessage = ws.onclose = null; ws.close(); }
+  mic.rtc?.close(); mic.rtc = null; mic.compatible = false; micRtcOutputStop();
   micClearSources();
   const ctx = mic.ctx; mic.ctx = mic.gain = null;
   if (ctx) { ctx.onstatechange = null; ctx.close().catch(() => {}); }

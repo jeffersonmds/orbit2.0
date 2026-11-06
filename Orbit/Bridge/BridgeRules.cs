@@ -124,6 +124,7 @@ public static class BridgeRules
     {
         "/api/camera/stream", "/api/pcfiles/download", "/api/screen/stream", "/api/remote/input",
         "/api/mic/stream", "/api/outbox/download", "/api/keyboard/input",
+        "/api/camera/rtc/signal", "/api/mic/rtc/signal",
     };
 
     public static bool IsTicketRoute(string method, PathString path) =>

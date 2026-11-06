@@ -202,12 +202,20 @@
           <option value="fluid">Fluido</option>
         </select>
       </div>
+      <label>Transporte:
+        <select id="mediaTransport" aria-label="Transporte">
+          <option value="auto">Automático</option>
+          <option value="rtc">Leve (WebRTC)</option>
+          <option value="compat">Compatível</option>
+        </select>
+      </label>
       <div class="cam-view" id="camView">
         <div class="cam-ph">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 7l-7 5 7 5z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
           <span>Câmera desligada</span>
         </div>
         <img id="camImg" alt="">
+        <video id="camVideo" playsinline muted autoplay class="hidden"></video>
         <button id="camShot" class="cam-shot" aria-label="Tirar foto"></button>
       </div>
       <div class="row cam-tools">

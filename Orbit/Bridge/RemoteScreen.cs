@@ -101,11 +101,11 @@ public sealed class RemoteSessions
     public CancellationTokenSource BeginCamera(CancellationToken aborted, SessionOwner owner) => Begin(ref _camera, aborted, owner);
 
     // A intenção sobrevive à queda da conexão, mas nunca a Parar/Encerrar/revogar.
-    public bool PrepareMedia(string kind, string id, SessionOwner owner, string? resume = null)
+    public bool PrepareMedia(string kind, string id, SessionOwner owner, string? resume = null, CancellationToken guard = default)
     {
         lock (_gate)
         {
-            if (resume is not null && !MediaAllowed(kind, owner.Hash, resume)) return false;
+            if (guard.IsCancellationRequested || resume is not null && !MediaAllowed(kind, owner.Hash, resume)) return false;
             _media[kind] = new(id, owner);
             return true;
         }

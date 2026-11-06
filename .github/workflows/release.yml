@@ -27,6 +27,7 @@ jobs:
       - name: Inno Setup
         run: choco install innosetup -y --no-progress
 
+      # build.ps1 também exige o loader/Core do WebView2; o zip mantém as subpastas.
       - name: Publicar e gerar o instalador
         shell: pwsh
         run: ./installer/build.ps1

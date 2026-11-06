@@ -21,7 +21,7 @@ public sealed record MicOpenRequest(string? DeviceId, string? Name, string? Resu
 // 1ª mensagem (texto) = {"rate":N}; depois binárias com PCM 16 bits mono. Independe da câmera.
 public static class MicStream
 {
-    private static readonly SemaphoreSlim CaptureGate = new(1, 1);
+    internal static readonly SemaphoreSlim CaptureGate = new(1, 1);
 
     // Na 1ª vez o Windows pergunta NA TELA DO PC se o Orbit pode usar o microfone, e abrir fica
     // parado até alguém responder. Quem está no sofá não vê: depois deste prazo o aparelho é avisado.

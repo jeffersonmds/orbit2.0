@@ -174,6 +174,7 @@ public sealed class BridgeServer : IAsyncDisposable
         if (h.Push is { } push) MapPush(api, h, push);
         RemoteScreen.Map(api, h, tokens, _remote);
         MicStream.Map(api, h, tokens, _remote);
+        RtcStream.Map(api, h, tokens, _remote);
         OutboxRoutes.Map(api, h, tokens, _remote);
 
         try { await app.StartAsync(); }
@@ -339,11 +340,17 @@ public sealed class BridgeServer : IAsyncDisposable
                 if (!TicketOwnerAllowed(tokens, claim.Owner, ctx.Request.Path)) slot.Cancel();
                 System.Threading.CancellationTokenSource session;
                 System.Threading.CancellationToken sessionToken;
-                try { (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset, claim.Owner, slot.Token, ticket); }
+                bool held = false;
+                try
+                {
+                    await RtcStream.CameraGate.WaitAsync(slot.Token); held = true;
+                    (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset, claim.Owner, slot.Token, ticket);
+                }
                 catch (Exception ex)
                 {
                     sessions.StopMedia("camera", claim.Owner, ticket);
                     sessions.End(slot);
+                    if (held) RtcStream.CameraGate.Release();
                     Log.Warning(ex, "Câmera: não abriu");
                     ctx.Response.StatusCode = StatusCodes.Status409Conflict; // ocupada por outro app, etc.
                     return;
@@ -381,7 +388,8 @@ public sealed class BridgeServer : IAsyncDisposable
                 finally
                 {
                     sessions.End(slot);
-                    await camera.EndStream(session);
+                    try { await camera.EndStream(session); }
+                    finally { RtcStream.CameraGate.Release(); }
                 }
             });
 

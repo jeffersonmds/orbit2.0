@@ -43,6 +43,7 @@ mostra a atividade. Passou o mouse, expande. Some sozinha em jogos e vídeos em 
 - PWA instalável na tela inicial: clipboard nos dois sentidos, envio de arquivos e fotos, player,
   stats, energia, abrir links.
 - Câmera do PC ao vivo, microfone, **tela remota** com mouse e teclado, arquivos do PC (só leitura).
+  [Transporte WebRTC e fallback compatível](docs/webrtc.md) para câmera e microfone.
 - **PC → aparelho**: "Enviar para" no Explorer, arrastar pra pílula ou `Ctrl+Alt+I`.
 - Notificações nos aparelhos por **Web Push** (RFC 8291/8292 com cripto nativa do .NET).
 
