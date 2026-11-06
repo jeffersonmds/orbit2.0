@@ -595,17 +595,30 @@ async function scrConnectControl(screen, gen) {
     if (!stillWanted(gen, scr.gen, 'tela')) return; // parou enquanto pedia o controle
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/remote/input?ticket=${encodeURIComponent(ticket)}`);
-    ws.onopen = () => $('#scrBar').classList.remove('hidden');
+    ws.onopen = () => {
+      $('#scrBar').classList.remove('hidden');
+      if (scr.retrying) { scr.retrying = false; scrSay(''); }
+    };
     ws.onclose = e => {
       const mine = scr.ws === ws; // false = fechei eu (Parar)
       $('#scrBar').classList.add('hidden');
       if (mine) scr.ws = null;
       if (mine && e.code === TAKEN) scrTaken(e.reason);
+      else if (mine) scrRetryControl(screen, gen); // Wi-Fi piscou: a imagem segue, o controle volta sozinho
     };
     scr.ws = ws;
   } catch (e) {
     if (/403/.test(e.message)) scrSay('Só visualização — ligue "Controle" na aba Dispositivos pra usar mouse e teclado.');
+    else scrRetryControl(screen, gen);
   }
+}
+
+function scrRetryControl(screen, gen) {
+  scr.retrying = true;
+  scrSay('Controle caiu — reconectando…');
+  setTimeout(() => {
+    if (scr.live && !scr.ws && stillWanted(gen, scr.gen, 'tela')) scrConnectControl(screen, gen);
+  }, 1500);
 }
 
 function scrStop() {
@@ -621,6 +634,7 @@ function scrStop() {
   if (token) fetch('/api/screen/close', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {}); // …e o Safari precisa do aviso
   if (scr.ws) { scr.ws.close(); scr.ws = null; }
   scr.live = false;
+  if (scr.retrying) { scr.retrying = false; if ($('#scrMsg').textContent.startsWith('Controle caiu')) scrSay(''); }
   scrView.classList.remove('live');
   scrImmersive(false);
   $('#scrBar').classList.add('hidden');
