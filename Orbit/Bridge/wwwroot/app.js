@@ -1234,12 +1234,34 @@ async function inTicketUrl(id) {
   return `/api/outbox/download?ticket=${encodeURIComponent(ticket)}`;
 }
 
+// Baixa mostrando a porcentagem no botão; tocar de novo durante o download cancela.
+async function inFetch(item, btn) {
+  const label = btn.textContent, again = btn.onclick, ac = new AbortController();
+  btn.textContent = 'Baixando…';
+  btn.onclick = () => ac.abort();
+  try {
+    const r = await fetch(await inTicketUrl(item.id), { signal: ac.signal });
+    if (!r.ok) throw new Error(`O PC respondeu ${r.status}`);
+    const total = +r.headers.get('Content-Length') || item.size || 0;
+    if (!r.body || !total) return await r.blob();
+    const reader = r.body.getReader(), parts = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value); got += value.length;
+      btn.textContent = `${Math.min(99, Math.floor(got / total * 100))}% · toque pra cancelar`;
+    }
+    return new Blob(parts, { type: r.headers.get('Content-Type') || '' });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Download cancelado');
+    throw e;
+  } finally { btn.textContent = label; btn.onclick = again; }
+}
+
 async function inShare(item, btn) {
   const label = btn.textContent;
-  btn.textContent = 'Baixando…';
-  let blob;
-  try { blob = await (await fetch(await inTicketUrl(item.id))).blob(); }
-  finally { btn.textContent = label; }
+  const blob = await inFetch(item, btn);
   const file = new File([blob], item.name, { type: blob.type });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file] }); }
