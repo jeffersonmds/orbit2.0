@@ -23,7 +23,8 @@ public static class WgcCapture
     private static readonly object Gate = new();
     private static readonly Dictionary<Rectangle, Monitor> Open = new();
     private static IDirect3DDevice? _device;
-    private static bool _broken;
+    private static bool _broken;             // sem suporte/placa: GDI até reiniciar
+    private static DateTime _retryAt;        // falha ao abrir um monitor: tenta de novo depois
     private static Timer? _reaper;
 
     // JPEG do monitor; null = WGC indisponível (usa o GDI). Locked = PC bloqueado (tela congelada).
@@ -34,13 +35,23 @@ public static class WgcCapture
         lock (Gate)
         {
             if (_broken) return null;
-            if (!Open.TryGetValue(bounds, out m))
+            if (Open.TryGetValue(bounds, out m) && m.Closed) { Open.Remove(bounds); m.Dispose(); m = null; } // monitor saiu
+            if (m is null)
             {
-                try { m = new Monitor(Device(), bounds); }
+                if (DateTime.UtcNow < _retryAt) return null;
+                IDirect3DDevice device;
+                try { device = Device(); }
                 catch (Exception ex)
                 {
-                    _broken = true; // sem placa/driver/suporte: não tenta de novo a cada quadro
+                    _broken = true;
                     Log.Warning(ex, "Tela: Windows.Graphics.Capture indisponível, usando GDI");
+                    return null;
+                }
+                try { m = new Monitor(device, bounds); }
+                catch (Exception ex)
+                {
+                    _retryAt = DateTime.UtcNow.AddSeconds(5); // monitor sumindo/voltando: GDI por enquanto
+                    Log.Warning(ex, "Tela: não abri a captura do monitor {Bounds}", bounds);
                     return null;
                 }
                 Open[bounds] = m;
@@ -95,7 +106,9 @@ public static class WgcCapture
         private readonly IDirect3DDevice _device;
         private readonly Rectangle _bounds;
         private readonly Direct3D11CaptureFramePool _pool;
-        private readonly GraphicsCaptureSession _session;
+        private readonly GraphicsCaptureSession? _session;
+        private readonly GraphicsCaptureItem _item;
+        private bool _disposed;
         private Direct3D11CaptureFrame? _latest;
         private Windows.Graphics.SizeInt32 _size;
         private long _version, _encodedVersion = -1;
@@ -103,6 +116,7 @@ public static class WgcCapture
         private byte[]? _encoded;
         private DateTime _lastFrame;
         public DateTime LastUsed = DateTime.UtcNow;
+        public volatile bool Closed; // o Windows fechou o alvo (monitor desconectado)
 
         public Monitor(IDirect3DDevice device, Rectangle bounds)
         {
@@ -114,33 +128,49 @@ public static class WgcCapture
             var interop = factory.AsInterface<IGraphicsCaptureItemInterop>();
             var iid = new Guid("79C3F95B-31F7-4EC2-A464-632EF5D30760"); // IGraphicsCaptureItem
             var ptr = interop.CreateForMonitor(hmon, in iid);
-            GraphicsCaptureItem item;
-            try { item = GraphicsCaptureItem.FromAbi(ptr); }
+            try { _item = GraphicsCaptureItem.FromAbi(ptr); }
             finally { Marshal.Release(ptr); }
-            _size = item.Size;
+            _item.Closed += OnClosed;
+            _size = _item.Size;
             _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _size);
             _pool.FrameArrived += OnFrame;
-            _session = _pool.CreateCaptureSession(item);
-            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
-                try { _session.IsBorderRequired = false; } catch { /* Windows 10: fica a moldura */ }
-            _session.StartCapture();
+            try
+            {
+                _session = _pool.CreateCaptureSession(_item);
+                if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+                    try { _session.IsBorderRequired = false; } catch { /* Windows 10: fica a moldura */ }
+                _session.StartCapture();
+            }
+            catch
+            {
+                Dispose(); // não deixa pool, sessão e inscrições pendurados
+                throw;
+            }
         }
+
+        private void OnClosed(GraphicsCaptureItem _, object __) => Closed = true;
 
         private void OnFrame(Direct3D11CaptureFramePool pool, object _)
         {
-            var f = pool.TryGetNextFrame();
-            if (f is null) return;
             lock (_lock)
             {
+                if (_disposed) return; // callback atrasado depois de fechar
+                var f = pool.TryGetNextFrame();
+                if (f is null) return;
+                if (f.ContentSize.Width != _size.Width || f.ContentSize.Height != _size.Height)
+                {
+                    // Resolução mudou: a superfície ainda tem o tamanho velho. Joga fora e espera um quadro do novo.
+                    _size = f.ContentSize;
+                    f.Dispose();
+                    _latest?.Dispose();
+                    _latest = null;
+                    pool.Recreate(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _size);
+                    return;
+                }
                 _latest?.Dispose();
                 _latest = f;
                 _version++;
                 _lastFrame = DateTime.UtcNow;
-                if (f.ContentSize.Width != _size.Width || f.ContentSize.Height != _size.Height)
-                {
-                    _size = f.ContentSize; // resolução mudou: o pool passa a ter o tamanho novo
-                    pool.Recreate(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _size);
-                }
             }
         }
 
@@ -148,9 +178,10 @@ public static class WgcCapture
         {
             locked = false;
             LastUsed = DateTime.UtcNow;
-            SoftwareBitmap bmp;
+            // Tudo sob o lock: dois aparelhos (troca no meio) não publicam o JPEG de um quadro como se fosse de outro.
             lock (_lock)
             {
+                if (_disposed) throw new ObjectDisposedException(nameof(Monitor));
                 if (_latest is null) return ScreenCapture.Gdi(_bounds, q); // ainda sem o 1º quadro
                 if (_version == _encodedVersion && q == _encodedQuality)
                 {
@@ -158,12 +189,9 @@ public static class WgcCapture
                     if (DateTime.UtcNow - _lastFrame > TimeSpan.FromSeconds(1) && !InputDesktopIsDefault()) { locked = true; return null; }
                     return _encoded;
                 }
-                bmp = SoftwareBitmap.CreateCopyFromSurfaceAsync(_latest.Surface, BitmapAlphaMode.Ignore).AsTask().GetAwaiter().GetResult();
-                _encodedVersion = _version;
-            }
-            using (bmp)
-            {
+                using var bmp = SoftwareBitmap.CreateCopyFromSurfaceAsync(_latest.Surface, BitmapAlphaMode.Ignore).AsTask().GetAwaiter().GetResult();
                 _encoded = Encode(bmp, q);
+                _encodedVersion = _version;
                 _encodedQuality = q;
                 return _encoded;
             }
@@ -193,12 +221,15 @@ public static class WgcCapture
         {
             lock (_lock)
             {
-                _pool.FrameArrived -= OnFrame;
-                _session.Dispose();
-                _pool.Dispose();
+                if (_disposed) return;
+                _disposed = true; // OnFrame atrasado vê isso e não mexe mais no pool
                 _latest?.Dispose();
                 _latest = null;
             }
+            _item.Closed -= OnClosed;
+            _pool.FrameArrived -= OnFrame;
+            _session?.Dispose();
+            _pool.Dispose();
         }
     }
 
