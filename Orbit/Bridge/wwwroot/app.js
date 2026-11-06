@@ -525,6 +525,9 @@ const scrPref = (k, v) => {
 // O PC avisa quando o comando não chegou ao app (ex.: app como administrador).
 const warnOf = data => { try { const o = JSON.parse(data); return o.t === 'warn' ? String(o.msg) : null; } catch { return null; } };
 function scrWarn(data) {
+  let o = null;
+  try { o = JSON.parse(data); } catch { return; }
+  if (o && o.t === 'cur') return scrFollow(o.x, o.y);
   const m = warnOf(data);
   if (!m) return;
   scrSay(m);
@@ -754,6 +757,22 @@ function applyView(save = true) {
   clearTimeout(view.saveT);
   if (save && r.width && r.height) view.saveT = setTimeout(() => scrPref('view',
     { z: view.z, tx: view.tx, ty: view.ty, w: Math.round(r.width), h: Math.round(r.height), screen: $('#scrScreen').value }), 300);
+}
+// Trackpad com zoom: o cursor (posição que o PC manda) chegou perto da borda da parte visível →
+// arrasta o enquadramento pra ele continuar à vista.
+function scrFollow(nx, ny) {
+  if (scr.mode !== 'pad' || view.z <= 1.01 || !scrImg.naturalWidth) return;
+  const r = scrView.getBoundingClientRect(), W = r.width * view.z, H = r.height * view.z;
+  const k = Math.min(W / scrImg.naturalWidth, H / scrImg.naturalHeight);
+  const cw = scrImg.naturalWidth * k, ch = scrImg.naturalHeight * k; // conteúdo dentro do <img> (object-fit: contain)
+  const px = view.tx + (W - cw) / 2 + nx * cw, py = view.ty + (H - ch) / 2 + ny * ch;
+  const mx = r.width * 0.2, my = r.height * 0.2;
+  let dx = 0, dy = 0;
+  if (px < mx) dx = mx - px; else if (px > r.width - mx) dx = r.width - mx - px;
+  if (py < my) dy = my - py; else if (py > r.height - my) dy = r.height - my - py;
+  if (!dx && !dy) return;
+  view.tx += dx; view.ty += dy;
+  applyView();
 }
 function resetView(save = true) { view.z = 1; view.tx = 0; view.ty = 0; applyView(save); }
 // Volta o zoom de antes ao abrir a tela: só no MESMO monitor e com a área do mesmo tamanho (girar o

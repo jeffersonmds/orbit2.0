@@ -413,6 +413,7 @@ public static class RemoteScreen
         int inWindow = 0;
         var held = new HeldButtons();
         long warnedAt = -10_000; // um aviso a cada 3 s, não um por tecla
+        long curAt = 0; // posição do cursor: no máximo ~15 por segundo
         try
         {
             while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -440,6 +441,13 @@ public static class RemoteScreen
                         warnedAt = Environment.TickCount64;
                         // Mensagem de volta {t:"warn"}: o aparelho mostra no aviso da tela/teclado.
                         try { await ws.SendAsync(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new { t = "warn", msg = warn })),
+                            WebSocketMessageType.Text, true, ct); }
+                        catch (Exception) when (!ct.IsCancellationRequested) { }
+                    }
+                    if (cmd.Kind == RemoteKind.Move && Environment.TickCount64 - curAt >= 66 && h.CursorPos(bounds) is { } cur)
+                    {
+                        curAt = Environment.TickCount64;
+                        try { await ws.SendAsync(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new { t = "cur", x = cur.X, y = cur.Y })),
                             WebSocketMessageType.Text, true, ct); }
                         catch (Exception) when (!ct.IsCancellationRequested) { }
                     }

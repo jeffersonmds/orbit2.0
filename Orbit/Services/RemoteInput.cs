@@ -234,4 +234,12 @@ public static class RemoteInput
 
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint n, INPUT[] inputs, int size);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point p);
+
+    // Cursor em 0..1 dentro do monitor (o zoom do aparelho no modo trackpad o acompanha); null = fora dele.
+    public static (double X, double Y)? CursorIn(Rectangle bounds)
+    {
+        if (!GetCursorPos(out var p) || !bounds.Contains(p) || bounds.Width < 2 || bounds.Height < 2) return null;
+        return ((p.X - bounds.X) / (double)(bounds.Width - 1), (p.Y - bounds.Y) / (double)(bounds.Height - 1));
+    }
 }

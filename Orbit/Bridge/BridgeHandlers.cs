@@ -49,6 +49,8 @@ public sealed class BridgeHandlers
     public Func<System.Drawing.Rectangle, ScreenQuality, byte[]?> CaptureScreen { get; init; } = (_, _) => null;
     // Devolve um aviso pro aparelho quando o comando não chegou ao app (null = chegou).
     public Func<RemoteCommand, System.Drawing.Rectangle, string?> RemoteInput { get; init; } = (_, _) => null;
+    // Onde está o cursor (0..1 no monitor), mandado de volta depois de mover no modo trackpad.
+    public Func<System.Drawing.Rectangle, (double X, double Y)?> CursorPos { get; init; } = _ => null;
     // Janelas abertas no PC (trocar de janela pelo aparelho) e trazer uma pra frente.
     public Func<IReadOnlyList<Orbit.Services.OpenWindow>> Windows { get; init; } = () => Array.Empty<Orbit.Services.OpenWindow>();
     public Func<long, bool> FocusWindow { get; init; } = _ => false;
