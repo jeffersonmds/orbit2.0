@@ -19,6 +19,8 @@ public sealed class TrayIcon : IDisposable
     public event Action? SettingsRequested;
     public event Action? ExitRequested;
     public event Action? SendClipboard;
+    // Recurso Dispositivos ligado? Conferido a cada abertura do menu (esconde o "Mandar pro dispositivo").
+    public Func<bool>? DevicesOn { get; set; }
     public event Action? UpdateRequested;
 #if DEBUG
     public event Action? DebugPeek;
@@ -35,7 +37,8 @@ public sealed class TrayIcon : IDisposable
         _menu.Items.Add("Mostrar/Ocultar ilha", null, (_, _) => ToggleVisibility?.Invoke());
         _menu.Items.Add(_recentItem);
         _menu.Items.Add("Ajustes", null, (_, _) => SettingsRequested?.Invoke());
-        _menu.Items.Add("Mandar clipboard pro dispositivo (Ctrl+Alt+I)", null, (_, _) => SendClipboard?.Invoke());
+        var send = _menu.Items.Add("Mandar clipboard pro dispositivo (Ctrl+Alt+I)", null, (_, _) => SendClipboard?.Invoke());
+        _menu.Opening += (_, _) => send.Visible = DevicesOn?.Invoke() ?? true;
         _menu.Items.Add("Atualizar Orbit (do código)", null, (_, _) => UpdateRequested?.Invoke());
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(_autostartItem);

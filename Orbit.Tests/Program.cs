@@ -1423,6 +1423,9 @@ public static class Program
         Check("clips: limpar mantém fixados", vm.Visible.Count == 1 && vm.Visible[0].Pinned);
 
         var reloaded = new ClipsViewModel(Path.Combine(dir, "clipboard.json"), Path.Combine(dir, "img"), () => true);
+        var noDevices = new ClipsViewModel(Path.Combine(dir, "clipboard.json"), Path.Combine(dir, "img"), () => true, () => false);
+        Check("clipboard: sem Dispositivos, some o botão e a dica do Ctrl+Alt+I", !noDevices.DevicesOn && !noDevices.KeysHint.Contains("Ctrl+Alt+I")
+            && reloaded.DevicesOn && reloaded.KeysHint.Contains("Ctrl+Alt+I"));
         Check("clips: persiste entre execuções", reloaded.Visible.Count == 1 && reloaded.Visible[0].Pinned);
 
         reloaded.TogglePauseCommand.Execute(null);

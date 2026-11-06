@@ -69,8 +69,8 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDePrint}" Content="Print novo: oferecer mandar pro aparelho"/>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDeDownload}" Content="Download concluído: abrir ou mandar pro aparelho"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDePrint}" Content="Print novo: aviso com abrir, ler texto e mandar"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDeDownload}" Content="Download concluído: aviso com abrir e pasta"/>
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AvisoDeChuva}" Content="Avisar quando for chover"/>
             </WrapPanel>
             <TextBlock Text="Pomodoro (minutos)" Style="{StaticResource Label}"/>

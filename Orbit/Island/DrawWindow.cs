@@ -31,7 +31,8 @@ public sealed class DrawWindow : FrozenScreen
     // A tela rabiscada salva em PNG pra mandar pro dispositivo (a ilha cuida do envio).
     public event Action<string>? SendToDeviceRequested;
 
-    public DrawWindow()
+    // withDevice: false = recurso Dispositivos desligado, sem o botão "Dispositivo".
+    public DrawWindow(bool withDevice = true)
     {
         _ink.DefaultDrawingAttributes = new DrawingAttributes { FitToCurve = true };
         ApplyBrush();
@@ -64,7 +65,7 @@ public sealed class DrawWindow : FrozenScreen
         bar.Children.Add(Chip("Limpar", () => _ink.Strokes.Clear()));
         bar.Children.Add(Separator());
         bar.Children.Add(Chip("Copiar", () => Finish(img => Orbit.Services.ClipboardReader.SetImage(img))));
-        bar.Children.Add(Chip("Dispositivo", () => Finish(img =>
+        if (withDevice) bar.Children.Add(Chip("Dispositivo", () => Finish(img =>
         {
             var png = Path.Combine(Path.GetTempPath(), $"orbit-desenho-{Guid.NewGuid():N}.png");
             Task.Run(() => // PNG fora da UI thread (a imagem está congelada)

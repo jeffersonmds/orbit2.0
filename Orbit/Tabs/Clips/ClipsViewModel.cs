@@ -20,6 +20,7 @@ public sealed partial class ClipsViewModel : TabViewModel
     private readonly string _storePath;
     private readonly string _imagesDir;
     private readonly Func<bool> _enabled;
+    private readonly Func<bool> _devicesOn;
     private readonly List<ClipItem> _items;
 
     public override string Id => "clipboard";
@@ -38,6 +39,9 @@ public sealed partial class ClipsViewModel : TabViewModel
     // Pausa até religar ou reiniciar o Orbit: copiar algo sensível sem esconder a aba.
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(PauseLabel))] private bool _paused;
     public string PauseLabel => Paused ? "Retomar" : "Pausar";
+    // Botão "Dispositivo" e a dica do Ctrl+Alt+I só com o recurso Dispositivos ligado.
+    public bool DevicesOn => _devicesOn();
+    public string KeysHint => "Enter cola · Ctrl+P fixa · Del remove" + (DevicesOn ? " · Ctrl+Alt+I manda a seleção pro dispositivo" : "");
     // "Apagar tudo" pede um segundo toque (leva os fixados junto).
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ClearAllLabel))] private bool _confirmClearAll;
     public string ClearAllLabel => ConfirmClearAll ? "Confirmar?" : "Apagar tudo";
@@ -50,18 +54,24 @@ public sealed partial class ClipsViewModel : TabViewModel
     // Item já está no clipboard: a ilha recolhe e manda Ctrl+V pro app anterior.
     public event Action? PasteRequested;
 
-    public ClipsViewModel(string storePath, string imagesDir, Func<bool> enabled)
+    public ClipsViewModel(string storePath, string imagesDir, Func<bool> enabled, Func<bool>? devicesOn = null)
     {
         _storePath = storePath;
         _imagesDir = imagesDir;
         _enabled = enabled;
+        _devicesOn = devicesOn ?? (() => true);
         _items = ClipboardStore.Load(storePath);
         Refresh();
     }
 
     public override void SetActive(bool active)
     {
-        if (active) Refresh(); // atualiza os "4m", "ontem"
+        if (active)
+        {
+            Refresh(); // atualiza os "4m", "ontem"
+            OnPropertyChanged(nameof(DevicesOn)); // aba Dispositivos pode ter sido escondida em Ajustes
+            OnPropertyChanged(nameof(KeysHint));
+        }
         else ConfirmClearAll = false; // "toque de novo" não sobrevive a fechar a aba
     }
 

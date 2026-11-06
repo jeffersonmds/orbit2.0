@@ -184,7 +184,7 @@ public sealed partial class IslandViewModel : ObservableObject
         _claudeServer.Start();
         // Clipboard: captura sempre por evento; aba escondida em Ajustes = não grava nada.
         Clips = new ClipsViewModel(ClipboardStore.FilePath, ClipboardStore.ImagesDir,
-            () => !settings.HiddenTabs.Contains("clipboard"));
+            () => !settings.HiddenTabs.Contains("clipboard"), () => DevicesOn);
         Register(Clips);
         Clips.SendToDeviceRequested += item =>
         {
@@ -203,6 +203,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Dispositivos = new DispositivosViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),
             BuildBridgeHandlers, Path.Combine(AppContext.BaseDirectory, "wwwroot"), _outbox.RemoveDevice);
         Register(Dispositivos);
+        StopBridgeIfDevicesOff(); // aba escondida em Ajustes = recurso desligado: nem sobe a ponte
         _ = Dispositivos.StartIfEnabledAsync();
         Register(Notas);
         _ = AnnounceUpdateAsync();
@@ -223,12 +224,12 @@ public sealed partial class IslandViewModel : ObservableObject
         _signals.Start();
         _screenshots.Captured += path => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            if (_settings.ScreenshotOfferEnabled) RaisePeek(ScreenshotPeek(path, _settings.BridgeEnabled ? Devices() : Array.Empty<TokenInfo>()));
+            if (_settings.ScreenshotOfferEnabled) RaisePeek(ScreenshotPeek(path, DevicesOn && _settings.BridgeEnabled ? Devices() : Array.Empty<TokenInfo>()));
         });
         _screenshots.Start();
         _downloads.Finished += path => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            if (_settings.DownloadOfferEnabled) RaisePeek(DownloadPeek(path, _settings.BridgeEnabled ? Devices() : Array.Empty<TokenInfo>()));
+            if (_settings.DownloadOfferEnabled) RaisePeek(DownloadPeek(path, DevicesOn && _settings.BridgeEnabled ? Devices() : Array.Empty<TokenInfo>()));
         });
         _downloads.Start();
         // "Vai chover": a cada 20 min (1ª checagem 1 min depois de abrir, pra não disputar o começo).
@@ -362,9 +363,19 @@ public sealed partial class IslandViewModel : ObservableObject
     public static List<string> VisibleIds(ICollection<string> registered, ICollection<string> hidden) =>
         TabOrder.Where(id => registered.Contains(id) && (id == "ajustes" || !hidden.Contains(id))).ToList();
 
+    // Aba Dispositivos escondida em Ajustes = recurso desligado: some de todo lugar (Clipboard, atalho,
+    // bandeja, desenho, arrastar pra ilha, avisos de print/download) e a ponte desliga.
+    public bool DevicesOn => !_settings.HiddenTabs.Contains("dispositivos");
+
+    private void StopBridgeIfDevicesOff()
+    {
+        if (!DevicesOn && Dispositivos.Enabled) Dispositivos.Enabled = false;
+    }
+
     // Sincroniza Tabs com as preferências sem recriar a coleção (a aba aberta continua aberta).
     public void ApplyTabVisibility()
     {
+        if (Dispositivos is not null) StopBridgeIfDevicesOff(); // null: chamado antes de criar as abas
         var ids = VisibleIds(_allTabs.Select(t => t.Id).ToList(), _settings.HiddenTabs);
         for (int i = Tabs.Count - 1; i >= 0; i--)
             if (!ids.Contains(Tabs[i].Id)) Tabs.RemoveAt(i);
@@ -425,7 +436,7 @@ public sealed partial class IslandViewModel : ObservableObject
         if (_recent.Count > MaxRecent) _recent.RemoveAt(0);
         // Também no aparelho (Web Push), com a ponte ligada. Eventos causados pelo próprio aparelho
         // (link aberto, arquivo recebido) não voltam pra ele.
-        if (_settings.BridgeEnabled && peek.TabId != "dispositivos")
+        if (DevicesOn && _settings.BridgeEnabled && peek.TabId != "dispositivos")
             _ = _push.SendAsync(peek.Title, peek.Detail ?? "", ValidTokenHashes());
         if (ShouldToast(_machine.Fullscreen, _settings.AlertsAsToastInFullscreen))
         {
@@ -467,6 +478,7 @@ public sealed partial class IslandViewModel : ObservableObject
     // Todo envio PC → dispositivo passa por aqui. what: o que vai (aparece no seletor).
     public void ChooseDevice(string what, Action<IReadOnlyList<TokenInfo>> send)
     {
+        if (!DevicesOn) return; // recurso desligado: nem o "Ligue a ponte"
         if (!_settings.BridgeEnabled) { RaisePeek(new Peek("Ligue a ponte", "Aba Dispositivos → Ponte ligada", "dispositivos")); return; }
         var devices = Devices();
         switch (DecideChoice(devices.Count, _machine.Fullscreen || UserHidden))

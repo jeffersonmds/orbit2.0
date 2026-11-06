@@ -112,6 +112,7 @@ public partial class IslandWindow : Window
         _tray.SendClipboard += () => _vm.SendClipboard();
         _tray.UpdateRequested += () => _ = _vm.UpdateNowAsync();
         _tray.Recent = _vm.RecentAlerts;
+        _tray.DevicesOn = () => _vm.DevicesOn;
         _vm.ExitForUpdate += () => { _exiting = true; Application.Current.Shutdown(); };
         _vm.Clips.PasteRequested += PasteIntoPrevious;
 #if DEBUG
@@ -169,6 +170,7 @@ public partial class IslandWindow : Window
         _sendHotKey = new GlobalHotKey(hwnd, GlobalHotKey.VK_I);
         _sendHotKey.Pressed += async () =>
         {
+            if (!_vm.DevicesOn) return; // recurso Dispositivos desligado: o atalho não faz nada (nem copia)
             await Input.CopySelectionAsync((ushort)GlobalHotKey.VK_I);
             _vm.SendClipboard();
         };
@@ -190,7 +192,7 @@ public partial class IslandWindow : Window
         _drawHotKey = new GlobalHotKey(hwnd, GlobalHotKey.VK_D);
         _drawHotKey.Pressed += () => OpenOverlay(() =>
         {
-            var w = new DrawWindow();
+            var w = new DrawWindow(withDevice: _vm.DevicesOn);
             w.SendToDeviceRequested += png => _vm.ChooseDevice("desenho", d => _vm.SendFiles(new[] { png }, d, $"desenho-{DateTime.Now:yyyyMMdd-HHmmss}.png"));
             return w;
         });
@@ -483,6 +485,7 @@ public partial class IslandWindow : Window
     private void OnPillDragEnter(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        if (!_vm.DevicesOn) { e.Effects = DragDropEffects.None; e.Handled = true; return; } // sem Dispositivos: não é alvo
         e.Effects = DragDropEffects.Copy;
         e.Handled = true;
         _leave.Stop();
@@ -494,6 +497,7 @@ public partial class IslandWindow : Window
     private void OnPillDragOver(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        if (!_vm.DevicesOn) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
         e.Effects = DragDropEffects.Copy;
         e.Handled = true;
     }
@@ -507,7 +511,7 @@ public partial class IslandWindow : Window
     private void OnPillDrop(object sender, DragEventArgs e)
     {
         DropHint.Visibility = Visibility.Collapsed;
-        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
+        if (!_vm.DevicesOn || e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
         e.Handled = true;
         var files = SendToDevice.FilesFrom(paths);
         var target = (e.OriginalSource as FrameworkElement)?.DataContext as IslandViewModel.DropTarget;
