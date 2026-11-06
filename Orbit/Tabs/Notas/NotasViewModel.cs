@@ -18,11 +18,20 @@ public sealed partial class NotasViewModel : TabViewModel
     // Última gravação falhou (disco cheio, arquivo bloqueado): a aba avisa e a ponte responde erro.
     [ObservableProperty] private string? _saveError;
 
+    // Não conseguiu ler um notes.txt que existe (bloqueado, sem permissão): não grava por cima dele.
+    private readonly bool _readFailed;
+
     public NotasViewModel(string path)
     {
         _path = path;
         try { _text = File.Exists(path) ? File.ReadAllText(path) : ""; }
-        catch { _text = ""; }
+        catch (System.Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Notas: não leu {Arquivo}", path);
+            _text = "";
+            _readFailed = true;
+            _saveError = "Não consegui ler as notas salvas — nada será gravado até reabrir o Orbit.";
+        }
     }
 
     // ponytail: grava a cada tecla (arquivo pequeno, nada se perde num crash); debounce se o texto ficar enorme.
@@ -38,6 +47,7 @@ public sealed partial class NotasViewModel : TabViewModel
 
     private void Save(string value)
     {
+        if (_readFailed) return; // SaveError já avisa; gravar aqui apagaria o arquivo original
         try
         {
             AtomicFile.WriteAllText(_path, value);

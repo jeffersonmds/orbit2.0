@@ -22,6 +22,7 @@ namespace Orbit.Bridge;
 
 public sealed record LinkRequest(string? Url);
 public sealed record TextRequest(string? Text);
+public sealed record NotesRequest(string? Text, string? Rev);
 public sealed record VolumeRequest(double Percent);
 public sealed record PairRequest(string? Code);
 public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps);
@@ -218,15 +219,19 @@ public sealed class BridgeServer : IAsyncDisposable
             return Results.NoContent();
         });
 
-        // ponytail: última gravação vence; editar ao mesmo tempo no PC e no aparelho perde uma das versões.
-        api.MapGet("/notes", async () => Results.Ok(new { text = await h.GetNotes() }));
-        api.MapPut("/notes", async (TextRequest req) =>
+        // rev = versão que o aparelho carregou; se o PC mudou desde então, 409 com o texto atual
+        // (o aparelho pergunta antes de sobrescrever). Sem rev = sobrescreve (confirmado ou PWA antigo).
+        // ponytail: ler e gravar não são atômicos; a janela é de milissegundos.
+        api.MapGet("/notes", async () => { var t = await h.GetNotes(); return Results.Ok(new { text = t, rev = BridgeRules.NotesRev(t) }); });
+        api.MapPut("/notes", async (NotesRequest req) =>
         {
             if (req.Text is null || req.Text.Length > BridgeRules.MaxClipboardChars)
                 return Results.BadRequest(new { erro = "Nota grande demais." });
+            if (req.Rev is not null && await h.GetNotes() is var cur && BridgeRules.NotesRev(cur) != req.Rev)
+                return Results.Conflict(new { text = cur, rev = BridgeRules.NotesRev(cur) });
             try { await h.SetNotes(req.Text); }
             catch (IOException) { return Results.StatusCode(StatusCodes.Status507InsufficientStorage); }
-            return Results.NoContent();
+            return Results.Ok(new { rev = BridgeRules.NotesRev(req.Text) });
         });
 
         api.MapPost("/power/{action}", async (string action) =>

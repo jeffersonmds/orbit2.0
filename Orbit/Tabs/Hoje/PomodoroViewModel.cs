@@ -29,6 +29,8 @@ public sealed partial class PomodoroViewModel : ObservableObject
     private int _completedCycles;
     private TimeSpan _remaining;
     private TimeSpan _phaseTotal;
+    // Rodando: conta pelo relógio (UI travada ou PC suspenso não atrasam o fim), não por ticks.
+    private DateTime _endsAt;
 
     [ObservableProperty] private string _display = "25:00";
     [ObservableProperty] private string _mode = "Foco";
@@ -70,8 +72,8 @@ public sealed partial class PomodoroViewModel : ObservableObject
     [RelayCommand]
     private void Toggle()
     {
-        if (_timer.IsEnabled) _timer.Stop();
-        else _timer.Start();
+        if (_timer.IsEnabled) { _remaining = Left(); _timer.Stop(); }
+        else { _endsAt = DateTime.UtcNow + _remaining; _timer.Start(); }
         IsRunning = _timer.IsEnabled;
         PlayGlyph = IsRunning ? "\uE769" : "\uE768";
         UpdateActivity();
@@ -89,16 +91,19 @@ public sealed partial class PomodoroViewModel : ObservableObject
 
     private void Tick()
     {
-        _remaining = _remaining.Subtract(TimeSpan.FromSeconds(1));
+        _remaining = Left();
         if (_remaining <= TimeSpan.Zero)
         {
             var (next, cycles) = NextPhase(_phase, _completedCycles, EffectiveCycles);
             _completedCycles = cycles;
             EnterPhase(next);
+            _endsAt = DateTime.UtcNow + _remaining; // ponytail: voltou de horas suspenso = avança uma fase só
             _phaseChanged(next, PhaseMinutes(next));
         }
         UpdateDisplay();
     }
+
+    private TimeSpan Left() => _endsAt - DateTime.UtcNow;
 
     private void EnterPhase(PomodoroPhase phase)
     {
@@ -126,7 +131,7 @@ public sealed partial class PomodoroViewModel : ObservableObject
 
     private void UpdateDisplay()
     {
-        Display = $"{(int)_remaining.TotalMinutes:00}:{_remaining.Seconds:00}";
+        Display = Format(_remaining);
         double progress = _phaseTotal.TotalSeconds > 0 ? _remaining.TotalSeconds / _phaseTotal.TotalSeconds : 0;
         RingDashArray = Ring.DashArray(progress, RingDiameter, RingStroke);
         UpdateActivity();
@@ -138,6 +143,13 @@ public sealed partial class PomodoroViewModel : ObservableObject
     private void UpdateActivity() => ActivityText = BuildActivity(IsRunning, Mode, Display);
 
     // --- Lógica pura testável ---
+
+    // Arredonda pra cima: 24:59,4 mostra 25:00 e só chega a 00:00 no fim de verdade.
+    public static string Format(TimeSpan left)
+    {
+        var s = TimeSpan.FromSeconds(Math.Max(0, Math.Ceiling(left.TotalSeconds)));
+        return $"{(int)s.TotalMinutes:00}:{s.Seconds:00}";
+    }
 
     public static string? BuildActivity(bool running, string mode, string display) =>
         running ? $"{mode} · {display}" : null;

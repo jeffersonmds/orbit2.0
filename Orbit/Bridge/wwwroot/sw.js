@@ -35,6 +35,11 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = new URL((e.notification.data && e.notification.data.url) || './', self.location.href);
   if (url.origin !== self.location.origin) { e.waitUntil(self.clients.openWindow(url.href)); return; }
-  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(list =>
-    list.length ? list[0].navigate(url.href).then(c => (c || list[0]).focus()) : self.clients.openWindow(url.href)));
+  // App já aberto na mesma página: só troca o #hash por mensagem (navigate recarregaria e perderia rascunhos).
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(list => {
+    const c = list[0];
+    if (!c) return self.clients.openWindow(url.href);
+    if (new URL(c.url).pathname === url.pathname) { c.postMessage({ go: url.hash }); return c.focus(); }
+    return c.navigate(url.href).then(n => (n || c).focus());
+  }));
 });

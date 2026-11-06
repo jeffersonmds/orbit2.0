@@ -222,21 +222,31 @@ async function refreshMedia() {
 // Carrega ao entrar na página (não no loop de 5 s, que apagaria o que está sendo digitado);
 // com edição não salva, só o "Recarregar" explícito sobrescreve.
 // notesRev sobe a cada tecla: resposta que chega depois de você digitar não apaga nem marca como salvo.
-let notesDirty = false, notesRev = 0;
+let notesDirty = false, notesRev = 0, notesBase = null; // notesBase: versão do PC que está no campo
 // Recarregar descarta o que havia até o clique; o que for digitado durante a requisição vence.
 async function loadNotes() {
   const rev = notesRev;
-  const { text } = await api('/notes');
+  const { text, rev: base } = await api('/notes');
   if (rev !== notesRev) return; // digitou enquanto carregava: o que está no campo vence
   $('#notes').value = text;
+  notesBase = base;
   notesDirty = false;
 }
 $('#notes').oninput = () => { notesDirty = true; notesRev++; };
 $('#loadNotes').onclick = () => run(loadNotes, 'Notas do PC');
 $('#saveNotes').onclick = () => run(async () => {
   const rev = notesRev;
-  try { await api('/notes', { method: 'PUT', json: { text: $('#notes').value } }); }
-  catch (e) { throw /507/.test(e.message) ? new Error('O PC não conseguiu gravar as notas no disco') : e; }
+  const text = $('#notes').value;
+  let saved;
+  try { saved = await api('/notes', { method: 'PUT', json: { text, rev: notesBase } }); }
+  catch (e) {
+    if (/507/.test(e.message)) throw new Error('O PC não conseguiu gravar as notas no disco');
+    if (!/409/.test(e.message)) throw e;
+    // mudaram no PC depois que você carregou: só sobrescreve se confirmar
+    if (!confirm('As notas mudaram no PC desde que você abriu. Sobrescrever com as daqui?')) throw new Error('Nada salvo: toque em Recarregar pra ver as do PC');
+    saved = await api('/notes', { method: 'PUT', json: { text } });
+  }
+  notesBase = saved?.rev ?? null;
   if (rev === notesRev) notesDirty = false; // editou durante o envio: continua pendente
 }, 'Notas salvas no PC');
 
@@ -1215,24 +1225,34 @@ async function kbTypeText(text) {
   return true;
 }
 
-async function kbAfter() {
+// Limpa só se o campo ainda tem o que foi mandado: o que você ditou durante o envio fica.
+async function kbAfter(text) {
   if ($('#kbEnter').checked) await kbSend({ t: 'key', k: 'enter' });
-  $('#kbText').value = '';
+  const f = $('#kbText');
+  if (f.value === text) f.value = '';
+  else if (f.value.startsWith(text)) f.value = f.value.slice(text.length).replace(/^\s+/, '');
   kbSay('');
 }
 
-$('#kbType').onclick = () => run(async () => {
+// Um envio por vez: dois toques seguidos não intercalam as letras nem mandam o texto duas vezes.
+const kbOnce = fn => () => {
+  if (kb.busy) return;
+  kb.busy = true;
+  return fn().finally(() => { kb.busy = false; });
+};
+
+$('#kbType').onclick = kbOnce(() => run(async () => {
   const text = $('#kbText').value;
   if (!text) throw new Error('Escreva ou dite algo primeiro');
-  if (await kbTypeText(text)) await kbAfter();
-}, 'Digitado no PC');
+  if (await kbTypeText(text)) await kbAfter(text);
+}, 'Digitado no PC'));
 
-$('#kbPaste').onclick = () => run(async () => {
+$('#kbPaste').onclick = kbOnce(() => run(async () => {
   const text = $('#kbText').value;
   if (!text) throw new Error('Escreva ou dite algo primeiro');
   await api('/clipboard', { method: 'PUT', json: { text } });
-  if (await kbSend({ t: 'key', k: 'v', mods: ['ctrl'] })) await kbAfter();
-}, 'Colado no PC');
+  if (await kbSend({ t: 'key', k: 'v', mods: ['ctrl'] })) await kbAfter(text);
+}, 'Colado no PC'));
 
 $('#kbCtrl').onclick = () => { kb.ctrl = !kb.ctrl; $('#kbCtrl').classList.toggle('on', kb.ctrl); };
 document.querySelectorAll('[data-kkey]').forEach(b => b.onclick = () => run(async () => {
@@ -1284,7 +1304,13 @@ document.addEventListener('visibilitychange', () => document.hidden ? clearInter
 route(); // já faz o 1º refresh
 loop = setInterval(refresh, 5000);
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // toque numa notificação com o app aberto: troca de página sem recarregar
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && typeof e.data.go === 'string' && location.hash !== e.data.go) location.hash = e.data.go;
+  });
+}
 
 // --- Avisos do PC (Web Push) ---
 // iOS só entrega push pro app aberto pelo ícone da Tela de Início (16.4+) e só pede permissão

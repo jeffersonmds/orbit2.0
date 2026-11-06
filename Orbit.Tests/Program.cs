@@ -1770,6 +1770,13 @@ public static class Program
 
     private static void EnergiaExtrasTests()
     {
+        var sd = Path.Combine(Path.GetTempPath(), "orbit-sd-" + Guid.NewGuid().ToString("N") + ".txt");
+        var now = new DateTime(2026, 11, 6, 20, 0, 0);
+        File.WriteAllText(sd, $"{now.AddMinutes(30).Ticks}|{now.AddHours(-1).Ticks}");
+        Check("energia: agendamento volta depois de reabrir", EnergiaViewModel.LoadShutdownAt(sd, now, 3_600_000) == now.AddMinutes(30));
+        Check("energia: outro boot esquece o agendamento", EnergiaViewModel.LoadShutdownAt(sd, now, 60_000) is null);
+        Check("energia: prazo vencido esquece", EnergiaViewModel.LoadShutdownAt(sd, now.AddHours(1), 7_200_000) is null);
+        File.Delete(sd);
         Check("energia: agendar 30 min", Power.ScheduleArgs(TimeSpan.FromMinutes(30)) == "/s /t 1800");
         Check("energia: agendar nunca 0 (seria imediato)", Power.ScheduleArgs(TimeSpan.Zero) == "/s /t 1");
         Check("bateria: duração", Battery.FormatDuration(TimeSpan.FromMinutes(80)) == "1 h 20 min"
@@ -2015,6 +2022,14 @@ public static class Program
         vm.Write("algo"); // mesmo texto: a ponte reenvia depois de liberar o disco
         Check("notas: reenviar o mesmo texto tenta gravar de novo", vm.SaveError is null && File.ReadAllText(Path.Combine(blocker, "notas.txt")) == "algo");
         Directory.Delete(blocker, recursive: true);
+
+        var locked = Path.Combine(Path.GetTempPath(), "orbit-notas-" + Guid.NewGuid().ToString("N") + ".txt");
+        File.WriteAllText(locked, "original");
+        Orbit.Tabs.Notas.NotasViewModel vm2;
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None)) vm2 = new Orbit.Tabs.Notas.NotasViewModel(locked);
+        vm2.Text = "por cima";
+        Check("notas: não leu = avisa e não grava por cima", vm2.SaveError is not null && File.ReadAllText(locked) == "original");
+        File.Delete(locked);
     }
 
     private static void AtomicFileTests()
@@ -2084,6 +2099,8 @@ public static class Program
         var (p4, c4) = PomodoroViewModel.NextPhase(PomodoroPhase.Focus, completedCycles: 0, cyclesUntilLongBreak: 0);
         Check("pomodoro: ciclos <= 0 vira 1", p4 == PomodoroPhase.LongBreak && c4 == 0);
 
+        Check("pomodoro: tempo arredonda pra cima", PomodoroViewModel.Format(TimeSpan.FromSeconds(1499.4)) == "25:00"
+            && PomodoroViewModel.Format(TimeSpan.FromSeconds(0.2)) == "00:01" && PomodoroViewModel.Format(TimeSpan.FromSeconds(-3)) == "00:00");
         Check("pomodoro: texto da pílula parado = null", PomodoroViewModel.BuildActivity(false, "Foco", "25:00") is null);
         Check("pomodoro: texto da pílula rodando", PomodoroViewModel.BuildActivity(true, "Foco", "12:04") == "Foco · 12:04");
 
@@ -2451,8 +2468,13 @@ public static class Program
         Check("ponte: PUT clipboard", put.StatusCode == HttpStatusCode.NoContent && clip == "do iPhone");
         Check("ponte: GET clipboard", http.GetStringAsync("/api/clipboard").Result.Contains("do pc"));
         Check("ponte: GET notas", http.GetStringAsync("/api/notes").Result.Contains("nota do pc"));
-        Check("ponte: PUT notas", http.PutAsJsonAsync("/api/notes", new { text = "do iPhone\nlinha 2" }).Result.StatusCode == HttpStatusCode.NoContent
+        Check("ponte: PUT notas", http.PutAsJsonAsync("/api/notes", new { text = "do iPhone\nlinha 2" }).Result.StatusCode == HttpStatusCode.OK
             && notes == "do iPhone\nlinha 2");
+        var stale = BridgeRules.NotesRev("versão velha");
+        Check("ponte: PUT notas com versão velha = 409 e não grava", http.PutAsJsonAsync("/api/notes", new { text = "x", rev = stale }).Result.StatusCode == HttpStatusCode.Conflict
+            && notes == "do iPhone\nlinha 2");
+        Check("ponte: PUT notas com a versão atual grava", http.PutAsJsonAsync("/api/notes", new { text = "y", rev = BridgeRules.NotesRev(notes!) }).Result.IsSuccessStatusCode
+            && notes == "y");
         Check("ponte: PUT notas sem texto = 400", http.PutAsJsonAsync("/api/notes", new { }).Result.StatusCode == HttpStatusCode.BadRequest);
 
         Check("ponte: energia", http.PostAsync("/api/power/shutdown", null).Result.StatusCode == HttpStatusCode.NoContent

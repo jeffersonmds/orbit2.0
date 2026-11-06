@@ -44,7 +44,8 @@ public sealed partial class EnergiaViewModel : TabViewModel
     private DateTime _armedAt;
     private readonly DispatcherTimer _disarm = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromSeconds(30) }; // só com a aba aberta
-    private DateTime? _shutdownAt; // ponytail: só em memória; reiniciar o Orbit esquece (o Windows não)
+    private DateTime? _shutdownAt; // guardado em disco: atualizar/reabrir o Orbit não esconde o agendamento
+    private readonly string _store;
     private string? _scheduleError; // a última ação falhou no Windows: aparece no lugar do texto até a próxima
     // Agendar faz /a + /s: um Cancelar no meio podia cair entre os dois. Uma operação por vez.
     private bool _powerBusy;
@@ -54,10 +55,37 @@ public sealed partial class EnergiaViewModel : TabViewModel
     [ObservableProperty] private string _scheduleText = "Nada agendado";
     [ObservableProperty] private bool _isScheduled;
 
-    public EnergiaViewModel()
+    public EnergiaViewModel(string? store = null)
     {
+        _store = store ?? System.IO.Path.Combine(SettingsStore.Dir, "shutdown-at.txt");
+        _shutdownAt = LoadShutdownAt(_store, DateTime.Now, Environment.TickCount64);
         _disarm.Tick += (_, _) => SetPending(null);
         _refresh.Tick += (_, _) => RefreshInfo();
+    }
+
+    // Arquivo: "prazo|boot", ambos em ticks. Outro boot = o Windows já esqueceu o agendamento.
+    public static DateTime? LoadShutdownAt(string path, DateTime now, long uptimeMs)
+    {
+        try
+        {
+            var p = System.IO.File.ReadAllText(path).Split('|');
+            var at = new DateTime(long.Parse(p[0]));
+            var boot = new DateTime(long.Parse(p[1]));
+            var bootNow = now - TimeSpan.FromMilliseconds(uptimeMs);
+            return at > now && Math.Abs((boot - bootNow).TotalMinutes) < 2 ? at : null;
+        }
+        catch { return null; }
+    }
+
+    private void SaveShutdownAt()
+    {
+        try
+        {
+            if (_shutdownAt is { } at)
+                AtomicFile.WriteAllText(_store, $"{at.Ticks}|{(DateTime.Now - TimeSpan.FromMilliseconds(Environment.TickCount64)).Ticks}");
+            else System.IO.File.Delete(_store);
+        }
+        catch (Exception ex) { Log.Warning(ex, "Energia: não guardou o agendamento"); }
     }
 
     private void RefreshInfo()
@@ -99,6 +127,7 @@ public sealed partial class EnergiaViewModel : TabViewModel
             _shutdownAt = null; // o /a antes do agendamento já tirou o anterior
             _scheduleError = "Não consegui agendar o desligamento";
         }
+        SaveShutdownAt();
         RefreshInfo();
     }
 
@@ -117,6 +146,7 @@ public sealed partial class EnergiaViewModel : TabViewModel
         {
             _shutdownAt = null;
             _scheduleError = null;
+            SaveShutdownAt();
         }
         RefreshInfo();
     }

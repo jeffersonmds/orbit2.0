@@ -144,6 +144,10 @@ public static class BridgeRules
         return Array.Empty<Capability>();
     }
 
+    // Versão das notas pra detectar edição dos dois lados: o aparelho manda a que carregou; diferente = 409.
+    public static string NotesRev(string text) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16];
+
     public static string Preview(string text)
     {
         var s = Spaces.Replace(text, " ").Trim();
