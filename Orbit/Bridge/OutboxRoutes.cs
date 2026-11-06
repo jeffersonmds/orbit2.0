@@ -22,11 +22,15 @@ public static class OutboxRoutes
         {
             if (!request.HasFormContentType) return Results.BadRequest(new { erro = "Envie multipart/form-data." });
             request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = MaxPhotoBytes;
-            var form = await request.ReadFormAsync();
+            if (BridgeServer.Transfer(request.HttpContext, sessions, tokens, BridgeServer.DeviceOf(request.HttpContext).Hash) is not { } transfer)
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            using var cut = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(request.HttpContext.RequestAborted, transfer);
+            var form = await request.ReadFormAsync(cut.Token);
             if (form.Files.Count != 1 || form.Files[0].Length is 0 or > MaxPhotoBytes)
                 return Results.BadRequest(new { erro = "Mande uma foto (até 40 MB)." });
             using var ms = new MemoryStream();
-            await form.Files[0].CopyToAsync(ms);
+            await form.Files[0].CopyToAsync(ms, cut.Token);
+            cut.Token.ThrowIfCancellationRequested(); // revogado no fim do envio: não vai pro clipboard
             if (!await h.SetClipboardImage(ms.ToArray())) return Results.BadRequest(new { erro = "Não parece uma imagem, ou o clipboard do PC está ocupado." });
             h.Notify(new BridgeEvent("Foto no clipboard", "É só colar (Ctrl+V)", Device: BridgeServer.DeviceOf(request.HttpContext).Name));
             return Results.NoContent();
@@ -55,7 +59,7 @@ public static class OutboxRoutes
             var id = Path.GetFileNameWithoutExtension(path);
             if (box.List(DateTime.Now, found.Owner).FirstOrDefault(i => i.Id == id) is not { } item || !File.Exists(path)) return Results.NotFound();
             var name = item.Name;
-            BridgeServer.CutOnRevoke(ctx, sessions, found.Owner);
+            if (!BridgeServer.CutOnRevoke(ctx, sessions, tokens, found.Owner)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(name, out var type);
             // Arquivo vindo do PC nunca roda com a origem do PWA (html/svg com script leria o token).
             ctx.Response.Headers.ContentSecurityPolicy = "sandbox";

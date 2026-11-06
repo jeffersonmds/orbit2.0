@@ -618,8 +618,15 @@ async function scrConnectControl(screen, gen) {
 function scrRetryControl(screen, gen) {
   scr.retrying = true;
   scrSay('Controle caiu — reconectando…');
-  setTimeout(() => {
-    if (scr.live && !scr.ws && stillWanted(gen, scr.gen, 'tela')) scrConnectControl(screen, gen);
+  setTimeout(async () => {
+    if (!scr.live || scr.ws || !stillWanted(gen, scr.gen, 'tela')) return;
+    // "Encerrar" no PC durante uma falha de rede chega como queda (1006): só volta se a tela ainda é nossa.
+    try {
+      const o = await api('/screen/owner');
+      if (!stillWanted(gen, scr.gen, 'tela') || scr.ws) return;
+      if (!o.mine) { scrStop(); scrSay('A transmissão foi encerrada no PC.'); return; }
+    } catch { scrRetryControl(screen, gen); return; } // ainda sem rede: tenta de novo
+    scrConnectControl(screen, gen);
   }, 1500);
 }
 

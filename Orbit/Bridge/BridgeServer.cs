@@ -72,11 +72,13 @@ public sealed class BridgeServer : IAsyncDisposable
         builder.Services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            // Cota por aparelho; rotas de tíquete (sem token na hora do limite) contam por IP, à parte:
-            // flood de tíquete inválido não tira a cota de quem está autenticado.
-            o.AddPolicy("api", ctx => RateLimitPartition.GetFixedWindowLimiter(
-                ctx.Items["device"] is TokenInfo d ? "d:" + d.Hash : "ip:" + ctx.Connection.RemoteIpAddress,
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            // Cota por aparelho. Rotas de tíquete ficam fora: o dono só é conhecido no handler, e numa cota
+            // comum (por IP, que via Tailscale é sempre o loopback) um flood de tíquete inválido barraria
+            // os válidos. O tíquete já é a proteção: uso único, 30 s, impossível de chutar; inválido = 401 barato.
+            o.AddPolicy("api", ctx => ctx.Items["device"] is TokenInfo d
+                ? RateLimitPartition.GetFixedWindowLimiter("d:" + d.Hash,
+                    _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+                : RateLimitPartition.GetNoLimiter("ticket"));
             // Pareamento é a única rota aberta que aceita palpite: cota própria e baixa.
             o.AddFixedWindowLimiter("pair", w =>
             {
@@ -253,8 +255,9 @@ public sealed class BridgeServer : IAsyncDisposable
             if (!request.HasFormContentType) return Results.BadRequest(new { erro = "Envie multipart/form-data." });
             request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = BridgeRules.MaxUploadBytes;
             // revogar o aparelho no meio corta o envio (e apaga o parcial, abaixo)
-            using var cut = CancellationTokenSource.CreateLinkedTokenSource(request.HttpContext.RequestAborted,
-                sessions.TransferToken(DeviceOf(request.HttpContext).Hash));
+            if (Transfer(request.HttpContext, sessions, tokens, DeviceOf(request.HttpContext).Hash) is not { } transfer)
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            using var cut = CancellationTokenSource.CreateLinkedTokenSource(request.HttpContext.RequestAborted, transfer);
             var form = await request.ReadFormAsync(cut.Token);
             if (form.Files.Count == 0) return Results.BadRequest(new { erro = "Nenhum arquivo." });
             if (form.Files.Count > 50) return Results.BadRequest(new { erro = "Máximo de 50 arquivos por envio." });
@@ -396,7 +399,7 @@ public sealed class BridgeServer : IAsyncDisposable
             if (!TicketOwnerAllowed(tokens, found.Owner, ctx.Request.Path)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             var file = found.Path;
             if (!File.Exists(file)) return Results.NotFound();
-            CutOnRevoke(ctx, sessions, found.Owner);
+            if (!CutOnRevoke(ctx, sessions, tokens, found.Owner)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().TryGetContentType(file, out var type);
             ctx.Response.Headers.ContentSecurityPolicy = "sandbox"; // html/svg do PC não roda com a origem do PWA
             ctx.Response.Headers.XContentTypeOptions = "nosniff";
@@ -423,9 +426,21 @@ public sealed class BridgeServer : IAsyncDisposable
         });
     }
 
+    // Token que cai quando o aparelho é revogado. Pega o token ANTES de revalidar: revogação entre a
+    // autorização e aqui já cancelou (ou tirou o aparelho) e é vista; null = não pode mais.
+    internal static CancellationToken? Transfer(HttpContext ctx, RemoteSessions sessions, TokenStore tokens, string owner)
+    {
+        var t = sessions.TransferToken(owner);
+        return t.IsCancellationRequested || !TicketOwnerAllowed(tokens, owner, ctx.Request.Path) ? null : t;
+    }
+
     // Download em andamento cai se o aparelho for revogado (o Results.File roda depois do handler voltar).
-    internal static void CutOnRevoke(HttpContext ctx, RemoteSessions sessions, string owner) =>
-        ctx.Response.RegisterForDispose(sessions.TransferToken(owner).Register(ctx.Abort));
+    internal static bool CutOnRevoke(HttpContext ctx, RemoteSessions sessions, TokenStore tokens, string owner)
+    {
+        if (Transfer(ctx, sessions, tokens, owner) is not { } t) return false;
+        ctx.Response.RegisterForDispose(t.Register(ctx.Abort));
+        return true;
+    }
 
     private static int? ActualPort(WebApplication app)
     {

@@ -313,7 +313,7 @@ public static class RemoteScreen
             var session = sessions.BeginInput(ctx.RequestAborted, Who(tokens, owner));
             // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
-            try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly, () => true); }
+            try { await ReceiveLoop(ws, default, h, session.Token, KeyboardOnly); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
             finally { await CloseAsync(ws, sessions, session); }
         });
@@ -346,8 +346,21 @@ public static class RemoteScreen
             // revogado entre a checagem e a vaga (o await acima): sem vaga a revogação não achou nada pra cortar
             if (!BridgeServer.TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) session.Cancel();
             // Monitor rearranjado/desconectado: os Bounds velhos clicariam em OUTRO monitor (o vídeo já encerra).
-            bool Valid() => h.Screens().Any(s => s.Id == screen.Id && s.Bounds == screen.Bounds);
-            try { await ReceiveLoop(ws, screen.Bounds, h, session.Token, _ => true, Valid); }
+            // Vigia à parte, de 1 em 1 s: encerra mesmo sem comando chegando (botão segurado, mensagem pela metade).
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!session.IsCancellationRequested)
+                    {
+                        await Task.Delay(1000, session.Token);
+                        if (!h.Screens().Any(s => s.Id == screen.Id && s.Bounds == screen.Bounds)) { session.Cancel(); return; }
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (ObjectDisposedException) { }
+            });
+            try { await ReceiveLoop(ws, screen.Bounds, h, session.Token, _ => true); }
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
             finally { await CloseAsync(ws, sessions, session); }
         });
@@ -373,7 +386,7 @@ public static class RemoteScreen
     public static bool KeyboardOnly(RemoteCommand c) => c.Kind is RemoteKind.Text or RemoteKind.Key;
 
     private static async Task ReceiveLoop(WebSocket ws, System.Drawing.Rectangle bounds, BridgeHandlers h, CancellationToken ct,
-        Func<RemoteCommand, bool> allow, Func<bool> stillValid)
+        Func<RemoteCommand, bool> allow)
     {
         var buf = new byte[8192];
         // Cancelar o ReceiveAsync aborta o socket e o 4001/"fim" nunca sairia: espera sem passar o token.
@@ -383,7 +396,6 @@ public static class RemoteScreen
         }
         var window = Stopwatch.StartNew();
         int inWindow = 0;
-        var recheck = Stopwatch.StartNew();
         var held = new HeldButtons();
         try
         {
@@ -401,11 +413,6 @@ public static class RemoteScreen
                     if (!res.EndOfMessage && len == buf.Length) tooBig = true;
                 } while (!res.EndOfMessage);
                 if (tooBig) continue;
-                if (recheck.ElapsedMilliseconds >= 1000)
-                {
-                    recheck.Restart();
-                    if (!stillValid()) break;
-                }
                 if (window.ElapsedMilliseconds >= 1000) { window.Restart(); inWindow = 0; }
                 if (++inWindow > MaxMessagesPerSecond) continue;
                 ct.ThrowIfCancellationRequested(); // sessão encerrada/assumida: nada de comando atrasado
