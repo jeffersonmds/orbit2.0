@@ -906,12 +906,19 @@ function scrKey(k) {
 }
 document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => scrKey(b.dataset.key));
 
-// Teclado do iOS num campo invisível: beforeinput diz o que foi digitado; o campo fica sempre vazio.
-$('#scrKbd').onclick = () => $('#scrInput').focus();
-$('#scrInput').addEventListener('beforeinput', e => {
+// Teclado do iOS num campo invisível: beforeinput diz o que foi digitado. O campo guarda um espaço
+// fixo: vazio, o iOS não manda nada no backspace. Enter num <input> não vira beforeinput: vem no keydown.
+const scrIn = $('#scrInput');
+const scrInReset = () => { scrIn.value = ' '; scrIn.setSelectionRange(1, 1); };
+$('#scrKbd').onclick = () => { scrIn.focus(); scrInReset(); };
+scrIn.addEventListener('input', scrInReset); // se algo escapar do beforeinput, volta ao espaço
+scrIn.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); scrKey('enter'); }
+});
+scrIn.addEventListener('beforeinput', e => {
   e.preventDefault();
-  if (e.inputType === 'insertLineBreak') scrKey('enter');
-  else if (e.inputType === 'deleteContentBackward') scrKey('backspace');
+  if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') return; // já tratado no keydown
+  if (e.inputType.startsWith('delete')) scrKey('backspace');
   else if (e.data) {
     if (scr.mods.size && /^[a-z0-9]$/i.test(e.data)) scrKey(e.data.toLowerCase());
     else scrSend({ t: 'text', s: e.data });
