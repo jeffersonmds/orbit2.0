@@ -5,7 +5,9 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* manipulation: toque duplo não dá zoom na página (o zoom da tela remota é a pinça) */
 /* touch-action não é herdado no Safari: em todo elemento, senão o toque duplo ainda dá zoom */
-*, *::before, *::after { touch-action: manipulation; }
+*, *::before, *::after { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* app, não página: segurar não seleciona nem abre o menu. Campos de texto continuam editáveis */
+input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 html, body { margin: 0; background: var(--bg); color: var(--ink);
   font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
 body { padding: calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 24px); }
