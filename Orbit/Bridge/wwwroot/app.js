@@ -505,6 +505,13 @@ const scr = { live: false, loaded: false, ws: null, mode: 'touch', mods: new Set
 const scrImg = $('#scrImg'), scrView = $('#scrView'), scrTouch = $('#scrTouch');
 const TAKEN = 4001; // o PC fechou porque outro aparelho assumiu (reason = nome dele)
 const scrSay = msg => { $('#scrMsg').textContent = msg || ''; $('#scrMsg').classList.toggle('hidden', !msg); };
+// Escolhas da tela lembradas neste aparelho: monitor, qualidade, modo e zoom.
+const scrPref = (k, v) => {
+  try {
+    if (v === undefined) return JSON.parse(localStorage.getItem('scr.' + k));
+    localStorage.setItem('scr.' + k, JSON.stringify(v));
+  } catch { return null; }
+};
 const scrSend = o => { if (scr.ws && scr.ws.readyState === 1) scr.ws.send(JSON.stringify(o)); };
 
 async function scrLoad() {
@@ -512,6 +519,8 @@ async function scrLoad() {
   try {
     const list = await api('/screen/list');
     $('#scrScreen').replaceChildren(...list.map(s => Object.assign(document.createElement('option'), { value: s.id, textContent: s.name })));
+    const saved = scrPref('screen');
+    if (list.some(s => s.id === saved)) $('#scrScreen').value = saved; // monitor que sumiu: fica o 1º
     scr.loaded = true;
     scrSay(list.length ? '' : 'Nenhum monitor encontrado.');
   } catch (e) { scrSay(/403/.test(e.message) ? 'Ligue "Tela" na aba Dispositivos do PC.' : e.message); }
@@ -577,7 +586,7 @@ async function scrStart() {
     scrView.classList.add('live');
     $('#scrToggle').textContent = 'Parar';
     scrSay('');
-    resetView();
+    restoreView();
     if (landscape.matches) scrImmersive(true); // já deitado: vai direto pra tela cheia
     scrConnectControl(screen, gen);
     clearInterval(scr.watch);
@@ -653,8 +662,9 @@ function scrStop() {
 $('#scrResume').onclick = scrStart;
 $('#scrToggle').onclick = () => scr.live ? scrStop() : scrStart();
 const scrRestart = () => { if (scr.live) { scrStop(); scrStart(); } };
-$('#scrScreen').onchange = scrRestart;
-$('#scrQuality').onchange = scrRestart;
+$('#scrScreen').onchange = () => { scrPref('screen', $('#scrScreen').value); scrPref('view', null); scrRestart(); };
+$('#scrQuality').onchange = () => { scrPref('quality', $('#scrQuality').value); scrRestart(); };
+if (['leve', 'nitida', 'original'].includes(scrPref('quality'))) $('#scrQuality').value = scrPref('quality');
 
 // Ponto do toque em 0..1 dentro da imagem (object-fit: contain deixa faixas pretas). null = fora dela.
 function scrPoint(t) {
@@ -683,8 +693,17 @@ function applyView() {
   scrImg.style.top = `${view.ty}px`;
   $('#scrZoomReset').classList.toggle('hidden', view.z <= 1.01);
   $('#scrZoomReset').textContent = `${view.z.toFixed(1).replace('.', ',')}× ✕`;
+  // zoom guardado como fração da área (vale com outro tamanho de tela/orientação)
+  if (r.width && r.height) scrPref('view', { z: view.z, x: view.tx / r.width, y: view.ty / r.height });
 }
 function resetView() { view.z = 1; view.tx = 0; view.ty = 0; applyView(); }
+// Volta o zoom de antes ao abrir a tela (o mesmo monitor; trocar de monitor zera).
+function restoreView() {
+  const v = scrPref('view'), r = scrView.getBoundingClientRect();
+  if (!v || !(v.z > 1) || !r.width) return resetView();
+  view.z = v.z; view.tx = v.x * r.width; view.ty = v.y * r.height;
+  applyView();
+}
 $('#scrZoomReset').onclick = resetView;
 
 // Marcas de toque: círculo rápido no clique (branco, vermelho = direito, verde = meio) e um círculo
@@ -859,17 +878,20 @@ function scrImmersive(on) {
   $('section[data-page="tela"]').classList.toggle('immersive', on);
   document.body.classList.toggle('immersive', on);
   $('#scrFs').setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
-  requestAnimationFrame(resetView); // a área mudou de tamanho
+  requestAnimationFrame(restoreView); // a área mudou de tamanho: mesmo zoom, na proporção nova
 }
 $('#scrFs').onclick = () => scrImmersive(!document.body.classList.contains('immersive'));
 landscape.addEventListener('change', e => { if (scr.live) scrImmersive(e.matches); });
 
-$('#scrMode').onclick = () => {
-  scr.mode = scr.mode === 'touch' ? 'pad' : 'touch';
-  $('#scrMode').textContent = scr.mode === 'touch' ? 'Toque' : 'Trackpad';
-  $('#scrMode').classList.toggle('on', scr.mode === 'pad');
-  $('#scrSpeed').classList.toggle('hidden', scr.mode !== 'pad');
-};
+function scrSetMode(m) {
+  scr.mode = m;
+  $('#scrMode').textContent = m === 'touch' ? 'Toque' : 'Trackpad';
+  $('#scrMode').classList.toggle('on', m === 'pad');
+  $('#scrSpeed').classList.toggle('hidden', m !== 'pad');
+}
+$('#scrMode').onclick = () => { scrSetMode(scr.mode === 'touch' ? 'pad' : 'touch'); scrPref('mode', scr.mode); };
+if (scrPref('mode') === 'pad') scrSetMode('pad');
+$('#scrFsStop').onclick = () => scrStop();
 
 // Velocidade do trackpad (fica salva no aparelho).
 const SPEEDS = [1, 1.5, 2, 3, 4];
