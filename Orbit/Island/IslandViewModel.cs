@@ -263,11 +263,14 @@ public sealed partial class IslandViewModel : ObservableObject
             },
             GetClipboard = () => ui.InvokeAsync(() =>
                 !ClipboardReader.IsPrivateNow() && System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "").Task,
-            SetClipboardImage = bytes => ui.InvokeAsync(() =>
+            // Decodifica fora do Dispatcher (foto grande travaria a ilha); só o clipboard volta pra UI.
+            SetClipboardImage = async bytes =>
             {
-                try { return ClipboardReader.SetImage(PhotoDecoder.Decode(bytes)); }
+                System.Windows.Media.Imaging.BitmapSource img;
+                try { img = await Task.Run(() => PhotoDecoder.Decode(bytes)); }
                 catch (Exception ex) { Log.Warning(ex, "Foto do aparelho: não decodificou"); return false; }
-            }).Task,
+                return await ui.InvokeAsync(() => ClipboardReader.SetImage(img)).Task;
+            },
             Outbox = _outbox,
             SetClipboard = text => ui.InvokeAsync(() =>
             {

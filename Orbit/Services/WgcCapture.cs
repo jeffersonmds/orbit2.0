@@ -26,6 +26,7 @@ public static class WgcCapture
     private static bool _broken;             // sem suporte/placa: GDI até reiniciar
     private static DateTime _retryAt;        // falha ao abrir um monitor: tenta de novo depois
     private static Timer? _reaper;
+    private static volatile bool _deviceLost; // driver reiniciou/placa sumiu: recria o dispositivo D3D
 
     // JPEG do monitor; null = WGC indisponível (usa o GDI). Locked = PC bloqueado (tela congelada).
     public static byte[]? Capture(Rectangle bounds, ScreenQuality q, out bool locked)
@@ -62,6 +63,7 @@ public static class WgcCapture
         catch (Exception ex)
         {
             Log.Warning(ex, "Tela: quadro do WGC falhou");
+            _deviceLost = true;
             lock (Gate) { if (Open.Remove(bounds)) m.Dispose(); }
             return null;
         }
@@ -76,6 +78,7 @@ public static class WgcCapture
 
     private static IDirect3DDevice Device()
     {
+        if (_deviceLost) { _device = null; _deviceLost = false; }
         if (_device is not null) return _device;
         if (!GraphicsCaptureSession.IsSupported()) throw new NotSupportedException("WGC");
         Check(D3D11CreateDevice(IntPtr.Zero, 1 /* HARDWARE */, IntPtr.Zero, 0x20 /* BGRA */, IntPtr.Zero, 0, 7, out var d3d, out _, out var ctx));
@@ -152,25 +155,36 @@ public static class WgcCapture
 
         private void OnFrame(Direct3D11CaptureFramePool pool, object _)
         {
-            lock (_lock)
+            // Exceção aqui (driver reiniciou, placa perdida) sairia numa thread do sistema e derrubaria o
+            // Orbit: marca a captura como fechada; o próximo pedido recria ou cai no GDI.
+            try
             {
-                if (_disposed) return; // callback atrasado depois de fechar
-                var f = pool.TryGetNextFrame();
-                if (f is null) return;
-                if (f.ContentSize.Width != _size.Width || f.ContentSize.Height != _size.Height)
+                lock (_lock)
                 {
-                    // Resolução mudou: a superfície ainda tem o tamanho velho. Joga fora e espera um quadro do novo.
-                    _size = f.ContentSize;
-                    f.Dispose();
+                    if (_disposed) return; // callback atrasado depois de fechar
+                    var f = pool.TryGetNextFrame();
+                    if (f is null) return;
+                    if (f.ContentSize.Width != _size.Width || f.ContentSize.Height != _size.Height)
+                    {
+                        // Resolução mudou: a superfície ainda tem o tamanho velho. Joga fora e espera um quadro do novo.
+                        _size = f.ContentSize;
+                        f.Dispose();
+                        _latest?.Dispose();
+                        _latest = null;
+                        pool.Recreate(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _size);
+                        return;
+                    }
                     _latest?.Dispose();
-                    _latest = null;
-                    pool.Recreate(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _size);
-                    return;
+                    _latest = f;
+                    _version++;
+                    _lastFrame = DateTime.UtcNow;
                 }
-                _latest?.Dispose();
-                _latest = f;
-                _version++;
-                _lastFrame = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Tela: quadro do WGC falhou no recebimento");
+                _deviceLost = true;
+                Closed = true;
             }
         }
 

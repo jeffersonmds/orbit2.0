@@ -814,6 +814,10 @@ public static class Program
         bool threw = false;
         try { PhotoDecoder.Decode(new byte[] { 1, 2, 3 }); } catch { threw = true; }
         Check("foto: lixo não vira imagem", threw);
+        Check("foto: até 50 MP decodifica inteira", PhotoDecoder.DecodeWidth(8064, 6048) == 8064);
+        Check("foto: acima de 50 MP reduz mantendo a proporção", PhotoDecoder.DecodeWidth(10000, 10000) is var w10
+            && w10 < 10000 && (long)w10 * w10 <= PhotoDecoder.MaxPixels);
+        Check("foto: decodifica fora da thread da UI", Task.Run(() => PhotoDecoder.Decode(png)).Result is { IsFrozen: true, PixelWidth: 4 });
 
         // Rotas
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
