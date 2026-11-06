@@ -510,7 +510,7 @@ public sealed partial class IslandViewModel : ObservableObject
     // os dispositivos escolhidos, cujo toque abre "Recebidos do PC". name: nome amigável (só com 1 arquivo).
     public void SendFiles(IReadOnlyList<string> files, IReadOnlyList<TokenInfo> to, string? name = null)
     {
-        if (files.Count == 0) return;
+        if (files.Count == 0 || !DevicesOn) return; // aviso antigo na tela depois de esconder a aba
         var live = LiveRecipients(to, _tokens.List());
         if (live.Count == 0) { RaisePeek(new Peek("Dispositivo revogado", "Nada foi copiado", "dispositivos")); return; }
         // Copiar até 2 GB demora: a pílula mostra "Preparando 2/5" e um clique nela cancela.

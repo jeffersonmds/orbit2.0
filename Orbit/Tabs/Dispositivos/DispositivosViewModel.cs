@@ -96,6 +96,7 @@ public sealed partial class DispositivosViewModel : TabViewModel
     private async Task ApplyAsync(Task previous)
     {
         try { await previous; } catch { /* a anterior já logou */ }
+        if (!Enabled) SendToDevice.RemoveShortcut(); // desligada sem nunca ter subido: tira o "Enviar para" que sobrou
         if (Enabled == Server.Running) return;
         await (Enabled ? StartAsync() : StopAsync());
     }
