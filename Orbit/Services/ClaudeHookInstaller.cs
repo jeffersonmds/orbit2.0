@@ -9,14 +9,14 @@ namespace Orbit.Services;
 public static class ClaudeHookInstaller
 {
     private static readonly string[] Events =
-        { "SessionStart", "UserPromptSubmit", "Stop", "Notification", "SessionEnd" };
+        { "SessionStart", "UserPromptSubmit", "Stop", "Notification", "SessionEnd", "PermissionRequest" };
 
     public static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "settings.json");
 
     private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
 
-    // Garante um hook de comando em cada um dos 5 eventos, sem duplicar e sem
+    // Garante um hook de comando em cada evento de Events, sem duplicar e sem
     // apagar hooks já existentes (ex.: rtk, statusline). Muta `root` in-place.
     // Pura o bastante pra testar sem tocar em disco.
     public static void MergeHooks(JsonObject root, string command)
@@ -82,7 +82,7 @@ public static class ClaudeHookInstaller
         return false;
     }
 
-    // Pura: true só se TODOS os 5 eventos já têm esse comando registrado.
+    // Pura: true só se TODOS os eventos já têm esse comando registrado.
     // Usada pra mostrar na tela se a integração está de fato ativa.
     public static bool HasAllHooks(JsonObject root, string command)
     {

@@ -81,10 +81,30 @@
                                         <TextBlock Text="{Binding ProjectName}" FontSize="13" FontWeight="SemiBold"/>
                                         <TextBlock x:Name="status" Text="{Binding StatusText}" FontSize="12"
                                                    Foreground="{StaticResource InkLo}" TextTrimming="CharacterEllipsis"/>
+                                        <!-- Pedido de permissão esperando aqui (o terminal só mostra o diálogo se você focar nele). -->
+                                        <StackPanel x:Name="ask" Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
+                                            <Button Style="{StaticResource PlainButton}" Content="Permitir" Margin="0,0,12,0"
+                                                    Command="{Binding DataContext.AllowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button x:Name="always" Style="{StaticResource PlainButton}" Content="Sempre" Margin="0,0,12,0" Visibility="Collapsed"
+                                                    Command="{Binding DataContext.AlwaysAllowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Style="{StaticResource PlainButton}" Content="Negar"
+                                                    Command="{Binding DataContext.DenyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </DockPanel>
                             </Border>
                             <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Asking}" Value="True">
+                                    <Setter TargetName="ask" Property="Visibility" Value="Visible"/>
+                                    <Setter TargetName="status" Property="TextTrimming" Value="None"/>
+                                    <Setter TargetName="status" Property="TextWrapping" Value="Wrap"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding CanAlways}" Value="True">
+                                    <Setter TargetName="always" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding State}" Value="WaitingInput">
                                     <Setter TargetName="dot" Property="Fill" Value="{DynamicResource AccentBrush}"/>
                                     <Setter TargetName="status" Property="Foreground" Value="{DynamicResource AccentBrush}"/>

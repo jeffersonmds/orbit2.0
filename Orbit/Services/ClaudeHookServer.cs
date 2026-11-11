@@ -18,7 +18,14 @@ public sealed class ClaudeHookServer : IDisposable
 
     public event Action<ClaudeHookEvent>? HookReceived;
 
+    // PermissionRequest: o hook espera a resposta no mesmo pipe. null = sem decisão (diálogo no terminal).
+    public Func<ClaudeHookEvent, Task<PermissionAnswer?>>? PermissionRequested { get; set; }
+
+    private readonly string _pipeName;
     private CancellationTokenSource? _cts;
+
+    // pipeName só muda nos testes (o real pode estar ocupado pelo Orbit aberto).
+    public ClaudeHookServer(string pipeName = PipeName) => _pipeName = pipeName;
 
     public void Start()
     {
@@ -31,23 +38,31 @@ public sealed class ClaudeHookServer : IDisposable
         _ = ListenLoop(_cts.Token);
     }
 
+    // Protocolo: o cliente manda o JSON numa linha. Eventos comuns são tratados aqui, em ordem (Stop +
+    // Notification colados não trocam de lugar); PermissionRequest fica com a conexão aberta até a resposta,
+    // por isso o pipe aceita várias instâncias.
     private async Task ListenLoop(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
+            NamedPipeServerStream? server = null;
             try
             {
                 // ponytail: ACL padrão do pipe (sem PipeSecurity/CurrentUserOnly) — na prática só o
                 // dono do processo acessa em máquina de usuário único; numa máquina compartilhada,
                 // outra conta local poderia squatar o nome antes do Orbit subir. Risco aceito para
                 // widget desktop pessoal; upgrade path é PipeSecurity restrita se isso um dia importar.
-                using var server = new NamedPipeServerStream(PipeName, PipeDirection.In, 1,
+                server = new NamedPipeServerStream(_pipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                 await server.WaitForConnectionAsync(ct);
-                using var reader = new StreamReader(server);
-                string json = await reader.ReadToEndAsync();
-                var evt = ClaudeHookEvent.Parse(json);
-                HookReceived?.Invoke(evt);
+                string? line = await new StreamReader(server).ReadLineAsync(ct);
+                var evt = ClaudeHookEvent.Parse(line ?? "");
+                if (evt.HookEventName == "PermissionRequest")
+                {
+                    _ = AnswerAsync(server, evt);
+                    server = null; // a conexão agora é do AnswerAsync
+                }
+                else HookReceived?.Invoke(evt);
             }
             catch (OperationCanceledException)
             {
@@ -59,7 +74,25 @@ public sealed class ClaudeHookServer : IDisposable
                 // Erro repetido (ex.: pipe ocupado) não pode virar laço quente de CPU e log.
                 try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { }
             }
+            finally { server?.Dispose(); }
         }
+    }
+
+    private async Task AnswerAsync(NamedPipeServerStream server, ClaudeHookEvent evt)
+    {
+        try
+        {
+            var answer = PermissionRequested is { } ask ? await ask(evt) : null;
+            using var writer = new StreamWriter(server); // fecha o pipe junto
+            await writer.WriteLineAsync(ClaudePermission.Response(answer, evt.Suggestions));
+            await writer.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            // O Claude desistiu do hook (Esc, timeout): o pipe já fechou.
+            _log.Information(ex, "ClaudeHookServer: resposta de permissão não entregue");
+        }
+        finally { server.Dispose(); }
     }
 
     public void Dispose()

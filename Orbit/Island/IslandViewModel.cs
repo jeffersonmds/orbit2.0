@@ -181,6 +181,18 @@ public sealed partial class IslandViewModel : ObservableObject
         // O servidor roda em background: volta pra UI thread antes de mexer na aba.
         // ponytail: sem Dispose — o pipe morre com o processo.
         _claudeServer.HookReceived += evt => Application.Current?.Dispatcher.BeginInvoke(() => claude.HandleHookEvent(evt));
+        _claudeServer.PermissionRequested = evt => Application.Current is { } app
+            ? app.Dispatcher.InvokeAsync(() => claude.RequestPermission(evt)).Task.Unwrap()
+            : Task.FromResult<PermissionAnswer?>(null);
+        // Botões no alerta; se ele sumir antes, a aba Claude tem os mesmos no cartão da sessão.
+        claude.PermissionAsked += (info, answer, canAlways) =>
+        {
+            var actions = new List<PeekAction> { new("Permitir", () => answer(PermissionAnswer.Allow)) };
+            if (canAlways) actions.Add(new("Sempre", () => answer(PermissionAnswer.AlwaysAllow)));
+            actions.Add(new("Negar", () => answer(PermissionAnswer.Deny)));
+            Notify(new Peek($"Claude · {info.ProjectName}", info.StatusText, "claude")
+                { Duration = TimeSpan.FromSeconds(30), Actions = actions }, _settings.ClaudeSoundEnabled);
+        };
         _claudeServer.Start();
         // Clipboard: captura sempre por evento; aba escondida em Ajustes = não grava nada.
         Clips = new ClipsViewModel(ClipboardStore.FilePath, ClipboardStore.ImagesDir,

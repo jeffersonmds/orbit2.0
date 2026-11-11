@@ -1593,6 +1593,53 @@ public static class Program
             Check("contexto: texto em milhares", new ClaudeSessionInfo("s", "p", ClaudeSessionState.Running, null, ContextTokens: 242739).ContextText == "243k de contexto");
             Check("contexto: caminho vem do hook", ClaudeHookEvent.Parse("{\"hook_event_name\":\"Stop\",\"session_id\":\"x\",\"transcript_path\":\"C:\\\\t.jsonl\"}").TranscriptPath == @"C:\t.jsonl");
 
+            // Permissão respondida na ilha
+            const string permJson = "{\"hook_event_name\":\"PermissionRequest\",\"session_id\":\"p1\",\"cwd\":\"C:\\\\r\\\\proj\",\"orbit_host_pid\":77,"
+                + "\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rm -rf node_modules\",\"description\":\"x\"},"
+                + "\"permission_suggestions\":[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"rm -rf node_modules\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"}]}";
+            var perm = ClaudeHookEvent.Parse(permJson);
+            Check("permissão: lê ferramenta e comando", perm.PermissionText == "Permitir Bash: rm -rf node_modules" && perm.Suggestions is not null);
+            Check("permissão: sem decisão = saída vazia", ClaudePermission.Response(null, perm.Suggestions) == "");
+            Check("permissão: negar", ClaudePermission.Response(PermissionAnswer.Deny, null).Contains("\"behavior\":\"deny\""));
+            var always = ClaudePermission.Response(PermissionAnswer.AlwaysAllow, perm.Suggestions);
+            Check("permissão: sempre aplica a sugestão", always.Contains("\"behavior\":\"allow\"") && always.Contains("\"updatedPermissions\":[{\"type\":\"addRules\"")
+                && always.Contains("\"hookEventName\":\"PermissionRequest\""));
+            Check("permissão: permitir não grava regra", !ClaudePermission.Response(PermissionAnswer.Allow, perm.Suggestions).Contains("updatedPermissions"));
+
+            var cvm = new Orbit.Tabs.Claude.ClaudeViewModel();
+            cvm.HandleHookEvent(new ClaudeHookEvent("SessionStart", "p1", @"C:\r\proj", null, 77));
+            Action<PermissionAnswer>? reply = null;
+            cvm.PermissionAsked += (_, a, _) => reply = a;
+            var ask1 = cvm.RequestPermission(perm);
+            Check("permissão: pergunta na ilha e mostra botões", reply is not null && !ask1.IsCompleted && cvm.Sessions[0].Asking && cvm.Sessions[0].CanAlways);
+            reply!(PermissionAnswer.Allow);
+            Check("permissão: resposta volta pro hook", ask1.Wait(2000) && ask1.Result == PermissionAnswer.Allow
+                && cvm.Sessions[0].State == ClaudeSessionState.Running && !cvm.Sessions[0].Asking);
+            var ask2 = cvm.RequestPermission(perm);
+            cvm.OnForeground(77);
+            Check("permissão: focar o terminal devolve o diálogo pra ele", ask2.Wait(2000) && ask2.Result is null);
+            Check("permissão: olhando o terminal nem pergunta", cvm.RequestPermission(perm) is { IsCompleted: true, Result: null });
+            using (var hookServer = new ClaudeHookServer("Orbit2ClaudeHooks-teste-" + Environment.ProcessId))
+            {
+                ClaudeHookEvent? got = null;
+                hookServer.PermissionRequested = e => { got = e; return Task.FromResult<PermissionAnswer?>(PermissionAnswer.Deny); };
+                hookServer.Start();
+                using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", "Orbit2ClaudeHooks-teste-" + Environment.ProcessId, System.IO.Pipes.PipeDirection.InOut);
+                pipe.Connect(2000);
+                var w = new StreamWriter(pipe);
+                w.WriteLine(permJson);
+                w.Flush();
+                var line = new StreamReader(pipe).ReadLine();
+                Check("permissão: pipe devolve a decisão ao hook", got?.ToolName == "Bash" && line == ClaudePermission.Response(PermissionAnswer.Deny, null));
+            }
+            var cvm2 = new Orbit.Tabs.Claude.ClaudeViewModel();
+            _ = cvm2.RequestPermission(perm);
+            Check("permissão: sessão aberta antes do Orbit ganha cartão com botões", cvm2.Sessions.Count == 1 && cvm2.Sessions[0].Asking && cvm2.Sessions[0].ProjectName == "proj");
+
+            Check("bluetooth: níveis de bateria fraca", BluetoothBattery.LowLevel(80) == 0 && BluetoothBattery.LowLevel(20) == 1 && BluetoothBattery.LowLevel(10) == 2);
+            Check("bluetooth: aviso de conexão com bateria", BluetoothBattery.ConnectedSignal("QCY", 80) is { Detail: "Bateria 80%", Level: 0.8 }
+                && BluetoothBattery.ConnectedSignal("QCY", null) is { Detail: null, Level: null });
+
             var now = new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
             var five = ClaudeUsageMath.FiveHours;
             Check("ritmo: no começo não opina", ClaudeUsageMath.Describe(new ClaudeWindow(40, now.AddMinutes(295)), five, now) == "reseta em 4h 55m");

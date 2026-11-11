@@ -18,7 +18,14 @@ public sealed partial class ClaudeViewModel : TabViewModel
     // Cada consulta abre um `claude`, e o endpoint por trás dele tem rate limit.
     private static readonly TimeSpan UsageMaxAge = TimeSpan.FromMinutes(5);
 
+    // Abaixo dos 600 s do hook no Claude: depois disso o terminal assume de qualquer jeito.
+    private static readonly TimeSpan PermissionMaxWait = TimeSpan.FromMinutes(9);
+
     private readonly Dictionary<string, ClaudeSessionInfo> _sessions = new();
+
+    // Pedido de permissão esperando resposta na ilha (o hook fica parado no pipe até lá).
+    private sealed record Pending(string SessionId, int? HostPid, string? Suggestions, TaskCompletionSource<PermissionAnswer?> Answer);
+    private readonly List<Pending> _pending = new();
     private readonly Func<Task<ClaudeUsage?>>? _fetchUsage;
 
     private ClaudeUsage? _usage;
@@ -44,6 +51,9 @@ public sealed partial class ClaudeViewModel : TabViewModel
     // Stop/Notification de uma sessão conhecida.
     public event Action<ClaudeSessionInfo>? Attention;
 
+    // Pedido de permissão: sessão, como responder e se dá pra "sempre permitir".
+    public event Action<ClaudeSessionInfo, Action<PermissionAnswer>, bool>? PermissionAsked;
+
     // Título e detalhe de um aviso de limite do plano.
     public event Action<string, string>? LimitReached;
 
@@ -52,6 +62,9 @@ public sealed partial class ClaudeViewModel : TabViewModel
 
     public void HandleHookEvent(ClaudeHookEvent evt)
     {
+        // A sessão seguiu (Esc no terminal, prompt novo, fim): pedido antigo dela não vale mais.
+        if (evt.HookEventName != "PermissionRequest")
+            foreach (var p in _pending.Where(p => p.SessionId == evt.SessionId).ToList()) Resolve(p, null);
         ClaudeSessionReducer.Apply(_sessions, evt);
         // já está olhando o terminal dessa sessão: nem aviso nem pílula (seria ruído)
         bool looking = evt.HostPid is not null && evt.HostPid == ForegroundPid;
@@ -67,6 +80,42 @@ public sealed partial class ClaudeViewModel : TabViewModel
         }
     }
 
+    // UI thread. null = sem decisão: o Claude mostra o diálogo no terminal. Olhando o terminal = nem pergunta
+    // aqui; focar o terminal depois também devolve a vez pra ele (OnForeground).
+    public async Task<PermissionAnswer?> RequestPermission(ClaudeHookEvent evt)
+    {
+        // Sessão que começou antes do Orbit abrir: entra na lista agora, senão o cartão com os botões não existiria.
+        if (!_sessions.ContainsKey(evt.SessionId)) ClaudeSessionReducer.Apply(_sessions, evt with { HookEventName = "SessionStart" });
+        HandleHookEvent(evt);
+        if (evt.HostPid is not null && evt.HostPid == ForegroundPid) return null;
+        var pending = new Pending(evt.SessionId, evt.HostPid, evt.Suggestions, new(TaskCreationOptions.RunContinuationsAsynchronously));
+        _pending.Add(pending);
+        Publish();
+        if (_sessions.TryGetValue(evt.SessionId, out var info))
+            PermissionAsked?.Invoke(info, a => Resolve(pending, a), evt.Suggestions is not null);
+        if (await Task.WhenAny(pending.Answer.Task, Task.Delay(PermissionMaxWait)) != pending.Answer.Task) Resolve(pending, null);
+        return await pending.Answer.Task;
+    }
+
+    private void Resolve(Pending p, PermissionAnswer? answer)
+    {
+        if (!_pending.Remove(p)) return; // já respondido (botão do alerta depois de focar o terminal etc.)
+        p.Answer.TrySetResult(answer);
+        // Respondeu aqui: a ferramenta roda, a sessão volta a "Rodando". Sem resposta o diálogo está no terminal.
+        if (answer is not null && _sessions.TryGetValue(p.SessionId, out var s))
+            _sessions[p.SessionId] = s with { State = ClaudeSessionState.Running, Message = null };
+        Publish();
+    }
+
+    [RelayCommand] private void Allow(ClaudeSessionInfo s) => Answer(s, PermissionAnswer.Allow);
+    [RelayCommand] private void AlwaysAllow(ClaudeSessionInfo s) => Answer(s, PermissionAnswer.AlwaysAllow);
+    [RelayCommand] private void Deny(ClaudeSessionInfo s) => Answer(s, PermissionAnswer.Deny);
+
+    private void Answer(ClaudeSessionInfo s, PermissionAnswer answer)
+    {
+        if (_pending.FirstOrDefault(p => p.SessionId == s.SessionId) is { } p) Resolve(p, answer);
+    }
+
     private async Task RefreshContext(string sessionId, string transcriptPath)
     {
         var tokens = await Task.Run(() => ClaudeUsageClient.ReadContextTokens(transcriptPath));
@@ -79,6 +128,7 @@ public sealed partial class ClaudeViewModel : TabViewModel
     public void OnForeground(int pid)
     {
         ForegroundPid = pid;
+        foreach (var p in _pending.Where(p => p.HostPid == pid).ToList()) Resolve(p, null);
         if (ClaudeSessionReducer.MarkSeen(_sessions, pid)) Publish();
     }
 
@@ -86,6 +136,7 @@ public sealed partial class ClaudeViewModel : TabViewModel
     [RelayCommand]
     private void Dismiss(ClaudeSessionInfo session)
     {
+        foreach (var p in _pending.Where(p => p.SessionId == session.SessionId).ToList()) Resolve(p, null);
         _sessions.Remove(session.SessionId);
         Publish();
     }
@@ -93,7 +144,9 @@ public sealed partial class ClaudeViewModel : TabViewModel
     private void Publish()
     {
         Sessions.Clear();
-        foreach (var s in _sessions.Values) Sessions.Add(s);
+        foreach (var s in _sessions.Values)
+            Sessions.Add(_pending.FirstOrDefault(p => p.SessionId == s.SessionId) is { } p
+                ? s with { Asking = true, CanAlways = p.Suggestions is not null } : s);
         ActivityText = BuildActivity(_sessions.Values);
     }
 

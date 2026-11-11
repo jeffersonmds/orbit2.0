@@ -13,13 +13,13 @@ using Serilog;
 
 namespace Orbit.Services;
 
-public enum SignalKind { Volume, AudioDevice, Power, CapsLock, Network }
+public enum SignalKind { Volume, AudioDevice, Power, CapsLock, Network, Bluetooth }
 
 // Um evento do sistema pra pílula. Level (0..1) desenha barra; Key = Kind (o novo substitui o anterior).
 public sealed record SystemSignal(SignalKind Kind, string Title, string? Detail, double? Level = null);
 
 // Eventos do sistema que a Dynamic Island mostra: volume, saída de som (fone ↔ caixa), carregador,
-// Caps Lock e internet. Por evento do Windows sempre que existe; só o Caps Lock é conferido a cada
+// Caps Lock, internet e fone Bluetooth (BluetoothBattery). Por evento do Windows sempre que existe; só o Caps Lock é conferido a cada
 // 300 ms (avisar a troca exigiria um gancho global de teclado — coisa de keylogger, que antivírus odeiam).
 // Nada dispara na abertura: o estado inicial é lido em silêncio.
 public sealed class SystemSignals : IDisposable, IMMNotificationClient
@@ -33,6 +33,7 @@ public sealed class SystemSignals : IDisposable, IMMNotificationClient
     private string? _network; // "Wi-Fi Casa", "Cabo", null = sem internet
     private Timer? _capsTimer, _netDebounce;
     private bool _started;
+    private readonly BluetoothBattery _bluetooth = new();
 
     public void Start()
     {
@@ -45,6 +46,8 @@ public sealed class SystemSignals : IDisposable, IMMNotificationClient
         _network = NetworkName();
         NetworkChange.NetworkAvailabilityChanged += (_, _) => DebounceNetwork();
         NetworkChange.NetworkAddressChanged += (_, _) => DebounceNetwork();
+        _bluetooth.Raised += s => Raised?.Invoke(s);
+        _bluetooth.Start();
         _started = true;
     }
 
@@ -178,6 +181,7 @@ public sealed class SystemSignals : IDisposable, IMMNotificationClient
     {
         _capsTimer?.Dispose();
         _netDebounce?.Dispose();
+        _bluetooth.Dispose();
         SystemEvents.PowerModeChanged -= OnPower;
         try { _enumerator.UnregisterEndpointNotificationCallback(this); } catch { }
         _output?.Dispose();

@@ -105,7 +105,7 @@ public sealed partial class AjustesViewModel : TabViewModel
         Sinais = new[]
         {
             (SignalKind.Volume, "Volume"), (SignalKind.AudioDevice, "Saída de som"), (SignalKind.Power, "Carregador"),
-            (SignalKind.CapsLock, "Caps Lock"), (SignalKind.Network, "Internet"),
+            (SignalKind.CapsLock, "Caps Lock"), (SignalKind.Network, "Internet"), (SignalKind.Bluetooth, "Fone Bluetooth"),
         }.Select(k => new SignalToggle(k.Item2, !settings.MutedSignals.Contains(k.Item1.ToString()), on =>
         {
             var name = k.Item1.ToString();

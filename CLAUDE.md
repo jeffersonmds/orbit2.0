@@ -96,9 +96,14 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   som, carregador, Caps Lock, internet) e a oferta de print (`ScreenshotWatcher`) vão direto por `RaisePeek`
   — não podem virar push nos aparelhos nem toast em tela cheia. `Peek.Key` igual substitui o alerta da vez
   (girar o volume não enfileira); `Duration`, `Level` (barra) e `Actions` (botões no alerta) são opcionais.
+  Fone Bluetooth (`BluetoothBattery`, dentro de `SystemSignals`): conectar/desconectar por DeviceWatcher dos pareados;
+  bateria = propriedade PnP `{104EA319…} 2` do container, lida a cada 5 min só com aparelho conectado (aviso a 20% e 10%).
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
 - **Claude "visto"**: o hook acrescenta `orbit_host_pid` (1º processo pai com janela: terminal/VS Code); focar
   essa janela tira a sessão da pílula (continua na aba); aviso novo volta. Já olhando = nem alerta.
+- **Permissão do Claude na ilha**: hook `PermissionRequest`; o `--claude-hook` fica no pipe (InOut, várias instâncias,
+  uma linha por mensagem) esperando `ClaudePermission.Response`. Alerta com Permitir/Sempre/Negar e os mesmos botões no
+  cartão da sessão. Olhando o terminal (ou focando depois) = sem decisão, o diálogo normal aparece lá.
 - **Cota do Claude** (`Services/ClaudeUsage`, `ClaudeUsageClient`): pedido `get_usage` (experimental) ao `claude` do
   PATH, sem prompt e sem hooks, igual ao painel do VS Code; nunca ler token nem chamar a API direto. Status line não
   serve: o painel do VS Code não a executa. Cada consulta abre um processo: só no `Stop` do hook e ao abrir a aba, no

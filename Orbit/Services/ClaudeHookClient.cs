@@ -22,31 +22,43 @@ public static class ClaudeHookClient
         {
             // ponytail: assume stdin sempre redirecionado pelo hook runner do Claude Code;
             // uma chamada manual/interativa travaria aqui.
-            string json = AddHost(Console.In.ReadToEnd());
-            using var client = new NamedPipeClientStream(".", ClaudeHookServer.PipeName, PipeDirection.Out);
-            // 2 s: o servidor atende um por vez; com eventos colados (Stop + Notification) 300 ms perdia o 2º.
+            string json = AddHost(Console.In.ReadToEnd(), out bool permission);
+            using var client = new NamedPipeClientStream(".", ClaudeHookServer.PipeName, PipeDirection.InOut);
+            // 2 s: com eventos colados (Stop + Notification) 300 ms perdia o 2º.
             client.Connect(2000);
-            using var writer = new StreamWriter(client);
-            writer.Write(json);
+            var writer = new StreamWriter(client); // sem using: fecharia o pipe antes da resposta
+            writer.WriteLine(json);
             writer.Flush();
+            if (!permission) return;
+            // Pedido de permissão: espera a ilha (ou o "sem decisão" quando você foca o terminal). O timeout
+            // do hook no Claude (600 s) mata este processo se ninguém responder.
+            string? answer = new StreamReader(client).ReadLine();
+            if (!string.IsNullOrEmpty(answer))
+            {
+                Console.Out.Write(answer);
+                Console.Out.Flush();
+            }
         }
         catch
         {
             // Sem Orbit rodando, timeout, pipe ocupado etc — o hook do Claude Code
-            // não pode falhar/travar por causa disso.
+            // não pode falhar/travar por causa disso. Sem saída = o Claude segue o fluxo normal.
         }
     }
 
-    // Acrescenta o pid do terminal/editor ao JSON (o Claude não manda). Sem achar, manda como veio.
-    private static string AddHost(string json)
+    // Acrescenta o pid do terminal/editor ao JSON (o Claude não manda) e devolve numa linha só (o pipe
+    // separa por linha). Sem achar, manda como veio.
+    private static string AddHost(string json, out bool permission)
     {
+        permission = false;
         try
         {
-            if (HostPid() is not { } host || JsonNode.Parse(json) is not JsonObject obj) return json;
-            obj[HostPidField] = host;
+            if (JsonNode.Parse(json) is not JsonObject obj) return json.ReplaceLineEndings(" ");
+            permission = obj["hook_event_name"]?.GetValue<string>() == "PermissionRequest";
+            if (HostPid() is { } host) obj[HostPidField] = host;
             return obj.ToJsonString();
         }
-        catch { return json; }
+        catch { return json.ReplaceLineEndings(" "); }
     }
 
     // Sobe pelos processos pais (hook ← claude ← shell ← terminal) até o 1º com janela visível.
