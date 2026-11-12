@@ -26,6 +26,7 @@ public sealed partial class HojeViewModel : TabViewModel
     public WeatherViewModel Weather { get; }
     public PomodoroViewModel Pomodoro { get; }
     public QuickTimerViewModel Timer { get; }
+    public AgendaViewModel Agenda { get; }
     public ObservableCollection<WeekDay> Week { get; } = new();
     public ObservableCollection<TodoItem> Todos { get; } = new();
 
@@ -34,8 +35,9 @@ public sealed partial class HojeViewModel : TabViewModel
     [ObservableProperty] private string _newTodo = "";
     [ObservableProperty] private string _todoCounter = "0/0";
 
-    public HojeViewModel(ApiService api, PomodoroViewModel pomodoro, QuickTimerViewModel timer, string todosPath)
+    public HojeViewModel(ApiService api, PomodoroViewModel pomodoro, QuickTimerViewModel timer, string todosPath, AgendaViewModel agenda)
     {
+        Agenda = agenda;
         Timer = timer;
         Weather = new WeatherViewModel(api);
         Pomodoro = pomodoro;
@@ -54,6 +56,7 @@ public sealed partial class HojeViewModel : TabViewModel
             return;
         }
         UpdateClock();
+        Agenda.Touch();
         Week.Clear();
         foreach (var d in BuildWeek(DateTime.Today)) Week.Add(d);
         _clock.Start();

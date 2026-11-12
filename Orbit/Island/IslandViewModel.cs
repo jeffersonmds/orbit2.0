@@ -163,7 +163,17 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke(),
             SelfUpdate.CheckAsync, UpdateNowAsync));
-        Register(new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath));
+        var agenda = new AgendaViewModel(_api, settings);
+        Register(new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath, agenda));
+        // 5 min antes: alerta com "Entrar" se o evento tem link de reunião.
+        agenda.Reminder += e => Notify(new Peek($"Em 5 min · {e.Title}", e.When, "hoje")
+        {
+            Duration = TimeSpan.FromSeconds(15),
+            Actions = e.JoinUrl is { } join
+                ? new[] { new PeekAction("Entrar", () => { try { Process.Start(new ProcessStartInfo(join) { UseShellExecute = true }); } catch { } }) }
+                : Array.Empty<PeekAction>(),
+        }, sound: true);
+        agenda.Start();
         Register(new ControlesViewModel(NowPlaying));
         Register(new StatsViewModel());
         Register(new MercadoViewModel(_api, settings));

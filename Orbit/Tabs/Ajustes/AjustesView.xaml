@@ -72,7 +72,14 @@
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDePrint}" Content="Print novo: aviso com abrir, ler texto e mandar"/>
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDeDownload}" Content="Download concluído: aviso com abrir e pasta"/>
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AvisoDeChuva}" Content="Avisar quando for chover"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AvisoDeAgenda}" Content="Avisar 5 min antes de evento da agenda"/>
             </WrapPanel>
+            <!-- Google: Configurações da agenda → "Endereço secreto no formato iCal". Outlook/Teams: Calendário →
+                 Calendários compartilhados → Publicar → link ICS. -->
+            <TextBlock Text="Agenda (links iCal, um por linha)" Style="{StaticResource Label}"/>
+            <TextBox Style="{StaticResource Field}" Margin="0,0,0,10" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="34"
+                     Text="{Binding AgendaLinks, UpdateSourceTrigger=LostFocus}"
+                     ToolTip="Google: endereço secreto no formato iCal. Outlook/Teams: publicar calendário → link ICS."/>
             <TextBlock Text="Pomodoro (minutos)" Style="{StaticResource Label}"/>
             <WrapPanel Margin="0,0,0,10">
                 <StackPanel Margin="0,0,10,0">

@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
+    <PackageReference Include="Ical.Net" Version="5.2.4" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
@@ -36,8 +37,7 @@
     <!-- PWA da ponte: servido de <saída>\wwwroot pelo Kestrel. -->
     <!-- Update não serve: lá %(RecursiveDir) é relativo à raiz do projeto (vira wwwroot\Bridge\wwwroot\...). -->
     <None Remove="Bridge\wwwroot\**\*" />
-    <None Include="Bridge\wwwroot\**\*" CopyToOutputDirectory="PreserveNewest"
-          Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" />
+    <None Include="Bridge\wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- Autoatualização (Services/SelfUpdate): o build grava de onde veio e de qual commit, pra o Orbit
@@ -47,8 +47,7 @@
   </ItemGroup>
   <Target Name="OrbitCommit" BeforeTargets="AddSourceRevisionToInformationalVersion">
     <!-- "6ac9043" ou "6ac9043-dirty" (alterações não commitadas); sem git, fica sem commit -->
-    <Exec Command="git describe --always --dirty --abbrev=7" ConsoleToMSBuild="true" IgnoreExitCode="true"
-          StandardOutputImportance="low" StandardErrorImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
+    <Exec Command="git describe --always --dirty --abbrev=7" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
       <Output TaskParameter="ConsoleOutput" PropertyName="SourceRevisionId" />
       <Output TaskParameter="ExitCode" PropertyName="OrbitGitExit" />
     </Exec>

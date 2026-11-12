@@ -113,6 +113,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -141,12 +142,42 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <DockPanel Grid.Row="1" Margin="0,0,0,6">
+            <!-- Agenda (links iCal de Ajustes): só aparece com link configurado. -->
+            <StackPanel Grid.Row="1" DataContext="{Binding Agenda}" Margin="0,0,0,10"
+                        Visibility="{Binding Enabled, Converter={StaticResource BoolToVis}}">
+                <DockPanel Margin="0,0,0,4">
+                    <TextBlock Text="{Binding Status}" DockPanel.Dock="Right" FontSize="11" Foreground="#FF9F0A"/>
+                    <TextBlock Text="Agenda" Style="{StaticResource Label}" Margin="0"/>
+                </DockPanel>
+                <TextBlock Text="Nada mais hoje" FontSize="12" Foreground="{StaticResource InkLo}"
+                           Visibility="{Binding NothingLeft, Converter={StaticResource BoolToVis}}"/>
+                <ItemsControl ItemsSource="{Binding Today}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,1">
+                                <Button x:Name="join" DockPanel.Dock="Right" Style="{StaticResource PlainButton}" Content="Entrar" FontSize="11"
+                                        Visibility="Collapsed" VerticalAlignment="Center"
+                                        Command="{Binding DataContext.JoinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}"/>
+                                <TextBlock Text="{Binding When}" Width="78" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding HasJoin}" Value="True">
+                                    <Setter TargetName="join" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <DockPanel Grid.Row="2" Margin="0,0,0,6">
                 <TextBlock Text="{Binding TodoCounter}" DockPanel.Dock="Right" FontSize="12" Foreground="{StaticResource InkLo}"/>
                 <TextBlock Text="Tarefas" Style="{StaticResource Label}" Margin="0"/>
             </DockPanel>
 
-            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Hidden">
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Hidden">
                 <ItemsControl ItemsSource="{Binding Todos}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -181,7 +212,7 @@
                 </ItemsControl>
             </ScrollViewer>
 
-            <TextBox Grid.Row="3" Style="{StaticResource Field}" Margin="0,8,0,0"
+            <TextBox Grid.Row="4" Style="{StaticResource Field}" Margin="0,8,0,0"
                      Text="{Binding NewTodo, UpdateSourceTrigger=PropertyChanged}">
                 <TextBox.InputBindings>
                     <KeyBinding Key="Enter" Command="{Binding AddTodoCommand}"/>

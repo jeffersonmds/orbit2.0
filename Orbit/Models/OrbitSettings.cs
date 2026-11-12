@@ -44,6 +44,12 @@ public sealed class OrbitSettings
     // Aviso de chuva chegando (ilha + aparelhos), pela previsão de 15 em 15 min.
     public bool RainAlertEnabled { get; set; } = true;
 
+    // Agenda: links iCal (Google "endereço secreto", Outlook "publicar calendário"), um por linha em Ajustes.
+    // ponytail: o link dá leitura da agenda a quem o tiver; fica aqui como o resto das preferências (pasta do
+    // próprio usuário). Cifrar com DPAPI não protegeria de nada que roda como você.
+    public List<string> CalendarUrls { get; set; } = new();
+    public bool CalendarAlertEnabled { get; set; } = true;
+
     // Pomodoro (defaults = clássico).
     public int PomodoroFocusMinutes { get; set; } = 25;
     public int PomodoroShortBreakMinutes { get; set; } = 5;

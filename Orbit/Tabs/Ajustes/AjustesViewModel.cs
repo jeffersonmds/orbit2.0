@@ -83,6 +83,8 @@ public sealed partial class AjustesViewModel : TabViewModel
     public IReadOnlyList<SignalToggle> Sinais { get; }
     [ObservableProperty] private bool _ofertaDePrint;
     [ObservableProperty] private bool _ofertaDeDownload;
+    [ObservableProperty] private bool _avisoDeAgenda;
+    [ObservableProperty] private string _agendaLinks = "";
     [ObservableProperty] private bool _avisoDeChuva;
     [ObservableProperty] private bool _somClaude;
 
@@ -115,6 +117,8 @@ public sealed partial class AjustesViewModel : TabViewModel
         })).ToList();
         OfertaDePrint = settings.ScreenshotOfferEnabled;
         OfertaDeDownload = settings.DownloadOfferEnabled;
+        AvisoDeAgenda = settings.CalendarAlertEnabled;
+        AgendaLinks = string.Join(Environment.NewLine, settings.CalendarUrls);
         AvisoDeChuva = settings.RainAlertEnabled;
         FocoTexto = settings.PomodoroFocusMinutes.ToString();
         PausaTexto = settings.PomodoroShortBreakMinutes.ToString();
@@ -243,6 +247,22 @@ public sealed partial class AjustesViewModel : TabViewModel
     {
         if (_settings.RainAlertEnabled == value) return;
         _settings.RainAlertEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    partial void OnAvisoDeAgendaChanged(bool value)
+    {
+        if (_settings.CalendarAlertEnabled == value) return;
+        _settings.CalendarAlertEnabled = value;
+        SettingsStore.Save(_settings);
+    }
+
+    // A aba Hoje percebe a troca de links sozinha (AgendaViewModel.Touch).
+    partial void OnAgendaLinksChanged(string value)
+    {
+        var urls = value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (urls.SequenceEqual(_settings.CalendarUrls)) return;
+        _settings.CalendarUrls = urls;
         SettingsStore.Save(_settings);
     }
 

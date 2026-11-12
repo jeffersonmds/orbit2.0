@@ -24,6 +24,17 @@ public class ApiService
         return http;
     }
 
+    // ---- Texto cru de uma URL (agenda .ics). null = falhou ----
+    public async Task<string?> GetTextAsync(string url)
+    {
+        try { return await Http.GetStringAsync(url); }
+        catch (Exception ex)
+        {
+            _log.Warning("Falha ao baixar {Host}: {Erro}", Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "?", ex.Message); // URL inteira é segredo
+            return null;
+        }
+    }
+
     // ---- Localização por IP (ip-api.com, grátis, sem chave) ----
     public async Task<LocationResult?> GetLocationAsync()
     {

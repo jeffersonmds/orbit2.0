@@ -1636,6 +1636,37 @@ public static class Program
             _ = cvm2.RequestPermission(perm);
             Check("permissão: sessão aberta antes do Orbit ganha cartão com botões", cvm2.Sessions.Count == 1 && cvm2.Sessions[0].Asking && cvm2.Sessions[0].ProjectName == "proj");
 
+            // Agenda (.ics): recorrência, fuso IANA (Google), fuso do Windows (Outlook), dia todo e link de reunião
+            const string ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+                + "BEGIN:VEVENT\r\nUID:1\r\nSUMMARY:Daily\r\nDTSTART;TZID=America/Sao_Paulo:20261102T093000\r\nDTEND;TZID=America/Sao_Paulo:20261102T094500\r\n"
+                + "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\r\nDESCRIPTION:Entrar: https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0?context=1\\nfim\r\nEND:VEVENT\r\n"
+                + "BEGIN:VEVENT\r\nUID:2\r\nSUMMARY:Feriado\r\nDTSTART;VALUE=DATE:20261111\r\nDTEND;VALUE=DATE:20261112\r\nEND:VEVENT\r\n"
+                + "BEGIN:VEVENT\r\nUID:3\r\nSUMMARY:Outlook\r\nDTSTART;TZID=E. South America Standard Time:20261111T140000\r\nDTEND;TZID=E. South America Standard Time:20261111T150000\r\n"
+                + "LOCATION:https://meet.google.com/abc-defg-hij\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+            var day = new DateTime(2026, 11, 11);
+            var evs = Agenda.Parse(ics, day, day.AddDays(1));
+            var daily = evs.FirstOrDefault(e => e.Title == "Daily");
+            Check("agenda: recorrência cai no dia certo", daily is not null && daily.Start == new DateTime(2026, 11, 11, 12, 30, 0, DateTimeKind.Utc).ToLocalTime()
+                && daily.When.EndsWith("–" + new DateTime(2026, 11, 11, 12, 45, 0, DateTimeKind.Utc).ToLocalTime().ToString("HH:mm")));
+            Check("agenda: link do Teams na descrição", daily?.JoinUrl == "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0?context=1");
+            Check("agenda: fuso do Windows (Outlook)", evs.Any(e => e.Title == "Outlook" && e.Start == new DateTime(2026, 11, 11, 17, 0, 0, DateTimeKind.Utc).ToLocalTime()
+                && e.JoinUrl == "https://meet.google.com/abc-defg-hij"));
+            Check("agenda: dia todo não muda de dia", evs.Any(e => e.Title == "Feriado" && e.AllDay && e.Start == day && e.When == "Dia todo"));
+            Check("agenda: só o intervalo pedido", evs.Count == 3 && Agenda.Parse(ics, day.AddDays(4), day.AddDays(5)).Count == 0); // 15/11 = domingo
+            Check("agenda: .ics inválido = vazio", Agenda.Parse("lixo", day, day.AddDays(1)).Count == 0);
+            Check("agenda: webcal vira https; file recusado", Agenda.NormalizeUrl(" webcal://x.com/a.ics ") == "https://x.com/a.ics" && Agenda.NormalizeUrl("file:///c:/a.ics") is null);
+            var ev10 = new AgendaEvent("A", day.AddHours(10), day.AddHours(11), false, null);
+            var ev14 = new AgendaEvent("B", day.AddHours(14), day.AddHours(15), false, null);
+            var allDay = new AgendaEvent("F", day, day.AddDays(1), true, null);
+            var seen = new HashSet<string>();
+            Check("agenda: aviso 5 min antes do próximo", Agenda.NextReminder(new[] { ev14, ev10, allDay }, seen, day.AddHours(8), TimeSpan.FromMinutes(5)) is { } r1
+                && r1.Event == ev10 && r1.At == day.AddHours(10).AddMinutes(-5));
+            Check("agenda: em cima da hora avisa já", Agenda.NextReminder(new[] { ev10 }, seen, day.AddHours(10).AddMinutes(-2), TimeSpan.FromMinutes(5)) is { } r2
+                && r2.At == day.AddHours(10).AddMinutes(-2));
+            seen.Add(ev10.Key);
+            Check("agenda: avisado não repete", Agenda.NextReminder(new[] { ev10, ev14 }, seen, day.AddHours(9), TimeSpan.FromMinutes(5))?.Event == ev14);
+            Check("agenda: lista tira o que acabou", Agenda.Remaining(new[] { ev10, ev14, allDay }, day.AddHours(12), 4) is { Count: 2 } rest && rest[0] == allDay && rest[1] == ev14);
+
             Check("bluetooth: níveis de bateria fraca", BluetoothBattery.LowLevel(80) == 0 && BluetoothBattery.LowLevel(20) == 1 && BluetoothBattery.LowLevel(10) == 2);
             Check("bluetooth: aviso de conexão com bateria", BluetoothBattery.ConnectedSignal("QCY", 80) is { Detail: "Bateria 80%", Level: 0.8 }
                 && BluetoothBattery.ConnectedSignal("QCY", null) is { Detail: null, Level: null });
