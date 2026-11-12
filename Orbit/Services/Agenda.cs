@@ -12,7 +12,8 @@ namespace Orbit.Services;
 // Evento já no horário local. JoinUrl = link da reunião (Teams/Meet/Zoom) achado no local, URL ou descrição.
 public sealed record AgendaEvent(string Title, DateTime Start, DateTime End, bool AllDay, string? JoinUrl)
 {
-    public string When => AllDay ? "Dia todo" : $"{Start:HH:mm}–{End:HH:mm}";
+    public bool IsNow { get; init; }
+    public string When => AllDay ? "Dia todo" : IsNow ? $"agora–{End:HH:mm}" : $"{Start:HH:mm}–{End:HH:mm}";
     public bool HasJoin => JoinUrl is not null;
     public string Key => $"{Title}|{Start:o}";
 }
@@ -76,7 +77,24 @@ public static class Agenda
         return (next, at < now ? now : at);
     }
 
-    // Lista da aba Hoje: o que ainda não acabou hoje (dia todo primeiro, por ser o que vem antes na ordem).
-    public static List<AgendaEvent> Remaining(IEnumerable<AgendaEvent> events, DateTime now, int max) =>
-        events.Where(e => e.Start.Date == now.Date && (e.AllDay || e.End > now)).OrderBy(e => e.Start).Take(max).ToList();
+    // Dia que o evento ocupa (dia todo de vários dias conta em cada um).
+    public static bool Covers(AgendaEvent e, DateTime day) =>
+        e.Start.Date == day.Date || (e.AllDay && e.Start.Date <= day.Date && day.Date < e.End.Date);
+
+    // Lista da aba Hoje para `day`: hoje tira o que já acabou e marca o que está rolando; outro dia mostra tudo.
+    public static List<AgendaEvent> OfDay(IEnumerable<AgendaEvent> events, DateTime day, DateTime now, int max) =>
+        events.Where(e => Covers(e, day) && (day.Date != now.Date || e.AllDay || e.End > now))
+            .OrderBy(e => e.Start).Take(max)
+            .Select(e => !e.AllDay && e.Start <= now && now < e.End ? e with { IsNow = true } : e)
+            .ToList();
+
+    // Dias com algo marcado (pontinho na semana).
+    public static HashSet<DateTime> Days(IEnumerable<AgendaEvent> events, DateTime from, DateTime to)
+    {
+        var days = new HashSet<DateTime>();
+        foreach (var e in events)
+            for (var d = e.Start.Date; d < to && (d == e.Start.Date || Covers(e, d)); d = d.AddDays(1))
+                if (d >= from) days.Add(d);
+        return days;
+    }
 }

@@ -125,13 +125,25 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border x:Name="bg" CornerRadius="9" Padding="0,5" Margin="1,0">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock x:Name="lbl" Text="{Binding Label}" FontSize="10" Foreground="{StaticResource InkLo}" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="num" Text="{Binding Day}" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                        <Button Style="{StaticResource PlainButton}" Padding="0" HorizontalContentAlignment="Stretch"
+                                Command="{Binding DataContext.SelectDayCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding}">
+                            <Border x:Name="bg" CornerRadius="9" Padding="0,5,0,3" Margin="1,0" Background="Transparent">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock x:Name="lbl" Text="{Binding Label}" FontSize="10" Foreground="{StaticResource InkLo}" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="num" Text="{Binding Day}" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                    <!-- Pontinho: dia com evento na agenda. -->
+                                    <Ellipse x:Name="dot" Width="4" Height="4" Margin="0,2,0,0" Fill="{DynamicResource AccentBrush}" Visibility="Hidden"/>
+                                </StackPanel>
+                            </Border>
+                        </Button>
                         <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding HasEvents}" Value="True">
+                                <Setter TargetName="dot" Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#2A2A2E"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding IsToday}" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
                                 <Setter TargetName="num" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
@@ -147,10 +159,10 @@
                         Visibility="{Binding Enabled, Converter={StaticResource BoolToVis}}">
                 <DockPanel Margin="0,0,0,4">
                     <TextBlock Text="{Binding Status}" DockPanel.Dock="Right" FontSize="11" Foreground="#FF9F0A"/>
-                    <TextBlock Text="Agenda" Style="{StaticResource Label}" Margin="0"/>
+                    <TextBlock Text="{Binding Heading}" Style="{StaticResource Label}" Margin="0"/>
                 </DockPanel>
-                <TextBlock Text="Nada mais hoje" FontSize="12" Foreground="{StaticResource InkLo}"
-                           Visibility="{Binding NothingLeft, Converter={StaticResource BoolToVis}}"/>
+                <TextBlock Text="{Binding Empty}" FontSize="12" Foreground="{StaticResource InkLo}"
+                           Visibility="{Binding Empty, Converter={StaticResource NullToCollapsed}}"/>
                 <ItemsControl ItemsSource="{Binding Today}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -159,12 +171,15 @@
                                         Visibility="Collapsed" VerticalAlignment="Center"
                                         Command="{Binding DataContext.JoinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                         CommandParameter="{Binding}"/>
-                                <TextBlock Text="{Binding When}" Width="78" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="when" Text="{Binding When}" Width="78" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                             </DockPanel>
                             <DataTemplate.Triggers>
                                 <DataTrigger Binding="{Binding HasJoin}" Value="True">
                                     <Setter TargetName="join" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsNow}" Value="True">
+                                    <Setter TargetName="when" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>

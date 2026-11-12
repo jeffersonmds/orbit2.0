@@ -10,7 +10,7 @@ using Orbit.Services;
 
 namespace Orbit.Tabs.Hoje;
 
-public sealed record WeekDay(string Label, int Day, bool IsToday);
+public sealed record WeekDay(string Label, int Day, bool IsToday, DateTime Date = default, bool HasEvents = false, bool IsSelected = false);
 
 public sealed partial class HojeViewModel : TabViewModel
 {
@@ -45,6 +45,7 @@ public sealed partial class HojeViewModel : TabViewModel
         foreach (var t in TodoStore.Load(todosPath)) Todos.Add(t);
         TodoCounter = Counter(Todos);
         _clock.Tick += (_, _) => UpdateClock();
+        agenda.Changed += RebuildWeek;
     }
 
     public override void SetActive(bool active)
@@ -57,10 +58,24 @@ public sealed partial class HojeViewModel : TabViewModel
         }
         UpdateClock();
         Agenda.Touch();
-        Week.Clear();
-        foreach (var d in BuildWeek(DateTime.Today)) Week.Add(d);
+        RebuildWeek();
         _clock.Start();
     }
+
+    private void RebuildWeek()
+    {
+        Week.Clear();
+        foreach (var d in BuildWeek(DateTime.Today, Agenda.Day, Agenda.Days)) Week.Add(d);
+    }
+
+    // Clique num dia da semana mostra a agenda dele (sem agenda configurada não faz nada).
+    [RelayCommand]
+    private void SelectDay(WeekDay d)
+    {
+        if (Agenda.Enabled) Agenda.Show(d.Date);
+    }
+
+    public static string DayLabel(DateTime d) => Labels[((int)d.DayOfWeek + 6) % 7];
 
     private void UpdateClock()
     {
@@ -99,14 +114,14 @@ public sealed partial class HojeViewModel : TabViewModel
         TodoCounter = Counter(Todos);
     }
 
-    // Semana de segunda a domingo que contém `today`.
-    public static List<WeekDay> BuildWeek(DateTime today)
+    // Semana de segunda a domingo que contém `today`; `selected` só marca se não for hoje (hoje já tem destaque).
+    public static List<WeekDay> BuildWeek(DateTime today, DateTime? selected = null, ISet<DateTime>? eventDays = null)
     {
-        int offset = ((int)today.DayOfWeek + 6) % 7; // segunda = 0
-        var monday = today.Date.AddDays(-offset);
+        var monday = AgendaViewModel.WeekStart(today);
         return Enumerable.Range(0, 7)
             .Select(i => monday.AddDays(i))
-            .Select((d, i) => new WeekDay(Labels[i], d.Day, d == today.Date))
+            .Select((d, i) => new WeekDay(Labels[i], d.Day, d == today.Date, d,
+                eventDays?.Contains(d) == true, d == selected?.Date && d != today.Date))
             .ToList();
     }
 

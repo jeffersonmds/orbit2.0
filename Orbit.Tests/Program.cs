@@ -1665,7 +1665,13 @@ public static class Program
                 && r2.At == day.AddHours(10).AddMinutes(-2));
             seen.Add(ev10.Key);
             Check("agenda: avisado não repete", Agenda.NextReminder(new[] { ev10, ev14 }, seen, day.AddHours(9), TimeSpan.FromMinutes(5))?.Event == ev14);
-            Check("agenda: lista tira o que acabou", Agenda.Remaining(new[] { ev10, ev14, allDay }, day.AddHours(12), 4) is { Count: 2 } rest && rest[0] == allDay && rest[1] == ev14);
+            Check("agenda: lista tira o que acabou", Agenda.OfDay(new[] { ev10, ev14, allDay }, day, day.AddHours(12), 4) is { Count: 2 } rest && rest[0] == allDay && rest[1] == ev14);
+            Check("agenda: evento rolando = agora", Agenda.OfDay(new[] { ev10 }, day, day.AddHours(10.5), 4) is [{ IsNow: true } rolando] && rolando.When == "agora–11:00");
+            Check("agenda: outro dia mostra tudo", Agenda.OfDay(new[] { ev10, ev14 }, day, day.AddDays(-1).AddHours(23), 4).Count == 2
+                && Agenda.OfDay(new[] { ev10 }, day.AddDays(1), day.AddHours(8), 4).Count == 0);
+            var trip = new AgendaEvent("Viagem", day.AddDays(1), day.AddDays(3), true, null); // 2 dias
+            var marked = Agenda.Days(new[] { ev10, trip }, day, day.AddDays(7));
+            Check("agenda: dias com evento (dia todo de 2 dias conta nos dois)", marked.SetEquals(new[] { day, day.AddDays(1), day.AddDays(2) }));
 
             Check("bluetooth: níveis de bateria fraca", BluetoothBattery.LowLevel(80) == 0 && BluetoothBattery.LowLevel(20) == 1 && BluetoothBattery.LowLevel(10) == 2);
             Check("bluetooth: aviso de conexão com bateria", BluetoothBattery.ConnectedSignal("QCY", 80) is { Detail: "Bateria 80%", Level: 0.8 }
@@ -2501,6 +2507,8 @@ public static class Program
         Check("hoje: só quinta é hoje", week.FindAll(d => d.IsToday).Count == 1 && week[3].IsToday);
         var sunday = HojeViewModel.BuildWeek(new DateTime(2026, 10, 18));
         Check("hoje: domingo pertence à semana que começou na segunda", sunday[0].Day == 12 && sunday[6].IsToday);
+        var marcada = HojeViewModel.BuildWeek(new DateTime(2026, 10, 15), new DateTime(2026, 10, 16), new HashSet<DateTime> { new(2026, 10, 12) });
+        Check("hoje: semana marca dia escolhido e dia com evento", marcada[4].IsSelected && marcada[0].HasEvents && !marcada[3].IsSelected && !marcada[1].HasEvents);
 
         var todos = new List<TodoItem> { new("a", true), new("b", false), new("c", false) };
         Check("hoje: contador de tarefas", HojeViewModel.Counter(todos) == "1/3");

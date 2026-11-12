@@ -100,7 +100,7 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   bateria = propriedade PnP `{104EA319…} 2` do container, lida a cada 5 min só com aparelho conectado (aviso a 20% e 10%).
   Agenda (`Services/Agenda` + `Tabs/Hoje/AgendaViewModel`): links iCal de Ajustes (Google "endereço secreto",
   Outlook/Teams "publicar"), Ical.Net resolve recorrência e fuso; busca a cada 15 min só com link; aviso 5 min antes
-  por `Notify`, com "Entrar" se houver link Teams/Meet/Zoom. A URL é segredo: nunca logar inteira.
+  por `Notify`, com "Entrar" se houver link Teams/Meet/Zoom. A semana da aba marca dias com evento; clicar num dia mostra a agenda dele. A URL é segredo: nunca logar inteira.
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
 - **Claude "visto"**: o hook acrescenta `orbit_host_pid` (1º processo pai com janela: terminal/VS Code); focar
   essa janela tira a sessão da pílula (continua na aba); aviso novo volta. Já olhando = nem alerta.

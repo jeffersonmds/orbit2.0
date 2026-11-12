@@ -32,7 +32,15 @@ public sealed partial class AgendaViewModel : ObservableObject
     public ObservableCollection<AgendaEvent> Today { get; } = new();
     [ObservableProperty] private bool _enabled;
     [ObservableProperty] private string? _status;
-    [ObservableProperty] private bool _nothingLeft;
+    [ObservableProperty] private string? _empty;
+    [ObservableProperty] private string _heading = "Agenda";
+
+    // Dia mostrado (semana da aba Hoje); volta pra hoje a cada abertura.
+    public DateTime Day { get; private set; } = DateTime.Today;
+    public HashSet<DateTime> Days { get; private set; } = new();
+
+    // Lista ou dias com evento mudaram (a semana redesenha os pontinhos).
+    public event Action? Changed;
 
     // Evento começando em 5 min (só com o aviso ligado em Ajustes).
     public event Action<AgendaEvent>? Reminder;
@@ -60,8 +68,15 @@ public sealed partial class AgendaViewModel : ObservableObject
     // Aba Hoje aberta: link novo/removido em Ajustes ou dado velho busca de novo; senão só tira o que já acabou.
     public void Touch()
     {
+        Day = DateTime.Today;
         if (UrlsKey() != _urlsAt || Freshness.IsStale(_fetchedAt, Every, DateTime.Now)) _ = Refresh();
         else Publish();
+    }
+
+    public void Show(DateTime day)
+    {
+        Day = day.Date;
+        Publish();
     }
 
     private List<string> Urls() => _settings.CalendarUrls.Select(Agenda.NormalizeUrl).OfType<string>().Distinct().ToList();
@@ -84,12 +99,14 @@ public sealed partial class AgendaViewModel : ObservableObject
         _fetching = true;
         try
         {
-            var from = DateTime.Today;
+            // Semana inteira (de segunda) pros pontinhos; no domingo vai até amanhã pro aviso de segunda cedo.
+            var from = WeekStart(DateTime.Today);
+            var to = new[] { from.AddDays(7), DateTime.Today.AddDays(2) }.Max();
             var texts = await Task.WhenAll(urls.Select(_api.GetTextAsync));
             var ok = texts.OfType<string>().ToList();
             // ponytail: com um link falhando, os eventos dele somem até a próxima busca (sem cache por link).
             if (ok.Count > 0)
-                _events = await Task.Run(() => ok.SelectMany(t => Agenda.Parse(t, from, from.AddDays(2))).OrderBy(e => e.Start).ToList());
+                _events = await Task.Run(() => ok.SelectMany(t => Agenda.Parse(t, from, to)).OrderBy(e => e.Start).ToList());
             int failed = urls.Count - ok.Count;
             Status = failed == 0 ? null : failed == urls.Count ? "agenda indisponível" : $"{failed} agenda(s) sem resposta";
             _urlsAt = string.Join("\n", urls);
@@ -102,10 +119,18 @@ public sealed partial class AgendaViewModel : ObservableObject
 
     private void Publish()
     {
+        var now = DateTime.Now;
+        bool today = Day == now.Date;
         Today.Clear();
-        foreach (var e in Agenda.Remaining(_events, DateTime.Now, MaxShown)) Today.Add(e);
-        NothingLeft = Today.Count == 0 && _fetchedAt is not null;
+        foreach (var e in Agenda.OfDay(_events, Day, now, MaxShown)) Today.Add(e);
+        Empty = Today.Count > 0 || _fetchedAt is null ? null : today ? "Nada mais hoje" : "Nada neste dia";
+        Heading = today ? "Agenda" : $"Agenda · {HojeViewModel.DayLabel(Day)} {Day.Day}";
+        var from = WeekStart(now.Date);
+        Days = Agenda.Days(_events, from, from.AddDays(7));
+        Changed?.Invoke();
     }
+
+    public static DateTime WeekStart(DateTime d) => d.Date.AddDays(-(((int)d.DayOfWeek + 6) % 7));
 
     private void Plan()
     {
