@@ -1671,6 +1671,12 @@ public static class Program
                 && Agenda.OfDay(new[] { ev10 }, day.AddDays(1), day.AddHours(8), 4).Count == 0);
             var trip = new AgendaEvent("Viagem", day.AddDays(1), day.AddDays(3), true, null); // 2 dias
             var marked = Agenda.Days(new[] { ev10, trip }, day, day.AddDays(7));
+            Check("agenda: contagem na pílula só nos 10 min antes", Agenda.Countdown(new[] { ev10, ev14 }, day.AddHours(9).AddMinutes(51).AddSeconds(30), TimeSpan.FromMinutes(10)) == "A · 9 min"
+                && Agenda.Countdown(new[] { ev10 }, day.AddHours(9).AddMinutes(49), TimeSpan.FromMinutes(10)) is null
+                && Agenda.Countdown(new[] { ev10, allDay }, day.AddHours(10), TimeSpan.FromMinutes(10)) is null);
+            Check("agenda: contagem começa 10 min antes do próximo", Agenda.CountdownStart(new[] { ev14, ev10, allDay }, day.AddHours(8), TimeSpan.FromMinutes(10)) == day.AddHours(9).AddMinutes(50)
+                && Agenda.CountdownStart(new[] { ev10 }, day.AddHours(12), TimeSpan.FromMinutes(10)) is null);
+            Check("agenda: cor só com mais de uma agenda", Agenda.ColorOf(0, 1) is null && Agenda.ColorOf(0, 2) != Agenda.ColorOf(1, 2));
             Check("agenda: dias com evento (dia todo de 2 dias conta nos dois)", marked.SetEquals(new[] { day, day.AddDays(1), day.AddDays(2) }));
 
             Check("bluetooth: níveis de bateria fraca", BluetoothBattery.LowLevel(80) == 0 && BluetoothBattery.LowLevel(20) == 1 && BluetoothBattery.LowLevel(10) == 2);

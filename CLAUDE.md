@@ -46,7 +46,7 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   `IslandViewModel.SetActivity`: `NowPlayingViewModel` (SMTC), `PomodoroViewModel` (timer só
   rodando) e `ClaudeHookServer` (pipe `Orbit2ClaudeHooks`, distinto do 1.0; o Claude Code chama
   `Orbit.exe --claude-hook`). Prioridade na pílula (`ActivityKind`, maior vence): tela remota de um aparelho >
-  câmera/microfone em uso > atualização > Claude aguardando > Pomodoro > mídia.
+  câmera/microfone em uso > atualização > Claude aguardando > reunião em até 10 min (Agenda) > Pomodoro > mídia.
   `CameraMicWatcher`: microfone pelas sessões de captura do serviço de áudio (qualquer app); câmera pelo
   registro ConsentStore (nesta máquina só anota apps assinados). Mídia tocando mostra barrinhas (`AudioMeter`,
   timer só com elas visíveis).
@@ -100,7 +100,7 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   bateria = propriedade PnP `{104EA319…} 2` do container, lida a cada 5 min só com aparelho conectado (aviso a 20% e 10%).
   Agenda (`Services/Agenda` + `Tabs/Hoje/AgendaViewModel`): links iCal de Ajustes (Google "endereço secreto",
   Outlook/Teams "publicar"), Ical.Net resolve recorrência e fuso; busca a cada 15 min só com link; aviso 5 min antes
-  por `Notify`, com "Entrar" se houver link Teams/Meet/Zoom. A semana da aba marca dias com evento; clicar num dia mostra a agenda dele. A URL é segredo: nunca logar inteira.
+  por `Notify`, com "Entrar" se houver link Teams/Meet/Zoom. A semana da aba marca dias com evento; clicar num dia mostra a agenda dele; cor por link (com 2+); contagem na pílula 10 min antes. A URL é segredo: nunca logar inteira.
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
 - **Claude "visto"**: o hook acrescenta `orbit_host_pid` (1º processo pai com janela: terminal/VS Code); focar
   essa janela tira a sessão da pílula (continua na aba); aviso novo volta. Já olhando = nem alerta.

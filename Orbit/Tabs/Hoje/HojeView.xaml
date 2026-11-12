@@ -171,6 +171,8 @@
                                         Visibility="Collapsed" VerticalAlignment="Center"
                                         Command="{Binding DataContext.JoinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                         CommandParameter="{Binding}"/>
+                                <Ellipse Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding Color}"
+                                         Visibility="{Binding Color, Converter={StaticResource NullToCollapsed}}"/>
                                 <TextBlock x:Name="when" Text="{Binding When}" Width="78" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                             </DockPanel>
@@ -185,6 +187,8 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <TextBlock Text="{Binding More}" FontSize="11" Foreground="{StaticResource InkLo}"
+                           Visibility="{Binding More, Converter={StaticResource NullToCollapsed}}"/>
             </StackPanel>
 
             <DockPanel Grid.Row="2" Margin="0,0,0,6">

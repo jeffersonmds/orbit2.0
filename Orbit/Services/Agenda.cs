@@ -13,6 +13,8 @@ namespace Orbit.Services;
 public sealed record AgendaEvent(string Title, DateTime Start, DateTime End, bool AllDay, string? JoinUrl)
 {
     public bool IsNow { get; init; }
+    // Cor da agenda de origem; null com uma agenda só (bolinha seria ruído).
+    public string? Color { get; init; }
     public string When => AllDay ? "Dia todo" : IsNow ? $"agora–{End:HH:mm}" : $"{Start:HH:mm}–{End:HH:mm}";
     public bool HasJoin => JoinUrl is not null;
     public string Key => $"{Title}|{Start:o}";
@@ -76,6 +78,23 @@ public static class Agenda
         var at = next.Start - before;
         return (next, at < now ? now : at);
     }
+
+    private static readonly string[] Palette = { "#0A84FF", "#30D158", "#FF9F0A", "#BF5AF2", "#FF375F", "#64D2FF" };
+    public static string? ColorOf(int source, int sources) => sources > 1 ? Palette[source % Palette.Length] : null;
+
+    // Texto da pílula: próximo evento com hora começando dentro de `window` ("Daily · 9 min"); null = nada.
+    public static string? Countdown(IEnumerable<AgendaEvent> events, DateTime now, TimeSpan window)
+    {
+        var next = events.Where(e => !e.AllDay && e.Start > now && e.Start - now <= window).MinBy(e => e.Start);
+        if (next is null) return null;
+        int min = (int)Math.Ceiling((next.Start - now).TotalMinutes);
+        var title = next.Title.Length > 28 ? next.Title[..27] + "…" : next.Title;
+        return $"{title} · {min} min";
+    }
+
+    // Quando a contagem do próximo evento começa (pra ligar o timer só aí); null = nada pela frente.
+    public static DateTime? CountdownStart(IEnumerable<AgendaEvent> events, DateTime now, TimeSpan window) =>
+        events.Where(e => !e.AllDay && e.Start > now).MinBy(e => e.Start) is { } e ? e.Start - window : null;
 
     // Dia que o evento ocupa (dia todo de vários dias conta em cada um).
     public static bool Covers(AgendaEvent e, DateTime day) =>

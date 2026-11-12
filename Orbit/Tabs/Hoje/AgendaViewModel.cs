@@ -16,13 +16,14 @@ namespace Orbit.Tabs.Hoje;
 // aberta): busca a cada 15 min e só com link configurado; o aviso é um timer único até o próximo evento.
 public sealed partial class AgendaViewModel : ObservableObject
 {
-    private static readonly TimeSpan Every = TimeSpan.FromMinutes(15), Before = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan Every = TimeSpan.FromMinutes(15), Before = TimeSpan.FromMinutes(5), Window = TimeSpan.FromMinutes(10);
     private const int MaxShown = 4;
 
     private readonly ApiService _api;
     private readonly OrbitSettings _settings;
     private readonly DispatcherTimer _fetch = new() { Interval = Every };
     private readonly DispatcherTimer _remind = new();
+    private readonly DispatcherTimer _countdown = new();
     private readonly HashSet<string> _alerted = new();
     private List<AgendaEvent> _events = new();
     private string _urlsAt = "";
@@ -34,6 +35,9 @@ public sealed partial class AgendaViewModel : ObservableObject
     [ObservableProperty] private string? _status;
     [ObservableProperty] private string? _empty;
     [ObservableProperty] private string _heading = "Agenda";
+    [ObservableProperty] private string? _more;
+    // Pílula: "Daily · 9 min" nos 10 min antes de um evento (só com o aviso ligado em Ajustes).
+    [ObservableProperty] private string? _activityText;
 
     // Dia mostrado (semana da aba Hoje); volta pra hoje a cada abertura.
     public DateTime Day { get; private set; } = DateTime.Today;
@@ -51,6 +55,7 @@ public sealed partial class AgendaViewModel : ObservableObject
         _settings = settings;
         _fetch.Tick += async (_, _) => await Refresh();
         _remind.Tick += (_, _) => { _remind.Stop(); Fire(); };
+        _countdown.Tick += (_, _) => UpdateCountdown();
     }
 
     [RelayCommand]
@@ -105,8 +110,12 @@ public sealed partial class AgendaViewModel : ObservableObject
             var texts = await Task.WhenAll(urls.Select(_api.GetTextAsync));
             var ok = texts.OfType<string>().ToList();
             // ponytail: com um link falhando, os eventos dele somem até a próxima busca (sem cache por link).
+            // Cor pela posição do link em Ajustes: estável enquanto a lista não muda.
             if (ok.Count > 0)
-                _events = await Task.Run(() => ok.SelectMany(t => Agenda.Parse(t, from, to)).OrderBy(e => e.Start).ToList());
+                _events = await Task.Run(() => texts
+                    .SelectMany((t, i) => t is null ? Enumerable.Empty<AgendaEvent>()
+                        : Agenda.Parse(t, from, to).Select(e => e with { Color = Agenda.ColorOf(i, urls.Count) }))
+                    .OrderBy(e => e.Start).ToList());
             int failed = urls.Count - ok.Count;
             Status = failed == 0 ? null : failed == urls.Count ? "agenda indisponível" : $"{failed} agenda(s) sem resposta";
             _urlsAt = string.Join("\n", urls);
@@ -121,8 +130,10 @@ public sealed partial class AgendaViewModel : ObservableObject
     {
         var now = DateTime.Now;
         bool today = Day == now.Date;
+        var all = Agenda.OfDay(_events, Day, now, int.MaxValue);
         Today.Clear();
-        foreach (var e in Agenda.OfDay(_events, Day, now, MaxShown)) Today.Add(e);
+        foreach (var e in all.Take(MaxShown)) Today.Add(e);
+        More = all.Count > MaxShown ? $"+{all.Count - MaxShown} mais" : null;
         Empty = Today.Count > 0 || _fetchedAt is null ? null : today ? "Nada mais hoje" : "Nada neste dia";
         Heading = today ? "Agenda" : $"Agenda · {HojeViewModel.DayLabel(Day)} {Day.Day}";
         var from = WeekStart(now.Date);
@@ -134,11 +145,24 @@ public sealed partial class AgendaViewModel : ObservableObject
 
     private void Plan()
     {
+        UpdateCountdown();
         _remind.Stop();
         if (Agenda.NextReminder(_events, _alerted, DateTime.Now, Before) is not { } next) return;
         var wait = next.At - DateTime.Now;
         _remind.Interval = wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(1);
         _remind.Start();
+    }
+
+    // Timer só perto de evento: até a contagem começar, um disparo único; contando, a cada 15 s.
+    private void UpdateCountdown()
+    {
+        var now = DateTime.Now;
+        _countdown.Stop();
+        ActivityText = _settings.CalendarAlertEnabled ? Agenda.Countdown(_events, now, Window) : null;
+        if (ActivityText is not null) _countdown.Interval = TimeSpan.FromSeconds(15);
+        else if (Agenda.CountdownStart(_events, now, Window) is { } at) _countdown.Interval = at > now ? at - now : TimeSpan.FromSeconds(1);
+        else return;
+        _countdown.Start();
     }
 
     private void Fire()

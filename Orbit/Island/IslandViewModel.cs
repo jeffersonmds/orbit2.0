@@ -173,6 +173,10 @@ public sealed partial class IslandViewModel : ObservableObject
                 ? new[] { new PeekAction("Entrar", () => { try { Process.Start(new ProcessStartInfo(join) { UseShellExecute = true }); } catch { } }) }
                 : Array.Empty<PeekAction>(),
         }, sound: true);
+        agenda.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AgendaViewModel.ActivityText)) SetActivity(ActivityKind.Agenda, agenda.ActivityText);
+        };
         agenda.Start();
         Register(new ControlesViewModel(NowPlaying));
         Register(new StatsViewModel());
