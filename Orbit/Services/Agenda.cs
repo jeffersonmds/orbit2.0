@@ -82,14 +82,18 @@ public static class Agenda
     private static readonly string[] Palette = { "#0A84FF", "#30D158", "#FF9F0A", "#BF5AF2", "#FF375F", "#64D2FF" };
     public static string? ColorOf(int source, int sources) => sources > 1 ? Palette[source % Palette.Length] : null;
 
-    // Texto da pílula: próximo evento com hora começando dentro de `window` ("Daily · 9 min"); null = nada.
-    public static string? Countdown(IEnumerable<AgendaEvent> events, DateTime now, TimeSpan window)
+    // Evento da pílula: começa dentro de `window` ou começou há menos de `grace` (dá tempo de entrar atrasado).
+    // Um que ainda vai começar passa na frente do que já está rolando.
+    public static AgendaEvent? Countdown(IEnumerable<AgendaEvent> events, DateTime now, TimeSpan window, TimeSpan grace) =>
+        events.Where(e => !e.AllDay && e.Start - window <= now && now < e.Start + grace)
+            .OrderBy(e => e.Start <= now).ThenBy(e => e.Start).FirstOrDefault();
+
+    // "Daily · 9 min" / "Daily · agora"; com link, avisa que o clique entra.
+    public static string CountdownText(AgendaEvent e, DateTime now)
     {
-        var next = events.Where(e => !e.AllDay && e.Start > now && e.Start - now <= window).MinBy(e => e.Start);
-        if (next is null) return null;
-        int min = (int)Math.Ceiling((next.Start - now).TotalMinutes);
-        var title = next.Title.Length > 28 ? next.Title[..27] + "…" : next.Title;
-        return $"{title} · {min} min";
+        int min = (int)Math.Ceiling((e.Start - now).TotalMinutes);
+        var title = e.Title.Length > 28 ? e.Title[..27] + "…" : e.Title;
+        return $"{title} · {(min > 0 ? $"{min} min" : "agora")}{(e.HasJoin ? " — clique pra entrar" : "")}";
     }
 
     // Quando a contagem do próximo evento começa (pra ligar o timer só aí); null = nada pela frente.

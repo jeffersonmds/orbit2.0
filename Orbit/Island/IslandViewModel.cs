@@ -163,7 +163,7 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke(),
             SelfUpdate.CheckAsync, UpdateNowAsync));
-        var agenda = new AgendaViewModel(_api, settings);
+        var agenda = _agenda = new AgendaViewModel(_api, settings);
         Register(new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath, agenda));
         // 5 min antes: alerta com "Entrar" se o evento tem link de reunião.
         agenda.Reminder += e => Notify(new Peek($"Em 5 min · {e.Title}", e.When, "hoje")
@@ -575,6 +575,12 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public static string SendProgressText(int index, int total, string file) =>
         (total == 1 ? "Preparando " + file : $"Preparando {index + 1}/{total} · {file}") + " — clique pra cancelar";
+
+    private readonly AgendaViewModel _agenda;
+
+    // Clique na pílula com a reunião na vez: entra nela em vez de abrir a ilha.
+    public bool JoinMeetingIfShowing() =>
+        _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Agenda && _agenda.JoinCountdown();
 
     // Clique na pílula com o envio na vez: cancela em vez de abrir a ilha.
     public bool CancelSendIfShowing()

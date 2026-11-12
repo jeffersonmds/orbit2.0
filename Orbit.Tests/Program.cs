@@ -1671,9 +1671,16 @@ public static class Program
                 && Agenda.OfDay(new[] { ev10 }, day.AddDays(1), day.AddHours(8), 4).Count == 0);
             var trip = new AgendaEvent("Viagem", day.AddDays(1), day.AddDays(3), true, null); // 2 dias
             var marked = Agenda.Days(new[] { ev10, trip }, day, day.AddDays(7));
-            Check("agenda: contagem na pílula só nos 10 min antes", Agenda.Countdown(new[] { ev10, ev14 }, day.AddHours(9).AddMinutes(51).AddSeconds(30), TimeSpan.FromMinutes(10)) == "A · 9 min"
-                && Agenda.Countdown(new[] { ev10 }, day.AddHours(9).AddMinutes(49), TimeSpan.FromMinutes(10)) is null
-                && Agenda.Countdown(new[] { ev10, allDay }, day.AddHours(10), TimeSpan.FromMinutes(10)) is null);
+            var janela = TimeSpan.FromMinutes(10); var folga = TimeSpan.FromMinutes(5);
+            var meet = ev10 with { JoinUrl = "https://meet.google.com/abc" };
+            Check("agenda: contagem na pílula só dos 10 min antes até 5 min depois", Agenda.Countdown(new[] { ev10, ev14 }, day.AddHours(9).AddMinutes(51), janela, folga) == ev10
+                && Agenda.Countdown(new[] { ev10 }, day.AddHours(9).AddMinutes(49), janela, folga) is null
+                && Agenda.Countdown(new[] { ev10 }, day.AddHours(10).AddMinutes(4), janela, folga) == ev10
+                && Agenda.Countdown(new[] { ev10, allDay }, day.AddHours(10).AddMinutes(5), janela, folga) is null);
+            var ev1008 = new AgendaEvent("C", day.AddHours(10).AddMinutes(8), day.AddHours(11), false, null);
+            Check("agenda: a que vai começar passa na frente da que está rolando", Agenda.Countdown(new[] { ev10, ev1008 }, day.AddHours(10).AddMinutes(1), janela, folga) == ev1008);
+            Check("agenda: texto da contagem", Agenda.CountdownText(ev10, day.AddHours(9).AddMinutes(51).AddSeconds(30)) == "A · 9 min"
+                && Agenda.CountdownText(meet, day.AddHours(10).AddMinutes(1)) == "A · agora — clique pra entrar");
             Check("agenda: contagem começa 10 min antes do próximo", Agenda.CountdownStart(new[] { ev14, ev10, allDay }, day.AddHours(8), TimeSpan.FromMinutes(10)) == day.AddHours(9).AddMinutes(50)
                 && Agenda.CountdownStart(new[] { ev10 }, day.AddHours(12), TimeSpan.FromMinutes(10)) is null);
             Check("agenda: cor só com mais de uma agenda", Agenda.ColorOf(0, 1) is null && Agenda.ColorOf(0, 2) != Agenda.ColorOf(1, 2));
