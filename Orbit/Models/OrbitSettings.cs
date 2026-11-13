@@ -82,4 +82,11 @@ public sealed class OrbitSettings
     // Monitor da ilha (Screen.DeviceName, ex.: \\.\DISPLAY2). null = sempre o principal;
     // desconectado = principal até ele voltar.
     public string? IslandMonitor { get; set; }
+
+    // Cantos de cima curvando pra fora, como o notch do MacBook (a pílula "sai" da borda da tela).
+    public bool NotchShape { get; set; } = true;
+
+    // Jogo em tela cheia (borderless): a ilha vira uma faixa fina com CPU/GPU/RAM em vez de sumir.
+    // Vídeo, navegador e qualquer app fora da lista de jogos continuam escondendo a ilha.
+    public bool GameStripEnabled { get; set; } = true;
 }

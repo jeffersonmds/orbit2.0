@@ -5,7 +5,8 @@ using System.Linq;
 namespace Orbit.Island;
 
 // Discreta: a atividade da vez é "quieta" (mídia, Pomodoro já em curso) — pílula fininha, pra não cobrir as abas do navegador.
-public enum IslandMode { Repouso, Atividade, Discreta, Alerta, Expandida, Oculta }
+// Jogo: tela cheia de um jogo — faixa fina de desempenho, sem clique nem alerta (como Oculta, só que visível).
+public enum IslandMode { Repouso, Atividade, Discreta, Alerta, Expandida, Oculta, Jogo }
 
 // Valor maior = prioridade maior na pílula.
 // Maior valor vence na pílula. TelaRemota (tela, controle e microfone pelo aparelho) é indicador de
@@ -67,10 +68,11 @@ public sealed class IslandMachine
 
     public bool Expanded { get; private set; }
     public bool Fullscreen { get; private set; }
+    public bool Game { get; private set; } // a tela cheia é de um jogo (vale só com Fullscreen)
     public Peek? CurrentPeek { get; private set; }
 
     public IslandMode Mode =>
-        Fullscreen ? IslandMode.Oculta
+        Fullscreen ? (Game ? IslandMode.Jogo : IslandMode.Oculta)
         : Expanded ? IslandMode.Expandida
         : CurrentPeek is not null ? IslandMode.Alerta
         : CurrentActivity is { } a && _quiet.Contains(a) ? IslandMode.Discreta
@@ -93,9 +95,10 @@ public sealed class IslandMachine
 
     public const string DeviceChoiceKey = "escolher-dispositivo";
 
-    public void SetFullscreen(bool on)
+    public void SetFullscreen(bool on, bool game = false)
     {
         Fullscreen = on;
+        Game = on && game;
         if (on)
         {
             Expanded = false;

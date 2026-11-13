@@ -19,7 +19,8 @@ public sealed class FullscreenWatcher : IDisposable
     private readonly uint _callbackMsg;
     private readonly uint _taskbarCreatedMsg;
 
-    public event Action<bool>? Changed;
+    // (esconder?, janela em primeiro plano) — a janela decide se é jogo (faixa) ou vídeo (some).
+    public event Action<bool, IntPtr>? Changed;
 
     public FullscreenWatcher(IntPtr hwnd)
     {
@@ -58,7 +59,7 @@ public sealed class FullscreenWatcher : IDisposable
             var cls = new StringBuilder(256);
             GetClassName(fg, cls, cls.Capacity);
             bool same = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST) == MonitorFromWindow(_hwnd, MONITOR_DEFAULTTONEAREST);
-            if (Decide(lParam != IntPtr.Zero, cls.ToString(), same) is bool hide) Changed?.Invoke(hide);
+            if (Decide(lParam != IntPtr.Zero, cls.ToString(), same) is bool hide) Changed?.Invoke(hide, fg);
             handled = true;
         }
         // Quando o explorer.exe reinicia, a lista de appbars se perde.

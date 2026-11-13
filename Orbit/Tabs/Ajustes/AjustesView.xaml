@@ -52,6 +52,12 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <TextBlock Text="Aparência" Style="{StaticResource Label}"/>
+            <WrapPanel Margin="0,0,0,10">
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding FormatoNotch}" Content="Formato notch (cantos curvando na borda)"/>
+                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding FaixaDeJogo}" Content="Jogo em tela cheia: faixa com CPU, GPU e RAM"/>
+            </WrapPanel>
+
             <TextBlock Text="Alertas" Style="{StaticResource Label}"/>
             <WrapPanel Margin="0,0,0,10">
                 <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AlertasComoToast}"

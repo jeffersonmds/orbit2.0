@@ -26,6 +26,12 @@ public sealed partial class ControlesViewModel : TabViewModel
     public override string Title => "Controles";
 
     public NowPlayingViewModel NowPlaying { get; }
+    private readonly Func<bool?> _toggleMic; // a ilha faz a troca (alerta + pílula); devolve o novo estado
+
+    // Mudo global do microfone: true = aberto, false = mudo, null = sem microfone.
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(MicStatus), nameof(MicGlyph))] private bool? _micOn;
+    public string MicStatus => MicOn switch { true => "Ligado", false => "Mudo", null => "Indisponível" };
+    public string MicGlyph => MicOn == false ? "" : ""; // microfone cortado / microfone
 
     [ObservableProperty] private bool? _wifiOn;      // null = indisponível
     [ObservableProperty] private bool? _bluetoothOn;
@@ -102,9 +108,10 @@ public sealed partial class ControlesViewModel : TabViewModel
     public string MixerGlyph => ShowMixer ? "\uE711" : "\uE9E9"; // fechar / equalizador
     public bool HasApps => Apps.Count > 0;
 
-    public ControlesViewModel(NowPlayingViewModel nowPlaying)
+    public ControlesViewModel(NowPlayingViewModel nowPlaying, Func<bool?>? toggleMic = null)
     {
         NowPlaying = nowPlaying;
+        _toggleMic = toggleMic ?? MicMute.Toggle;
         _meter.Tick += (_, _) => MeterTick();
         Apps.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasApps));
     }
@@ -133,6 +140,7 @@ public sealed partial class ControlesViewModel : TabViewModel
         }
         _ = RefreshRadiosAsync();
         DarkOn = DarkMode.IsDark();
+        MicOn = MicMute.IsMuted() is bool m ? !m : null;
         OpenVolume();
     }
 
@@ -261,6 +269,9 @@ public sealed partial class ControlesViewModel : TabViewModel
 
     [RelayCommand]
     private void ToggleMute() => _volume?.ToggleMute();
+
+    [RelayCommand]
+    private void ToggleMic() => MicOn = _toggleMic() is bool m ? !m : null;
 
     public static string Status(bool? on) => on switch
     {

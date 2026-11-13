@@ -19,6 +19,7 @@ public static class IslandGeometry
         IslandMode.Discreta => new IslandSize(130, 10),
         IslandMode.Alerta => new IslandSize(360, 56),
         IslandMode.Expandida => new IslandSize(720, 380),
+        IslandMode.Jogo => new IslandSize(340, 22),
         _ => new IslandSize(110, 10), // Repouso e Oculta
     };
 
@@ -32,6 +33,7 @@ public static class IslandGeometry
         IslandMode.Alerta => 18,
         IslandMode.Atividade => 15,
         IslandMode.Discreta => 5,
+        IslandMode.Jogo => 9,
         _ => 5,
     };
 

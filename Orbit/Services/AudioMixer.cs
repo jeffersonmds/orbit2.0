@@ -188,7 +188,7 @@ public sealed class AudioMixer : IDisposable
 
     // --- Processo ---
 
-    private static string? ExePath(uint pid)
+    public static string? ExePath(uint pid)
     {
         var h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, pid);
         if (h == IntPtr.Zero) return null;

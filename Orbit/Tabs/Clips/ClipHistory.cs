@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace Orbit.Tabs.Clips;
 
-public enum ClipFilter { Tudo, Texto, Imagens, Links }
+public enum ClipFilter { Tudo, Texto, Imagens, Links, Fixados }
 
 // Regras puras do histórico (sem I/O nem clipboard) — testadas no harness.
 public static class ClipHistory
@@ -64,6 +64,7 @@ public static class ClipHistory
                 ClipFilter.Texto => i.Kind == ClipKind.Text,
                 ClipFilter.Imagens => i.Kind == ClipKind.Image,
                 ClipFilter.Links => i.Kind == ClipKind.Link,
+                ClipFilter.Fixados => i.Pinned,
                 _ => true,
             })
             .Where(i => q.Length == 0 || (i.Text?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false))

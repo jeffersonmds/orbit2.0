@@ -98,6 +98,19 @@ public sealed partial class IslandViewModel : ObservableObject
     private double TimerProgress { get; set; }
     [ObservableProperty] private CameraMicDisplay? _cameraMicView;
 
+    // Formato notch (Ajustes): orelhas côncavas nos cantos de cima da pílula.
+    public bool NotchShape => _settings.NotchShape;
+
+    // Mudo global do microfone (Ctrl+Alt+M / Controles). Lido de novo a cada mudança de uso do microfone.
+    [ObservableProperty] private bool _micMuted;
+
+    // Faixa do jogo em tela cheia: amostra a cada 2 s, só enquanto ela aparece (contrato de leveza).
+    [ObservableProperty] private string _gameStatsText = "";
+    private readonly System.Windows.Threading.DispatcherTimer _gameTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly SystemStats _gameSys = new();
+    private readonly GpuStats _gameGpu = new();
+    private bool _gameBusy, _gameReset;
+
     // Monitor da ilha (Ajustes). A janela escuta MonitorChanged e se reposiciona.
     public string? MonitorDevice => _settings.IslandMonitor;
     public event Action? MonitorChanged;
@@ -162,7 +175,7 @@ public sealed partial class IslandViewModel : ObservableObject
         // Sem DI: abas e serviços de fundo são criados aqui na mão.
         Register(new EnergiaViewModel());
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke(),
-            SelfUpdate.CheckAsync, UpdateNowAsync));
+            SelfUpdate.CheckAsync, UpdateNowAsync, () => OnPropertyChanged(nameof(NotchShape))));
         var agenda = _agenda = new AgendaViewModel(_api, settings);
         Register(new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath, agenda));
         // 5 min antes: alerta com "Entrar" se o evento tem link de reunião.
@@ -178,7 +191,7 @@ public sealed partial class IslandViewModel : ObservableObject
             if (e.PropertyName == nameof(AgendaViewModel.ActivityText)) SetActivity(ActivityKind.Agenda, agenda.ActivityText);
         };
         agenda.Start();
-        Register(new ControlesViewModel(NowPlaying));
+        Register(new ControlesViewModel(NowPlaying, ToggleMicMute));
         Register(new StatsViewModel());
         Register(new MercadoViewModel(_api, settings));
         Register(new NoticiasViewModel(_api, settings));
@@ -238,10 +251,13 @@ public sealed partial class IslandViewModel : ObservableObject
         _cameraMic.Changed += uses => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
             _cameraMicUses = uses;
+            MicMuted = MicMute.IsMuted() == true; // mudado fora (Configurações do Windows) também aparece
             if (uses.Count > 0) _cameraMicClock.Start(); else _cameraMicClock.Stop();
             ShowCameraMicActivity();
         });
         _cameraMic.Start();
+        MicMuted = MicMute.IsMuted() == true;
+        _gameTimer.Tick += async (_, _) => await SampleGameAsync();
         // Eventos do sistema: alerta curto na pílula (não vai pro aparelho nem vira toast em tela cheia).
         _signals.Raised += sig => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
@@ -428,7 +444,57 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public void Expand() { _machine.Expand(); Refresh(); }
     public void Collapse() { _machine.Collapse(); Refresh(); }
-    public void SetFullscreen(bool on) { _machine.SetFullscreen(on); Refresh(); }
+    // game: o app em tela cheia é um jogo (GameDetector) — vira faixa se a preferência estiver ligada.
+    public void SetFullscreen(bool on, bool game = false) { _machine.SetFullscreen(on, game && _settings.GameStripEnabled); Refresh(); }
+
+    // Mudo global: alerta curto (substitui o anterior) e o ícone do microfone na pílula muda.
+    public bool? ToggleMicMute()
+    {
+        var muted = MicMute.Toggle();
+        MicMuted = muted == true;
+        RaisePeek(new Peek(muted switch { true => "Microfone mudo", false => "Microfone ligado", null => "Nenhum microfone" }, null, "controles")
+            { Key = "mic-mudo", Duration = TimeSpan.FromSeconds(2), Compact = true });
+        ShowCameraMicActivity();
+        return muted;
+    }
+
+    private async Task SampleGameAsync()
+    {
+        if (_gameBusy) return;
+        _gameBusy = true;
+        try
+        {
+            bool reset = _gameReset;
+            _gameReset = false;
+            var (sys, gpu) = await Task.Run(() =>
+            {
+                if (reset) _gameGpu.Reset(); // aqui, em sequência com a leitura (nunca em paralelo)
+                return (_gameSys.Read(disk: false), _gameGpu.Read());
+            });
+            if (Mode == IslandMode.Jogo) GameStatsText = GameStats(sys.CpuPercent, gpu, sys.Ram.Percent, DateTime.Now);
+        }
+        catch (Exception ex) { Log.Warning(ex, "Faixa do jogo: falha ao amostrar"); }
+        finally { _gameBusy = false; }
+    }
+
+    public static string GameStats(double cpu, double gpu, double ram, DateTime now) =>
+        $"CPU {cpu:0}%   GPU {gpu:0}%   RAM {ram:0}%   {now:HH:mm}";
+
+    private void UpdateGameTimer()
+    {
+        if (Mode == IslandMode.Jogo)
+        {
+            if (_gameTimer.IsEnabled) return;
+            GameStatsText = GameStats(0, 0, 0, DateTime.Now); // 1ª leitura de CPU/GPU sempre volta 0 (sem delta)
+            _gameTimer.Start();
+            _ = SampleGameAsync();
+        }
+        else if (_gameTimer.IsEnabled)
+        {
+            _gameTimer.Stop();
+            _gameReset = true; // a próxima partida não faz média com o tempo parado
+        }
+    }
     public void SetActivity(ActivityKind kind, string? text, bool quiet = false) { _machine.SetActivity(kind, text, quiet); Refresh(); }
     public void RaisePeek(Peek peek) { _machine.RaisePeek(peek); Refresh(); }
     public void PeekExpired() { _machine.PeekDone(); Refresh(); }
@@ -711,7 +777,7 @@ public sealed partial class IslandViewModel : ObservableObject
 
     private void ShowCameraMicActivity()
     {
-        CameraMicView = CameraMicWatcher.Display(_cameraMicUses, DateTime.Now);
+        CameraMicView = CameraMicWatcher.Display(_cameraMicUses, DateTime.Now, MicMuted);
         SetActivity(ActivityKind.CameraMic, CameraMicWatcher.Describe(_cameraMicUses, DateTime.Now));
     }
 
@@ -888,6 +954,7 @@ public sealed partial class IslandViewModel : ObservableObject
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         ShowUpdating = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Atualizacao;
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
+        UpdateGameTimer();
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);
         if (before == IslandMode.Expandida && Mode != IslandMode.Expandida) SafeSetActive(SelectedTab, false);
     }

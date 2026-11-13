@@ -22,7 +22,7 @@ public partial class IslandWindow : Window
     private readonly DispatcherTimer _leave = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _peek = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(2) };
-    private GlobalHotKey? _hotKey, _sendHotKey, _colorHotKey, _drawHotKey;
+    private GlobalHotKey? _hotKey, _sendHotKey, _colorHotKey, _drawHotKey, _micHotKey;
     private Window? _overlay; // conta-gotas ou desenho aberto (um por vez)
 
     // Barrinhas da música: 20 quadros/s, e só enquanto aparecem (contrato de leveza).
@@ -104,7 +104,7 @@ public partial class IslandWindow : Window
         };
         _tray.SettingsRequested += () =>
         {
-            if (_vm.Mode == IslandMode.Oculta) return; // não rouba o foco do jogo/vídeo em tela cheia
+            if (_vm.Mode is IslandMode.Oculta or IslandMode.Jogo) return; // não rouba o foco do jogo/vídeo em tela cheia
             _userHidden = false; _vm.UserHidden = false; UpdateVisibility(); _vm.OpenTab("ajustes");
             Activate();
         };
@@ -163,7 +163,7 @@ public partial class IslandWindow : Window
         _hotKey.Pressed += () =>
         {
             // Oculta = app em tela cheia: Activate() tiraria o foco do jogo.
-            if (_userHidden || _vm.Mode == IslandMode.Oculta) return;
+            if (_userHidden || _vm.Mode is IslandMode.Oculta or IslandMode.Jogo) return;
             if (_vm.Mode == IslandMode.Expandida) _vm.Collapse();
             else ExpandFocused();
         };
@@ -200,8 +200,12 @@ public partial class IslandWindow : Window
             return w;
         });
 
+        // Ctrl+Alt+M: mudo global do microfone. Vale em tela cheia também (não ativa a janela).
+        _micHotKey = new GlobalHotKey(hwnd, GlobalHotKey.VK_M);
+        _micHotKey.Pressed += () => _vm.ToggleMicMute();
+
         _fullscreen = new FullscreenWatcher(hwnd);
-        _fullscreen.Changed += on => _vm.SetFullscreen(on);
+        _fullscreen.Changed += (on, fg) => _vm.SetFullscreen(on, on && GameDetector.IsGameWindow(fg));
 
         _clipboard = new ClipboardWatcher(hwnd);
         _clipboard.Changed += () => _ = _vm.Clips.CaptureAsync();
@@ -230,6 +234,7 @@ public partial class IslandWindow : Window
             _sendHotKey?.Dispose();
             _colorHotKey?.Dispose();
             _drawHotKey?.Dispose();
+            _micHotKey?.Dispose();
             _bars.Stop();
             _audible.Stop();
             _meter.Dispose();
@@ -297,6 +302,7 @@ public partial class IslandWindow : Window
         if (mode == IslandMode.Alerta && !_userHidden) { _peek.Interval = _vm.Peek?.Duration ?? DefaultPeek; _peek.Start(); }
         else _peek.Stop();
         UpdateVisibility();
+        SetClickThrough(mode == IslandMode.Jogo); // a faixa do jogo nunca pega clique (nem o foco do jogo)
         // Devolve o teclado pra quem estava digitando antes da hotkey/clique.
         if (mode != IslandMode.Expandida && IsActive && _prevFg != IntPtr.Zero) SetForegroundWindow(_prevFg);
         ApplyLayout(mode, animate: true);
@@ -377,6 +383,16 @@ public partial class IslandWindow : Window
             ((FrameworkElement)AudioBars.Children[i]).Height = 2 + heights[i] * 6; // cabe na pílula discreta (10)
     }
 
+    // WS_EX_TRANSPARENT: o clique atravessa a janela inteira (a faixa do jogo é só pra ver).
+    private void SetClickThrough(bool on)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+        int next = on ? ex | WS_EX_TRANSPARENT : ex & ~WS_EX_TRANSPARENT;
+        if (next != ex) SetWindowLong(hwnd, GWL_EXSTYLE, next);
+    }
+
     private void UpdateVisibility() =>
         Visibility = _userHidden || _vm.Mode == IslandMode.Oculta ? Visibility.Hidden : Visibility.Visible;
 
@@ -388,16 +404,20 @@ public partial class IslandWindow : Window
         var size = compact ? IslandGeometry.CompactPeek : IslandGeometry.SizeFor(mode);
         var r = IslandGeometry.RadiusFor(compact ? IslandMode.Atividade : mode);
         Pill.CornerRadius = new CornerRadius(0, 0, r, r);
+        // Orelhas do notch: do tamanho do canto (até 10), pra curva acompanhar a pílula.
+        EarLeft.Width = EarLeft.Height = EarRight.Width = EarRight.Height = Math.Min(r, 10);
 
         ActivityLayer.Visibility = Visibility.Collapsed;
         PeekLayer.Visibility = Visibility.Collapsed;
         ExpandedLayer.Visibility = Visibility.Collapsed;
+        GameLayer.Visibility = Visibility.Collapsed;
         ActivityContent.Visibility = mode == IslandMode.Discreta ? Visibility.Collapsed : Visibility.Visible;
         UIElement? layer = mode switch
         {
             IslandMode.Atividade or IslandMode.Discreta => ActivityLayer,
             IslandMode.Alerta => PeekLayer,
             IslandMode.Expandida => ExpandedLayer,
+            IslandMode.Jogo => GameLayer,
             _ => null,
         };
 
@@ -533,7 +553,7 @@ public partial class IslandWindow : Window
     private void OnDeactivated(object? sender, EventArgs e) => _vm.Collapse();
 
     private const int GWL_EXSTYLE = -20;
-    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_TOOLWINDOW = 0x00000080, WS_EX_TRANSPARENT = 0x00000020;
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);

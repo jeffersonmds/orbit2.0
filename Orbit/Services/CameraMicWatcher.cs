@@ -16,7 +16,8 @@ namespace Orbit.Services;
 public sealed record CameraMicUse(string App, bool Camera, bool Mic, DateTime Since);
 
 // O que a pílula desenha: bolinha (verde se câmera, laranja se só microfone), nome, ícones e tempo.
-public sealed record CameraMicDisplay(string App, bool Camera, bool Mic, string Time);
+// MicMuted: mudo global ligado (Ctrl+Alt+M) — o ícone do microfone vira "cortado".
+public sealed record CameraMicDisplay(string App, bool Camera, bool Mic, string Time, bool MicMuted = false);
 
 // "Quem está usando sua câmera e seu microfone" — as bolinhas verde/laranja do aparelho, no Windows.
 // Microfone: sessões de captura ativas no serviço de áudio (vale pra qualquer app). Câmera: o registro
@@ -172,12 +173,12 @@ public sealed class CameraMicWatcher : IDisposable
     }
 
     // Pílula: nome(s) do(s) app(s), ícones do que está em uso e há quanto tempo (do mais antigo).
-    public static CameraMicDisplay? Display(IReadOnlyList<CameraMicUse> uses, DateTime now)
+    public static CameraMicDisplay? Display(IReadOnlyList<CameraMicUse> uses, DateTime now, bool micMuted = false)
     {
         if (uses.Count == 0) return null;
         var mins = (int)(now - uses.Min(u => u.Since)).TotalMinutes;
         var time = mins < 1 ? "agora" : mins < 60 ? $"{mins} min" : $"{mins / 60} h {mins % 60:00}";
-        return new CameraMicDisplay(string.Join(", ", uses.Select(u => u.App)), uses.Any(u => u.Camera), uses.Any(u => u.Mic), time);
+        return new CameraMicDisplay(string.Join(", ", uses.Select(u => u.App)), uses.Any(u => u.Camera), uses.Any(u => u.Mic), time, micMuted);
     }
 
     // Texto (toast/acessibilidade): "Discord · câmera e microfone · 12 min"; vários: "Microfone: Discord, Brave".

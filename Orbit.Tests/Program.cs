@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
@@ -1464,6 +1464,7 @@ public static class Program
         Check("clip: filtro imagens", ClipHistory.View(items, null, ClipFilter.Imagens).Count == 1);
         Check("clip: filtro texto", ClipHistory.View(items, "", ClipFilter.Texto).Count == 2);
         Check("clip: busca sem caixa", ClipHistory.View(items, "BOM", ClipFilter.Tudo).Count == 1);
+        Check("clip: filtro fixados", ClipHistory.View(items, "", ClipFilter.Fixados) is [{ Text: "fixado antigo" }]);
 
         var now = new DateTime(2026, 10, 15, 12, 0, 0);
         Check("clip: agora", ClipHistory.RelativeTime(now, now.AddSeconds(-20)) == "agora");
@@ -1484,6 +1485,9 @@ public static class Program
         var back = ClipboardStore.Load(path);
         Check("clip store: round-trip", back.Count == 4 && back[2].Kind == ClipKind.Image && back[2].Width == 1920
             && back[3].Pinned && back[0].Text == "bom dia");
+        Check("clip store: gravado cifrado (texto não aparece no arquivo)", !File.ReadAllText(path).Contains("bom dia"));
+        File.WriteAllText(path, "[{\"Kind\":0,\"Text\":\"legado\",\"Key\":\"t:1\",\"CopiedAt\":\"2026-10-15T12:00:00\",\"Pinned\":false}]");
+        Check("clip store: JSON puro de antes da cifra ainda abre", ClipboardStore.Load(path) is [{ Text: "legado" }]);
         File.WriteAllText(path, "{ quebrado");
         Check("clip store: corrompido = vazio", ClipboardStore.Load(path).Count == 0);
         Directory.Delete(dir, recursive: true);
@@ -2295,6 +2299,13 @@ public static class Program
         m.PeekDone();
         Check("ilha: fila vazia → Repouso", m.Mode == IslandMode.Repouso && m.CurrentPeek is null);
 
+        m.SetFullscreen(true, game: true);
+        Check("ilha: jogo em tela cheia → faixa", m.Mode == IslandMode.Jogo);
+        m.Expand();
+        Check("ilha: faixa do jogo não expande", m.Mode == IslandMode.Jogo && !m.Expanded);
+        m.SetFullscreen(false, game: true);
+        Check("ilha: sair do jogo volta ao repouso", m.Mode == IslandMode.Repouso && !m.Game);
+
         m.SetFullscreen(true);
         Check("ilha: tela cheia → Oculta", m.Mode == IslandMode.Oculta);
         m.Expand();
@@ -2314,6 +2325,19 @@ public static class Program
         m.SetFullscreen(true);
         m.SetFullscreen(false);
         Check("ilha: tela cheia recolhe o painel", m.Mode == IslandMode.Repouso);
+
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"D:\Jogos\Hades\Hades.exe" };
+        Check("jogo: exe na lista do Windows", GameDetector.IsGame(@"d:\jogos\hades\hades.exe", known));
+        Check("jogo: pasta da Steam", GameDetector.IsGame(@"C:\Program Files (x86)\Steam\steamapps\common\Celeste\Celeste.exe", known));
+        Check("jogo: navegador em tela cheia é vídeo", !GameDetector.IsGame(@"C:\Program Files\Google\Chrome\Application\chrome.exe", known));
+        Check("jogo: VLC é vídeo mesmo marcado como jogo",
+            !GameDetector.IsGame(@"C:\VLC\vlc.exe", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"C:\VLC\vlc.exe" }));
+        Check("jogo: app de vídeo da loja (frame host) esconde", !GameDetector.IsGame(@"C:\Windows\System32\ApplicationFrameHost.exe", known));
+        Check("jogo: app qualquer esconde (na dúvida, não)", !GameDetector.IsGame(@"C:\Program Files\Microsoft Office\POWERPNT.EXE", known));
+        Check("jogo: sem exe esconde", !GameDetector.IsGame(null, known));
+        Check("mudo: algum aberto → muta todos", MicMute.ShouldMute(new[] { true, false }));
+        Check("mudo: todos mudos → libera", !MicMute.ShouldMute(new[] { true, true }));
+        Check("faixa do jogo: texto", IslandViewModel.GameStats(41.6, 88, 61.2, new DateTime(2026, 11, 12, 21, 4, 0)) == "CPU 42%   GPU 88%   RAM 61%   21:04");
 
         var x1 = new Peek("X", null, null);
         var x2 = new Peek("X", null, null);

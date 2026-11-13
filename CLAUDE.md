@@ -114,7 +114,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   do `transcript_path` (sem %: a janela varia por modelo).
 - **Settings** é uma instância única (`IslandViewModel` repassa às abas): nunca faça
   `SettingsStore.Load()` dentro de aba — o próximo `Save` de outra aba sobrescreveria.
-- **Tela cheia:** `FullscreenWatcher` (appbar + `ABN_FULLSCREENAPP`) esconde a ilha.
+- **Tela cheia:** `FullscreenWatcher` (appbar + `ABN_FULLSCREENAPP`) esconde a ilha. Se o app da frente é jogo
+  (`GameDetector`: lista do Game Bar em `GameConfigStore` ou pasta de loja; navegador/player/frame host nunca), vira
+  o modo `Jogo`: faixa fina com CPU/GPU/RAM (timer só nesse modo) e janela `WS_EX_TRANSPARENT` (clique atravessa).
+  Na dúvida, esconde: filme/série nunca ganha faixa. Sem FPS ainda (exigiria ETW + grupo Performance Log Users).
 - **Acento:** `Services/Accent` usa a cor de destaque do Windows (`UISettings`) ou o override
   de Ajustes; recursos `AccentBrush`/`AccentSoftBrush` — sempre `DynamicResource`.
 - **Settings:** `%AppData%\Orbit2\settings.json`; `Load()` nunca lança, `Save()` engole I/O.
@@ -122,6 +125,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **Tela congelada** (`Island/FrozenScreen`): foto de todos os monitores numa janela por cima de tudo, base do
   conta-gotas (Ctrl+Alt+C) e do desenho (Ctrl+Alt+D). Regras que custaram um travamento: a janela some e fecha
   ANTES de entregar imagem (clipboard pode demorar); copiar/enviar só o monitor do desenho; o mesmo atalho fecha.
+- **Mudo global** (`MicMute`): mudo no endpoint de todos os microfones ativos (vale pra todo app); Ctrl+Alt+M e o
+  cartão Microfone em Controles passam por `IslandViewModel.ToggleMicMute` (alerta curto + ícone cortado na pílula).
+- **Formato notch** (Ajustes, `NotchShape`): duas `Path` côncavas ao lado da `Pill`, do tamanho do raio (até 10).
+- `clipboard.json` é cifrado com DPAPI (`ClipboardStore.Encode/Decode`; JSON puro antigo ainda abre). PNGs não.
 - Hotkeys globais: Ctrl+Alt+I manda o clipboard pro aparelho (arquivos do Explorer vão como os originais;
   conteúdo privado nunca sai). Ctrl+Alt+O — a mesma do 1.0 (o 2.0 o substitui; com o 1.0 aberto o registro
   falha e vai pro log). Ignorada com a ilha Oculta (tela cheia) ou escondida pela bandeja.

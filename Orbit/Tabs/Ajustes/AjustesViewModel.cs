@@ -66,6 +66,7 @@ public sealed partial class AjustesViewModel : TabViewModel
     private readonly Action _monitorChanged;
     private readonly Func<System.Threading.Tasks.Task<UpdateStatus>> _checkUpdate;
     private readonly Func<System.Threading.Tasks.Task> _updateNow;
+    private readonly Action _appearanceChanged;
 
     [ObservableProperty] private string _versionText = "Verificando versão…";
     [ObservableProperty] private bool _canUpdate;
@@ -89,8 +90,9 @@ public sealed partial class AjustesViewModel : TabViewModel
     [ObservableProperty] private bool _somClaude;
 
     public AjustesViewModel(OrbitSettings settings, PomodoroViewModel pomodoro, Func<IEnumerable<TabViewModel>> allTabs, Action tabsChanged, Action monitorChanged,
-        Func<System.Threading.Tasks.Task<UpdateStatus>> checkUpdate, Func<System.Threading.Tasks.Task> updateNow)
+        Func<System.Threading.Tasks.Task<UpdateStatus>> checkUpdate, Func<System.Threading.Tasks.Task> updateNow, Action? appearanceChanged = null)
     {
+        _appearanceChanged = appearanceChanged ?? (() => { });
         _settings = settings;
         _pomodoro = pomodoro;
         _allTabs = allTabs;
@@ -126,6 +128,27 @@ public sealed partial class AjustesViewModel : TabViewModel
         CiclosTexto = settings.PomodoroCyclesUntilLongBreak.ToString();
         SomPomodoro = settings.PomodoroSoundEnabled;
         SomClaude = settings.ClaudeSoundEnabled;
+        FormatoNotch = settings.NotchShape;
+        FaixaDeJogo = settings.GameStripEnabled;
+    }
+
+    [ObservableProperty] private bool _formatoNotch;
+    [ObservableProperty] private bool _faixaDeJogo;
+
+    partial void OnFormatoNotchChanged(bool value)
+    {
+        if (_settings.NotchShape == value) return;
+        _settings.NotchShape = value;
+        SettingsStore.Save(_settings);
+        _appearanceChanged();
+    }
+
+    // Vale a partir da próxima tela cheia.
+    partial void OnFaixaDeJogoChanged(bool value)
+    {
+        if (_settings.GameStripEnabled == value) return;
+        _settings.GameStripEnabled = value;
+        SettingsStore.Save(_settings);
     }
 
     // Campos de texto (gravam ao perder o foco). Valor inválido volta ao anterior.
