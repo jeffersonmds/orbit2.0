@@ -1,4 +1,4 @@
-﻿# Orbit 2.0
+# Orbit 2.0
 
 **Uma Dynamic Island para o Windows.** Uma pílula discreta no topo da tela que, ao passar o mouse,
 vira um painel com agenda, tarefas, controles, stats, clipboard, apps, mercado, notícias, o Claude Code e uma
