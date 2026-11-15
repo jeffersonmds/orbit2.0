@@ -88,6 +88,9 @@
                     <Setter Property="Cursor" Value="Hand"/>
                     <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
                     <Setter Property="ToolTip" Value="{Binding Title}"/>
+                    <!-- Só com o mouse: com foco do teclado o nome ficava colado ao ícone -->
+                    <Setter Property="ToolTipService.ShowOnDisabled" Value="False"/>
+                    <Setter Property="ToolTipService.ShowsToolTipOnKeyboardFocus" Value="False"/>
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">

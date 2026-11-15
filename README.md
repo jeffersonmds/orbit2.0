@@ -1,4 +1,4 @@
-# Orbit 2.0
+﻿# Orbit 2.0
 
 **Uma Dynamic Island para o Windows.** Uma pílula discreta no topo da tela que, ao passar o mouse,
 vira um painel com agenda, tarefas, controles, stats, clipboard, apps, mercado, notícias, o Claude Code e uma
@@ -10,7 +10,7 @@ ponte segura com iPhone e iPad.
 ![Testes](https://img.shields.io/badge/checks-850%2B-2ea44f)
 
 <p align="center">
-  <img src="docs/screenshots/controles.png" width="820" alt="Painel expandido na aba Controles: trilho de abas, Wi-Fi, Bluetooth, modo escuro, microfone, volume e mídia tocando">
+  <img src="docs/screenshots/painel-controles.png" width="820" alt="Painel expandido na aba Controles: trilho de abas, Wi-Fi, Bluetooth, modo escuro, microfone, volume e mídia tocando">
 </p>
 
 Inspirado no [Hitodama](https://hitodama.in). Em repouso é uma pílula preta pequena que não chama atenção;
@@ -22,11 +22,11 @@ Some sozinha em vídeos em tela cheia e, em jogos, vira uma faixa fina com CPU, 
 
 | Hoje | Stats |
 |---|---|
-| ![Hoje](docs/screenshots/hoje.png) | ![Stats](docs/screenshots/stats.png) |
+| ![Hoje](docs/screenshots/painel-hoje.png) | ![Stats](docs/screenshots/painel-stats.png) |
 | **Mercado** | **Energia** |
-| ![Mercado](docs/screenshots/mercado.png) | ![Energia](docs/screenshots/energia.png) |
+| ![Mercado](docs/screenshots/painel-mercado.png) | ![Energia](docs/screenshots/painel-energia.png) |
 | **Ajustes** | |
-| ![Ajustes](docs/screenshots/ajustes.png) | |
+| ![Ajustes](docs/screenshots/painel-ajustes.png) | |
 
 ## O que faz
 
