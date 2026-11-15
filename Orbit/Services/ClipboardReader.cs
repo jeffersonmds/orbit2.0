@@ -76,11 +76,13 @@ public static class ClipboardReader
         if (path is null) return null;
         try
         {
-            var uri = new Uri(path);
-            int width = BitmapFrame.Create(uri, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).PixelWidth;
+            // Lê tudo pra memória e solta o arquivo na hora: um decoder por Uri com CacheOption.None
+            // segurava o arquivo até o GC, e o Explorer não conseguia mover (Ctrl+X/Ctrl+V) o arquivo copiado.
+            var bytes = System.IO.File.ReadAllBytes(path);
+            int width = BitmapDecoder.Create(new MemoryStream(bytes), BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).Frames[0].PixelWidth;
             var bmp = new BitmapImage();
             bmp.BeginInit();
-            bmp.UriSource = uri;
+            bmp.StreamSource = new MemoryStream(bytes);
             bmp.CacheOption = BitmapCacheOption.OnLoad;
             if (width > MaxImageWidth) bmp.DecodePixelWidth = MaxImageWidth;
             bmp.EndInit();
