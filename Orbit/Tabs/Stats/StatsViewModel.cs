@@ -65,8 +65,9 @@ public sealed partial class StatsViewModel : TabViewModel
         _timer.Start();
     }
 
-    // As leituras (contadores de GPU, lista de processos, rede) rodam fora da UI thread:
-    // a 1ª leitura de GPU a frio leva ~1 s e travava a ilha. _busy evita leituras sobrepostas.
+    // As leituras rodam fora da UI thread e cada bloco aparece assim que fica pronto: CPU/RAM/disco/rede
+    // são instantâneos; GPU (contadores a frio, ~1 s) e a lista de processos não seguram o resto.
+    // _busy evita leituras sobrepostas.
     private async Task SampleAsync()
     {
         if (_busy) return;
@@ -76,32 +77,36 @@ public sealed partial class StatsViewModel : TabViewModel
         _resetPending = false;
         try
         {
-            var r = await Task.Run(() =>
+            var fast = Task.Run(() =>
             {
-                if (reset) { _net.Reset(); _gpu.Reset(); }
-                return (
-                    Sys: _sys.Read(),
-                    Gpu: _gpu.Read(),
-                    Net: _net.Read(),
-                    Top: TopByMemory(ReadProcesses(), 5));
+                if (reset) _net.Reset();
+                return (Sys: _sys.Read(), Net: _net.Read());
             });
-            if (gen != _gen) return; // a aba fechou enquanto lia
+            var gpu = Task.Run(() => { if (reset) _gpu.Reset(); return _gpu.Read(); });
+            var top = Task.Run(() => TopByMemory(ReadProcesses(), 5));
 
-            var s = r.Sys;
+            var f = await fast;
+            if (gen != _gen) return; // a aba fechou enquanto lia
+            var s = f.Sys;
             CpuText = $"{s.CpuPercent:0}%";
             CpuRing = Ring.DashArray(s.CpuPercent / 100, RingDiameter, RingStroke);
             RamText = $"{s.Ram.Percent:0}%";
             RamRing = Ring.DashArray(s.Ram.Percent / 100, RingDiameter, RingStroke);
             RamDetail = string.Format(Pt, "{0:0.0} / {1:0.0} GB", s.Ram.UsedGb, s.Ram.TotalGb);
             DiskText = string.Format(Pt, "{0:0} / {1:0} GB", s.Disk.UsedGb, s.Disk.TotalGb);
-            GpuText = $"{r.Gpu:0}%";
-            GpuRing = Ring.DashArray(r.Gpu / 100, RingDiameter, RingStroke);
-            NetText = $"↓ {NetStats.Format(r.Net.DownBps)}   ↑ {NetStats.Format(r.Net.UpBps)}";
+            NetText = $"↓ {NetStats.Format(f.Net.DownBps)}   ↑ {NetStats.Format(f.Net.UpBps)}";
             UptimeText = FormatUptime(TimeSpan.FromMilliseconds(Environment.TickCount64));
 
-            double max = r.Top.Count > 0 ? r.Top[0].Bytes : 1;
+            var g = await gpu;
+            if (gen != _gen) return;
+            GpuText = $"{g:0}%";
+            GpuRing = Ring.DashArray(g / 100, RingDiameter, RingStroke);
+
+            var t = await top;
+            if (gen != _gen) return;
+            double max = t.Count > 0 ? t[0].Bytes : 1;
             TopApps.Clear();
-            foreach (var (name, bytes) in r.Top) TopApps.Add(new TopApp(name, FormatBytes(bytes), bytes / max));
+            foreach (var (name, bytes) in t) TopApps.Add(new TopApp(name, FormatBytes(bytes), bytes / max));
         }
         catch (Exception ex)
         {
