@@ -116,7 +116,7 @@
                             <Button DockPanel.Dock="Left" Style="{StaticResource SmallButton}" Content="5" Command="{Binding StartCommand}" CommandParameter="5" Margin="0,0,4,0"/>
                             <Button DockPanel.Dock="Left" Style="{StaticResource SmallButton}" Content="10" Command="{Binding StartCommand}" CommandParameter="10" Margin="0,0,6,0"/>
                             <Grid>
-                                <TextBox x:Name="newTimer" Style="{StaticResource Field}" FontSize="12" Padding="0"
+                                <TextBox x:Name="newTimer" Style="{StaticResource FieldInCard}" FontSize="12" Padding="0"
                                          Text="{Binding NewTimer, UpdateSourceTrigger=PropertyChanged}">
                                     <TextBox.InputBindings>
                                         <KeyBinding Key="Enter" Command="{Binding StartCommand}" CommandParameter="{Binding NewTimer}"/>
@@ -320,13 +320,28 @@
                         </ItemsControl>
                     </ScrollViewer>
 
-                    <TextBox Grid.Row="2" Style="{StaticResource Field}" Margin="0,6,0,0"
-                             ToolTip="Lembrete no fim: 15:30 · às 9h · amanhã 9h · em 30 min · em 2h"
-                             Text="{Binding NewTodo, UpdateSourceTrigger=PropertyChanged}">
-                        <TextBox.InputBindings>
-                            <KeyBinding Key="Enter" Command="{Binding AddTodoCommand}"/>
-                        </TextBox.InputBindings>
-                    </TextBox>
+                    <Grid Grid.Row="2" Margin="0,6,0,0">
+                        <TextBox x:Name="newTodo" Style="{StaticResource FieldInCard}" FontSize="12"
+                                 ToolTip="Lembrete no fim: 15:30 · às 9h · amanhã 9h · em 30 min · em 2h"
+                                 Text="{Binding NewTodo, UpdateSourceTrigger=PropertyChanged}">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Enter" Command="{Binding AddTodoCommand}"/>
+                            </TextBox.InputBindings>
+                        </TextBox>
+                        <TextBlock Text="Nova tarefa… (ex.: ligar 15:30, em 30 min)" FontSize="12" Foreground="#5A5A60" Margin="11,7,0,0"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=newTodo}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

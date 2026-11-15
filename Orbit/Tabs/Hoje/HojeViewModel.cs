@@ -89,7 +89,8 @@ public sealed partial class HojeViewModel : TabViewModel
     {
         var now = DateTime.Now;
         Time = now.ToString("HH:mm", Pt);
-        Date = Pt.TextInfo.ToTitleCase(now.ToString("dddd, d 'de' MMMM", Pt));
+        var date = now.ToString("dddd, d 'de' MMMM", Pt); // "domingo, 15 de novembro" → só a 1ª maiúscula
+        Date = char.ToUpper(date[0], Pt) + date[1..];
     }
 
     [RelayCommand]

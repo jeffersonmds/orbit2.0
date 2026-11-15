@@ -91,7 +91,7 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">
-                                <Border x:Name="bg" Width="34" Height="28" CornerRadius="9" Margin="0,1" Background="Transparent">
+                                <Border x:Name="bg" Width="34" Height="26" CornerRadius="9" Margin="0,1" Background="Transparent">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <ControlTemplate.Triggers>
@@ -353,10 +353,11 @@
         <Setter Property="Foreground" Value="{StaticResource InkHi}"/>
         <Setter Property="CaretBrush" Value="{StaticResource InkHi}"/>
         <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Background" Value="{StaticResource CardBg}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="bg" Background="{StaticResource CardBg}" CornerRadius="10" Padding="10,6"
+                    <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="10" Padding="10,6"
                             BorderThickness="1" BorderBrush="Transparent">
                         <ScrollViewer x:Name="PART_ContentHost"/>
                     </Border>
@@ -368,6 +369,11 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Campo dentro de cartão: fundo da ilha, senão some no cartão -->
+    <Style x:Key="FieldInCard" TargetType="TextBox" BasedOn="{StaticResource Field}">
+        <Setter Property="Background" Value="{StaticResource IslandBg}"/>
     </Style>
 
     <!-- Cartão-toggle (Controles): Tag=True pinta com o acento -->
