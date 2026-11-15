@@ -19,9 +19,14 @@ public sealed partial class QuickTimerViewModel : ObservableObject
     [ObservableProperty] private string _display = "";
     [ObservableProperty] private string? _activityText;
 
-    public QuickTimerViewModel(Action<int> finished)
+    // Nome opcional ("Forno"); sem nome, "Timer".
+    public string? Name { get; }
+    public string Label => Name ?? "Timer";
+
+    public QuickTimerViewModel(Action<int> finished, string? name = null)
     {
         _finished = finished;
+        Name = name;
         _tick.Tick += (_, _) => Update(DateTime.Now);
     }
 
@@ -69,6 +74,6 @@ public sealed partial class QuickTimerViewModel : ObservableObject
             return;
         }
         Display = Format(left);
-        ActivityText = "Timer · " + Display;
+        ActivityText = Label + " · " + Display;
     }
 }

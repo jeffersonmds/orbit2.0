@@ -65,7 +65,7 @@ public sealed partial class IslandViewModel : ObservableObject
 
     public ObservableCollection<TabViewModel> Tabs { get; } = new();
     public PomodoroViewModel Pomodoro { get; }
-    public QuickTimerViewModel Timer { get; }
+    public TimersViewModel Timer { get; }
     public NowPlayingViewModel NowPlaying { get; } = new();
 
     [ObservableProperty] private TabViewModel? _selectedTab;
@@ -149,10 +149,10 @@ public sealed partial class IslandViewModel : ObservableObject
                 if (_machine.CurrentActivity != ActivityKind.Timer) PomodoroProgress = Pomodoro.ElapsedFraction;
             }
         };
-        Timer = new QuickTimerViewModel(OnTimerFinished);
+        Timer = new TimersViewModel(OnTimerFinished);
         Timer.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName != nameof(QuickTimerViewModel.ActivityText)) return;
+            if (e.PropertyName != nameof(TimersViewModel.ActivityText)) return;
             var now = DateTime.Now;
             SetActivity(ActivityKind.Timer, Timer.ActivityText, quiet: Timer.Quiet(now));
             TimerProgress = Timer.Fraction(now);
@@ -402,8 +402,8 @@ public sealed partial class IslandViewModel : ObservableObject
     // "iPad · Link aberto no PC"; sem aparelho (ex.: pareamento) fica só o título.
     public static string PeekTitle(BridgeEvent e) => e.Device is { Length: > 0 } d ? d + " · " + e.Title : e.Title;
 
-    private void OnTimerFinished(int minutes) =>
-        Notify(new Peek("Timer acabou", $"{minutes} min", "hoje"), true);
+    private void OnTimerFinished(string? name, int minutes) =>
+        Notify(new Peek(name is null ? "Timer acabou" : $"{name} · acabou", $"{minutes} min", "hoje"), true);
 
     private void OnPomodoroPhase(PomodoroPhase phase, int minutes) =>
         Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "hoje"), _settings.PomodoroSoundEnabled);

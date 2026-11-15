@@ -104,6 +104,9 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   por `Notify`, com "Entrar" se houver link Teams/Meet/Zoom. A semana da aba marca dias com evento; clicar num dia mostra a agenda dele; cor por link (com 2+); contagem na pílula de 10 min antes a 5 min depois; clicar nela entra na reunião (`JoinMeetingIfShowing`). A URL é segredo: nunca logar inteira.
   Tarefas da aba Hoje: horário opcional no fim do texto vira lembrete (`TodoItem.ParseDue`: "15:30", "às 9h",
   "amanhã 9h", "em 30 min"); avisa uma vez por `Notify` com Feito/+10 min; timer de 30 s só com lembrete pendente.
+  Tarefa aberta com horário também entra na agenda do dia (`AgendaViewModel.Tasks`/`Merge`); vencida e aberta fica
+  laranja e sobe pro topo (`HojeViewModel.Ordered`). Timers rápidos são vários (`TimersViewModel`: "forno 40"), a pílula
+  mostra o que acaba primeiro (+N); cronômetro só na aba.
   PC no limite (`PcLimit`, dentro de `SystemSignals`, leitura a cada 30 s): RAM ≥ 90% ou CPU ≥ 90% por 1 min, com
   histerese; alerta laranja (`Peek.Warning`). Alerta com `Actions` fica mais alto, com botões largos embaixo.
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.

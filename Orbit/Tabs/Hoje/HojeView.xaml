@@ -9,15 +9,17 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <DockPanel Grid.Column="0" LastChildFill="False">
-            <StackPanel DockPanel.Dock="Top" Margin="2,0,0,8">
+        <!-- Coluna rola se faltar altura (vários timers): nada some cortado. -->
+        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Hidden">
+        <StackPanel>
+            <StackPanel Margin="2,0,0,8">
                 <TextBlock Text="{Binding Time}" FontSize="44" FontWeight="Light" Margin="0,-10,0,-2"
                            Typography.NumeralAlignment="Tabular"/>
                 <TextBlock Text="{Binding Date}" FontSize="12" Foreground="{StaticResource InkLo}"/>
             </StackPanel>
 
-            <!-- Clima -->
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="12,10" DataContext="{Binding Weather}">
+            <!-- Clima (previsão numa linha só) -->
+            <Border Style="{StaticResource Card}" Padding="12,10" Margin="0,0,0,8" DataContext="{Binding Weather}">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{Binding Icon}" FontFamily="Segoe UI Symbol" FontSize="20"
@@ -29,7 +31,7 @@
                     <TextBlock Text="{Binding Condition}" FontSize="12" Margin="0,2,0,0"/>
                     <TextBlock Text="{Binding Stale}" FontSize="11" Foreground="#FF9F0A"
                                Visibility="{Binding Stale, Converter={StaticResource NullToCollapsed}}"/>
-                    <TextBlock FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,1,0,6" TextTrimming="CharacterEllipsis"
+                    <TextBlock FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,1,0,4" TextTrimming="CharacterEllipsis"
                                ToolTip="{Binding Details}">
                         <Run Text="{Binding Sun, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding RainChance, Mode=OneWay}"/>
                     </TextBlock>
@@ -41,19 +43,18 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding Day}" FontSize="10" Foreground="{StaticResource InkLo}" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Icon}" FontFamily="Segoe UI Symbol" FontSize="13" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding MaxMin}" FontSize="11" HorizontalAlignment="Center"/>
-                                </StackPanel>
+                                <TextBlock FontSize="11" HorizontalAlignment="Center">
+                                    <Run Text="{Binding Day, Mode=OneWay}" Foreground="{StaticResource InkLo}"/>
+                                    <Run Text="{Binding MaxMin, Mode=OneWay}"/>
+                                </TextBlock>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
             </Border>
 
-            <!-- Foco (Pomodoro) + timer rápido, compacto no pé da coluna -->
-            <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" Padding="10,8">
+            <!-- Foco (Pomodoro), timers com nome e cronômetro -->
+            <Border Style="{StaticResource Card}" Padding="10,8">
                 <StackPanel>
                     <DockPanel DataContext="{Binding Pomodoro}">
                         <Button DockPanel.Dock="Right" Style="{StaticResource RoundButton}" Content="&#xE72C;" Command="{Binding ResetCommand}"
@@ -93,23 +94,75 @@
                             </StackPanel>
                         </StackPanel>
                     </DockPanel>
-                    <!-- Timer rápido (independente do Pomodoro) -->
-                    <Grid DataContext="{Binding Timer}" Margin="0,8,0,0">
-                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsRunning, Converter={StaticResource NotBoolToVis}}">
-                            <TextBlock Text="Timer" FontSize="11" Foreground="{StaticResource InkLo}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <Button Style="{StaticResource SmallButton}" Content="5" Command="{Binding StartCommand}" CommandParameter="5" Margin="0,0,4,0"/>
-                            <Button Style="{StaticResource SmallButton}" Content="10" Command="{Binding StartCommand}" CommandParameter="10" Margin="0,0,4,0"/>
-                            <Button Style="{StaticResource SmallButton}" Content="25" Command="{Binding StartCommand}" CommandParameter="25"/>
-                        </StackPanel>
-                        <DockPanel Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Content="Cancelar" Command="{Binding CancelCommand}"/>
-                            <TextBlock Text="{Binding Display}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
-                                       Typography.NumeralAlignment="Tabular"/>
+                    <StackPanel DataContext="{Binding Timer}" Margin="0,8,0,0">
+                        <!-- Timers correndo: nome, tempo e cancelar -->
+                        <ItemsControl ItemsSource="{Binding Running}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,0,0,4">
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" ToolTip="Cancelar"
+                                                Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"/>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Display}" FontSize="13" FontWeight="SemiBold"
+                                                   Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" Margin="6,0"/>
+                                        <TextBlock Text="{Binding Label}" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <!-- Novo timer: 5 / 10 ou texto livre ("forno 40") -->
+                        <DockPanel>
+                            <Button DockPanel.Dock="Left" Style="{StaticResource SmallButton}" Content="5" Command="{Binding StartCommand}" CommandParameter="5" Margin="0,0,4,0"/>
+                            <Button DockPanel.Dock="Left" Style="{StaticResource SmallButton}" Content="10" Command="{Binding StartCommand}" CommandParameter="10" Margin="0,0,6,0"/>
+                            <Grid>
+                                <TextBox x:Name="newTimer" Style="{StaticResource Field}" FontSize="12" Padding="0"
+                                         Text="{Binding NewTimer, UpdateSourceTrigger=PropertyChanged}">
+                                    <TextBox.InputBindings>
+                                        <KeyBinding Key="Enter" Command="{Binding StartCommand}" CommandParameter="{Binding NewTimer}"/>
+                                    </TextBox.InputBindings>
+                                </TextBox>
+                                <TextBlock Text="forno 40" FontSize="12" Foreground="#5A5A60" Margin="11,7,0,0" IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=newTimer}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
                         </DockPanel>
-                    </Grid>
+                        <!-- Cronômetro -->
+                        <DockPanel Margin="0,8,0,0">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE72C;" ToolTip="Zerar"
+                                    Command="{Binding ResetWatchCommand}"/>
+                            <Button DockPanel.Dock="Right" Command="{Binding ToggleWatchCommand}" Margin="0,0,4,0">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource GhostRound}">
+                                        <Setter Property="Content" Value="&#xE768;"/>
+                                        <Setter Property="ToolTip" Value="Iniciar cronômetro"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding WatchRunning}" Value="True">
+                                                <Setter Property="Content" Value="&#xE769;"/>
+                                                <Setter Property="ToolTip" Value="Pausar"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <TextBlock Text="Cronômetro" FontSize="11" Foreground="{StaticResource InkLo}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding WatchDisplay}" FontSize="13" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"
+                                       VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </StackPanel>
                 </StackPanel>
             </Border>
-        </DockPanel>
+        </StackPanel>
+        </ScrollViewer>
 
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>
@@ -176,6 +229,9 @@
                                                 CommandParameter="{Binding}"/>
                                         <Ellipse Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding Color}"
                                                  Visibility="{Binding Color, Converter={StaticResource NullToCollapsed}}"/>
+                                        <!-- Tarefa com horário: caixinha no lugar da bolinha -->
+                                        <Border x:Name="taskBox" Width="9" Height="9" CornerRadius="2.5" BorderThickness="1.3" BorderBrush="#6A6A70"
+                                                Margin="0,0,6,0" VerticalAlignment="Center" Visibility="Collapsed"/>
                                         <TextBlock x:Name="when" Text="{Binding When}" Width="78" FontSize="12" Foreground="{StaticResource InkLo}" VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                                     </DockPanel>
@@ -185,6 +241,13 @@
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsNow}" Value="True">
                                             <Setter TargetName="when" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsTask}" Value="True">
+                                            <Setter TargetName="taskBox" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Late}" Value="True">
+                                            <Setter TargetName="when" Property="Foreground" Value="#FF9F0A"/>
+                                            <Setter TargetName="taskBox" Property="BorderBrush" Value="#FF9F0A"/>
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
@@ -245,6 +308,11 @@
                                             <Setter TargetName="txt" Property="TextDecorations" Value="Strikethrough"/>
                                             <Setter TargetName="due" Property="Background" Value="Transparent"/>
                                             <Setter TargetName="dueText" Property="Foreground" Value="{StaticResource InkLo}"/>
+                                        </DataTrigger>
+                                        <!-- Venceu e não foi feita: laranja (e a lista já a pôs no topo) -->
+                                        <DataTrigger Binding="{Binding Overdue}" Value="True">
+                                            <Setter TargetName="due" Property="Background" Value="#33FF9F0A"/>
+                                            <Setter TargetName="dueText" Property="Foreground" Value="#FF9F0A"/>
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>

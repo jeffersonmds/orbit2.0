@@ -80,6 +80,29 @@ public static class Program
             Check("timer: cancelar some da pílula sem avisar", !qt.IsRunning && qt.ActivityText is null && done == -1);
         }
         {
+            Check("timers: número sozinho", Orbit.Tabs.Hoje.TimersViewModel.Parse("5") == (null, 5));
+            Check("timers: com nome", Orbit.Tabs.Hoje.TimersViewModel.Parse("forno 40") == ("Forno", 40)
+                && Orbit.Tabs.Hoje.TimersViewModel.Parse("chá 3 min") == ("Chá", 3));
+            Check("timers: sem número é inválido", Orbit.Tabs.Hoje.TimersViewModel.Parse("forno").Minutes == 0
+                && Orbit.Tabs.Hoje.TimersViewModel.Parse(null).Minutes == 0);
+            var ts = new Orbit.Tabs.Hoje.TimersViewModel((_, _) => { });
+            ts.StartCommand.Execute("forno 40");
+            ts.StartCommand.Execute("chá 3");
+            Check("timers: pílula mostra o que acaba primeiro +N", ts.Running.Count == 2 && ts.ActivityText!.StartsWith("Chá · ") && ts.ActivityText.EndsWith("+1"));
+            ts.CancelCommand.Execute(ts.Running.First(t => t.Name == "Chá"));
+            Check("timers: cancelar um deixa o outro", ts.Running.Count == 1 && ts.ActivityText!.StartsWith("Forno · ") && !ts.ActivityText.Contains('+'));
+            ts.CancelCommand.Execute(ts.Running[0]);
+            Check("timers: sem timer some da pílula", ts.ActivityText is null);
+            ts.ToggleWatchCommand.Execute(null);
+            var w0 = DateTime.Now;
+            Check("cronômetro: conta pelo relógio", ts.WatchRunning && ts.WatchElapsed(w0.AddMinutes(2)) >= TimeSpan.FromMinutes(2));
+            ts.ToggleWatchCommand.Execute(null);
+            var parado = ts.WatchElapsed(DateTime.Now);
+            Check("cronômetro: pausado não anda", !ts.WatchRunning && ts.WatchElapsed(DateTime.Now.AddHours(1)) == parado);
+            ts.ResetWatchCommand.Execute(null);
+            Check("cronômetro: zerar", ts.WatchElapsed(DateTime.Now) == TimeSpan.Zero && ts.WatchDisplay == "00:00");
+        }
+        {
             Check("download: temporários do navegador não avisam", !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\x.zip.crdownload")
                 && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\x.part") && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\desktop.ini")
                 && !Orbit.Services.DownloadWatcher.IsFinalName(@"C:\D\~$doc.docx"));
@@ -2586,6 +2609,18 @@ public static class Program
         var comAba = new Orbit.Island.Peek("Lembrete", "x", "hoje");
         var semAba = new Orbit.Island.Peek("Volume", null, null);
         Check("alerta: ícone da aba no lugar da bolinha", comAba.Icon is not null && comAba.Bullet == "" && semAba.Icon is null && semAba.Bullet == "● ");
+
+        // Vencida e aberta sobe pro topo; o resto mantém a ordem
+        var ord = HojeViewModel.Ordered(lista, agora);
+        Check("tarefas: vencida aberta vai pro topo", ord[0].Text == "vencida" && ord[1].Text == "avisada" && ord[2].Text == "futura" && ord[3].Text == "feita");
+        // Tarefa com horário entra na agenda do dia
+        var doDia = HojeViewModel.TasksOf(lista, agora.Date, agora);
+        Check("agenda: só tarefas abertas com horário no dia", doDia.Count == 3 && doDia.All(e => e.IsTask) && doDia.Count(e => e.Late) == 2);
+        Check("agenda: tarefa mostra só a hora", doDia.First(e => !e.Late).When == "14:05");
+        var reuniao = new Orbit.Services.AgendaEvent("Reunião", agora.AddMinutes(-30), agora.AddMinutes(30), false, null);
+        var diaTodo = new Orbit.Services.AgendaEvent("Feriado", agora.Date, agora.Date.AddDays(1), true, null);
+        var junto = Orbit.Tabs.Hoje.AgendaViewModel.Merge(new[] { reuniao, diaTodo }, doDia);
+        Check("agenda: dia todo primeiro, depois por horário", junto[0] == diaTodo && junto[1] == reuniao && junto.Skip(2).All(e => e.IsTask) && junto[2].Start <= junto[3].Start);
 
         // PC no limite: CPU precisa de 2 leituras seguidas; RAM avisa na hora; rearma só com histerese.
         var lim = new PcLimit();

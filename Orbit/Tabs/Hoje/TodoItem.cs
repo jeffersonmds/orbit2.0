@@ -25,6 +25,10 @@ public sealed partial class TodoItem : ObservableObject
     public string? DueLabel => DueText(Due, DateTime.Today);
 
     [ObservableProperty] private bool _done;
+    // Venceu e não foi feita: horário em laranja e sobe pro topo (HojeViewModel.RefreshOverdue).
+    [ObservableProperty] private bool _overdue;
+
+    public bool IsOverdue(DateTime now) => !Done && Due is { } d && d <= now;
 
     public static string? DueText(DateTime? due, DateTime today) => due switch
     {

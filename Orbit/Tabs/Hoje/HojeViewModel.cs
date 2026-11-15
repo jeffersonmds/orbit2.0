@@ -29,7 +29,7 @@ public sealed partial class HojeViewModel : TabViewModel
 
     public WeatherViewModel Weather { get; }
     public PomodoroViewModel Pomodoro { get; }
-    public QuickTimerViewModel Timer { get; }
+    public TimersViewModel Timer { get; }
     public AgendaViewModel Agenda { get; }
     public ObservableCollection<WeekDay> Week { get; } = new();
     public ObservableCollection<TodoItem> Todos { get; } = new();
@@ -39,7 +39,7 @@ public sealed partial class HojeViewModel : TabViewModel
     [ObservableProperty] private string _newTodo = "";
     [ObservableProperty] private string _todoCounter = "0/0";
 
-    public HojeViewModel(ApiService api, PomodoroViewModel pomodoro, QuickTimerViewModel timer, string todosPath, AgendaViewModel agenda)
+    public HojeViewModel(ApiService api, PomodoroViewModel pomodoro, TimersViewModel timer, string todosPath, AgendaViewModel agenda)
     {
         Agenda = agenda;
         Timer = timer;
@@ -47,6 +47,8 @@ public sealed partial class HojeViewModel : TabViewModel
         Pomodoro = pomodoro;
         _todosPath = todosPath;
         foreach (var t in TodoStore.Load(todosPath)) Todos.Add(t);
+        RefreshOverdue();
+        agenda.Tasks = TasksOf;
         TodoCounter = Counter(Todos);
         _reminders.Tick += (_, _) => FireReminders();
         _reminders.IsEnabled = Todos.Any(Pending); // venceu com o PC desligado: avisa no 1º tick (já com quem ouve inscrito)
@@ -117,8 +119,10 @@ public sealed partial class HojeViewModel : TabViewModel
 
     private void Persist()
     {
+        RefreshOverdue();
         TodoStore.Save(Todos, _todosPath);
         TodoCounter = Counter(Todos);
+        Agenda.Republish();
         _reminders.IsEnabled = Todos.Any(Pending);
     }
 
@@ -133,6 +137,30 @@ public sealed partial class HojeViewModel : TabViewModel
         if (due.Count > 0) Persist();
         else _reminders.IsEnabled = Todos.Any(Pending);
     }
+
+    // Vencidas e abertas vão pro topo (ordem relativa mantida). Só muda quando um lembrete vence ou a lista muda.
+    private void RefreshOverdue()
+    {
+        var now = DateTime.Now;
+        foreach (var t in Todos) t.Overdue = t.IsOverdue(now);
+        var ordered = Ordered(Todos, now);
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            var from = Todos.IndexOf(ordered[i]);
+            if (from != i) Todos.Move(from, i);
+        }
+    }
+
+    public static List<TodoItem> Ordered(IEnumerable<TodoItem> items, DateTime now) =>
+        items.OrderBy(t => !t.IsOverdue(now)).ToList();
+
+    // Tarefas abertas com horário no dia, como entradas da agenda.
+    private IEnumerable<AgendaEvent> TasksOf(DateTime day) => TasksOf(Todos, day, DateTime.Now);
+
+    public static List<AgendaEvent> TasksOf(IEnumerable<TodoItem> items, DateTime day, DateTime now) =>
+        items.Where(t => !t.Done && t.Due?.Date == day.Date)
+            .Select(t => new AgendaEvent(t.Text, t.Due!.Value, t.Due.Value, false, null) { IsTask = true, Late = t.Due <= now })
+            .ToList();
 
     private static bool Pending(TodoItem t) => t.Due is not null && !t.Done && !t.Reminded;
 

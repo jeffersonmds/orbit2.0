@@ -13,9 +13,12 @@ namespace Orbit.Services;
 public sealed record AgendaEvent(string Title, DateTime Start, DateTime End, bool AllDay, string? JoinUrl)
 {
     public bool IsNow { get; init; }
+    // Tarefa da aba Hoje com horário, misturada na agenda do dia (só a hora; Late = venceu e não foi feita).
+    public bool IsTask { get; init; }
+    public bool Late { get; init; }
     // Cor da agenda de origem; null com uma agenda só (bolinha seria ruído).
     public string? Color { get; init; }
-    public string When => AllDay ? "Dia todo" : IsNow ? $"agora–{End:HH:mm}" : $"{Start:HH:mm}–{End:HH:mm}";
+    public string When => IsTask ? $"{Start:HH:mm}" : AllDay ? "Dia todo" : IsNow ? $"agora–{End:HH:mm}" : $"{Start:HH:mm}–{End:HH:mm}";
     public bool HasJoin => JoinUrl is not null;
     public string Key => $"{Title}|{Start:o}";
 }

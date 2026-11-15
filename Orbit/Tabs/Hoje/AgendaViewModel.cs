@@ -44,6 +44,12 @@ public sealed partial class AgendaViewModel : ObservableObject
     public DateTime Day { get; private set; } = DateTime.Today;
     public HashSet<DateTime> Days { get; private set; } = new();
 
+    // Tarefas com horário do dia pedido (a aba Hoje fornece); entram na lista junto dos eventos.
+    public Func<DateTime, IEnumerable<AgendaEvent>>? Tasks { get; set; }
+
+    // Tarefas mudaram: redesenha a lista e os pontinhos sem buscar de novo.
+    public void Republish() => Publish();
+
     // Lista ou dias com evento mudaram (a semana redesenha os pontinhos).
     public event Action? Changed;
 
@@ -86,6 +92,11 @@ public sealed partial class AgendaViewModel : ObservableObject
         if (UrlsKey() != _urlsAt || Freshness.IsStale(_fetchedAt, Every, DateTime.Now)) _ = Refresh();
         else Publish();
     }
+
+    // Dia todo primeiro, depois por horário; tarefa empata depois do evento que começa na mesma hora.
+    public static List<AgendaEvent> Merge(IEnumerable<AgendaEvent> events, IEnumerable<AgendaEvent>? tasks) =>
+        events.Concat(tasks ?? Enumerable.Empty<AgendaEvent>())
+            .OrderBy(e => !e.AllDay).ThenBy(e => e.Start).ThenBy(e => e.IsTask).ToList();
 
     public void Show(DateTime day)
     {
@@ -139,7 +150,7 @@ public sealed partial class AgendaViewModel : ObservableObject
     {
         var now = DateTime.Now;
         bool today = Day == now.Date;
-        var all = Agenda.OfDay(_events, Day, now, int.MaxValue);
+        var all = Merge(Agenda.OfDay(_events, Day, now, int.MaxValue), Tasks?.Invoke(Day));
         Today.Clear();
         foreach (var e in all.Take(MaxShown)) Today.Add(e);
         More = all.Count > MaxShown ? $"+{all.Count - MaxShown} mais" : null;
@@ -147,6 +158,7 @@ public sealed partial class AgendaViewModel : ObservableObject
         Heading = today ? "Agenda" : $"Agenda · {HojeViewModel.DayLabel(Day)} {Day.Day}";
         var from = WeekStart(now.Date);
         Days = Agenda.Days(_events, from, from.AddDays(7));
+        foreach (var d in Enumerable.Range(0, 7).Select(i => from.AddDays(i)).Where(d => Tasks?.Invoke(d).Any() == true)) Days.Add(d);
         Changed?.Invoke();
     }
 
