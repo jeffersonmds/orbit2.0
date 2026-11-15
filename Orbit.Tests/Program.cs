@@ -139,7 +139,6 @@ public static class Program
         EnergiaExtrasTests();
         MixerTests();
         CameraPresetTests();
-        StreamTicketTests();
         MjpegTests();
         CameraTests();
         RtcTests();
@@ -168,13 +167,11 @@ public static class Program
         DispositivosTests();
         TailscaleTests();
         PairingCodeTests();
-        CameraStreamAuthTests();
         PcFilesTests();
         WebPushTests();
         RemoteScreenTests();
         MicTests();
         OutboxTests();
-        Check("câmera: só o dono fecha o stream", Camera.MayClose("A", "A") && !Camera.MayClose("A", "B") && Camera.MayClose("A", null));
         KeyboardTests();
         DevicePermissionRouteTests();
         SelfUpdateTests();
@@ -184,36 +181,6 @@ public static class Program
 
         Console.WriteLine(_failures == 0 ? "TODOS OK" : $"{_failures} FALHA(S)");
         return _failures == 0 ? 0 : 1;
-    }
-
-    // O stream é autenticado por tíquete (a <img> não manda cabeçalho): tem de passar pelo
-    // middleware de token. Com tíquete válido e device inexistente, o handler falha em 409 — nunca 401.
-    private static void CameraStreamAuthTests()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "orbit2-cam-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var web = Path.Combine(AppContext.BaseDirectory, "wwwroot");
-        var camera = new Camera();
-        var tickets = new StreamTickets();
-        var handlers = new BridgeHandlers();
-        var tokens = new TokenStore(Path.Combine(dir, "t.json"));
-        var camHash = TokenStore.Hash(tokens.Create("iPhone teste"));
-        tokens.SetPermissions(camHash, Only(Capability.Camera));
-        var server = new BridgeServer();
-        server.StartAsync(0, web, tokens, new AuditLog(Path.Combine(dir, "a.jsonl")),
-            handlers, null, camera, tickets).GetAwaiter().GetResult();
-        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
-
-        var semTicket = http.GetAsync("/api/camera/stream").Result;
-        Check("câmera: stream sem tíquete = 401", semTicket.StatusCode == HttpStatusCode.Unauthorized);
-
-        var tk = tickets.Issue(camHash, "device-inexistente", CameraPreset.Default, DateTime.Now);
-        var comTicket = http.GetAsync($"/api/camera/stream?ticket={tk}").Result; // sem Authorization
-        Check("câmera: stream com tíquete passa o token e falha no device (409)", comTicket.StatusCode == HttpStatusCode.Conflict);
-
-        server.StopAsync().GetAwaiter().GetResult();
-        camera.Dispose();
-        Directory.Delete(dir, recursive: true);
     }
 
     // Tela remota: parse da entrada, tíquetes, sessões e rotas com captura/execução falsas
@@ -595,10 +562,8 @@ public static class Program
             CaptureScreen = (_, _) => new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 },
             PcRoots = () => new[] { new PcRoot("r", "Raiz", root) },
         };
-        using var camera = new Camera();
-        var camTickets = new StreamTickets();
         var server = new BridgeServer();
-        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers, null, camera, camTickets)
+        server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers)
             .GetAwaiter().GetResult();
         HttpClient Client(string token)
         {
@@ -622,10 +587,6 @@ public static class Program
         Check("me: devolve o próprio nome e permissões", ipadHttp.GetStringAsync("/api/me").Result.Contains("iPad")
             && ipadHttp.GetStringAsync("/api/me").Result.Contains("\"screen\":true")
             && iphoneHttp.GetStringAsync("/api/me").Result.Contains("\"screen\":false"));
-
-        // Tíquete da câmera de um aparelho sem permissão (o stream é 403 antes de abrir qualquer coisa).
-        var camTk = camTickets.Issue(iphone, "x", CameraPreset.Default, DateTime.Now);
-        Check("tíquete: câmera de aparelho sem permissão = 403", anon.GetAsync($"/api/camera/stream?ticket={camTk}").Result.StatusCode == HttpStatusCode.Forbidden);
 
         string Ticket(HttpClient c, string url, object body) => c.PostAsJsonAsync(url, body).Result
             .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString()!;
@@ -939,56 +900,14 @@ public static class Program
         Check("saída: item antigo apagado por um some pra todos", legacy.Remove("old1", "qualquer") && legacy.List(t0, "outro").Count == 0);
     }
 
-    // Microfone: conversão pra PCM mono 16 bits e o WebSocket com um microfone falso (nenhum teste abre o de verdade).
+    // Microfone: permissão e rotas simples com um microfone falso (a captura é WebRTC e não roda nos testes).
     private static void MicTests()
     {
-        var floatFormat = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
-        Check("mic: valida float e PCM, recusa encoding desconhecido", MicCapture.PcmConverter.Supported(floatFormat)
-            && MicCapture.PcmConverter.Supported(new NAudio.Wave.WaveFormat(48000, 32, 1))
-            && !MicCapture.PcmConverter.Supported(NAudio.Wave.WaveFormat.CreateCustomFormat(NAudio.Wave.WaveFormatEncoding.ALaw, 8000, 1, 8000, 1, 8)));
-        var tone = new byte[44100 * 8];
-        for (int i = 0; i < 44100; i++)
-        {
-            var sample = BitConverter.GetBytes((float)(.5 * Math.Sin(i * Math.PI * 2 * 440 / 44100)));
-            sample.CopyTo(tone, i * 8); sample.CopyTo(tone, i * 8 + 4);
-        }
-        var whole = new MicCapture.PcmConverter(floatFormat).Convert(tone);
-        var incremental = new MicCapture.PcmConverter(floatFormat);
-        var split = new List<byte>();
-        for (int at = 0; at < tone.Length; at += 137) split.AddRange(incremental.Convert(tone.AsSpan(at, Math.Min(137, tone.Length - at))));
-        Check("mic: 44,1 kHz entrega 24 kHz sem perder sobras", Math.Abs(whole.Length / 2 - 24000) <= 2 && whole.SequenceEqual(split));
-        var int32 = new byte[400];
-        for (int i = 0; i < 100; i++) BitConverter.GetBytes(1073741824).CopyTo(int32, i * 4);
-        var converted = new MicCapture.PcmConverter(new NAudio.Wave.WaveFormat(24000, 32, 1)).Convert(int32);
-        Check("mic: PCM 32 não vira float", converted.Length > 100 && Math.Abs(BitConverter.ToInt16(converted, 80) - 16383) < 5);
-        var badFloat = new byte[400];
-        for (int i = 0; i < 100; i++) BitConverter.GetBytes(float.NaN).CopyTo(badFloat, i * 4);
-        Check("mic: NaN vira silêncio", new MicCapture.PcmConverter(NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(24000, 1)).Convert(badFloat).All(v => v == 0));
-        var q = new PcmQueue();
-        q.Push(new byte[2400], 24000, 0); q.Push(new byte[12000], 24000, 1); q.Push(new byte[4800], 24000, 2);
-        Check("mic: fila limitada a 300 ms por duração", q.Take(2) is { Sequence: 3, Pcm.Length: 4800 } && q.Take(2) is null);
-        q.Push(new byte[40000], 24000, 10);
-        Check("mic: pacote grande cabe no prazo", q.Take(11)?.Pcm.Length == 14400);
-        q.Push(new byte[200], 24000, 0);
-        Check("mic: descarta áudio vencido antes de enviar", q.Take(301) is null);
-        var wire = new PcmPacket(7, 100, [1, 2]).Wire(120);
-        Check("mic: cabeçalho leva sequência e idade", wire.Length == 18 && BitConverter.ToUInt32(wire, 0) == 7
-            && BitConverter.ToUInt32(wire, 4) == 20 && BitConverter.ToDouble(wire, 8) == 100 && wire[16] == 1);
-
         var dir = Path.Combine(Path.GetTempPath(), "orbit2-mic-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         var tokens = new TokenStore(Path.Combine(dir, "t.json"));
         var token = tokens.Create("iPhone teste");
-        bool stopped = false;
-        Action<byte[]>? feed = null;
-        Action<Exception?>? finish = null;
-        var states = new System.Collections.Concurrent.ConcurrentQueue<RemoteState>();
-        var handlers = new BridgeHandlers
-        {
-            MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
-            OpenMic = (_, onPcm, onStopped) => { feed = onPcm; finish = onStopped; return (24000, new Disposer(() => stopped = true)); },
-            RemoteChanged = st => states.Enqueue(st),
-        };
+        var handlers = new BridgeHandlers { MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") } };
         var server = new BridgeServer();
         server.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a.jsonl")), handlers).GetAwaiter().GetResult();
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
@@ -996,75 +915,9 @@ public static class Program
         Check("mic: desligado = 403", http.GetAsync("/api/mic/devices").Result.StatusCode == HttpStatusCode.Forbidden);
         tokens.SetPermissions(TokenStore.Hash(token), Only(Capability.Mic));
         Check("mic: lista", http.GetStringAsync("/api/mic/devices").Result.Contains("Microfone teste"));
-        Check("mic: dispositivo desconhecido = 404", http.PostAsJsonAsync("/api/mic/open", new { deviceId = "nao-existe" }).Result.StatusCode == HttpStatusCode.NotFound);
-        var tk = http.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1", name = "Microfone teste" }).Result
-            .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
-        using (var ws = new System.Net.WebSockets.ClientWebSocket())
-        {
-            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/mic/stream?ticket={tk}"), System.Threading.CancellationToken.None).Wait();
-            var buf = new byte[1024];
-            var first = ws.ReceiveAsync(buf, System.Threading.CancellationToken.None).Result;
-            Check("mic: 1ª mensagem diz a taxa", first.MessageType == System.Net.WebSockets.WebSocketMessageType.Text
-                && System.Text.Encoding.UTF8.GetString(buf, 0, first.Count) == "{\"rate\":24000}");
-            feed!(new byte[] { 1, 2, 3, 4 });
-            var audio = ws.ReceiveAsync(buf, new System.Threading.CancellationTokenSource(3000).Token).Result;
-            Check("mic: PCM chega em mensagem binária", audio.MessageType == System.Net.WebSockets.WebSocketMessageType.Binary
-                && audio.Count == 20 && buf[16] == 1 && buf[19] == 4);
-            Check("mic: ouvir avisa a ilha", states.Any(st => st.Listening));
-            http.PostAsync("/api/mic/close", null).Result.Dispose();
-            for (int i = 0; i < 50 && !stopped; i++) System.Threading.Thread.Sleep(20);
-            System.Threading.Thread.Sleep(50);
-            Check("mic: parar solta o microfone", stopped && states.Last() == new RemoteState(false, false, false));
-        }
-        Check("mic: tíquete de uso único", !TryConnect($"ws://127.0.0.1:{server.Port}/api/mic/stream?ticket={tk}"));
-        var nextTicket = http.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1" }).Result
-            .Content.ReadFromJsonAsync<JsonElement>().Result.GetProperty("ticket").GetString();
-        using (var ws = new System.Net.WebSockets.ClientWebSocket())
-        {
-            stopped = false;
-            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/api/mic/stream?ticket={nextTicket}"), System.Threading.CancellationToken.None).Wait();
-            ws.ReceiveAsync(new byte[1024], new System.Threading.CancellationTokenSource(3000).Token).Wait();
-            http.PostAsync($"/api/mic/close?id={tk}", null).Result.Dispose();
-            Check("mic: close antigo poupa nova sessão HTTP", http.GetStringAsync($"/api/mic/status?id={nextTicket}").Result.Contains("\"active\":true"));
-            finish!(null);
-            var ended = ws.ReceiveAsync(new byte[1024], new System.Threading.CancellationTokenSource(3000).Token).Result;
-            Check("mic: RecordingStopped encerra socket e solta captura", ended.MessageType == System.Net.WebSockets.WebSocketMessageType.Close && stopped
-                && http.GetStringAsync($"/api/mic/status?id={nextTicket}").Result.Contains("\"allowed\":false"));
-        }
+        Check("mic: sem sessão = inativo", http.GetStringAsync("/api/mic/status?id=x").Result.Contains("\"active\":false"));
+        Check("mic: rota MJPEG/PCM antiga não existe mais", http.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1" }).Result.StatusCode == HttpStatusCode.NotFound);
         server.StopAsync().GetAwaiter().GetResult();
-
-        // Consentimento do Windows pendente: abrir fica parado; o iPhone recebe o motivo e, quando
-        // autorizarem depois, o microfone é solto na hora (ninguém está ouvindo).
-        var gate = new System.Threading.ManualResetEventSlim(false);
-        bool lateStopped = false;
-        var events = new System.Collections.Concurrent.ConcurrentQueue<BridgeEvent>();
-        var waiting = new BridgeHandlers
-        {
-            MicDevices = () => new[] { new MicDevice("mic-1", "Microfone teste") },
-            OpenMic = (_, _, _) => { gate.Wait(); return (24000, new Disposer(() => lateStopped = true)); },
-            Notify = e => events.Enqueue(e),
-        };
-        var oldTimeout = MicStream.ConsentTimeout;
-        MicStream.ConsentTimeout = TimeSpan.FromMilliseconds(300);
-        var server2 = new BridgeServer();
-        server2.StartAsync(0, Path.Combine(dir, "sem-web"), tokens, new AuditLog(Path.Combine(dir, "a2.jsonl")), waiting).GetAwaiter().GetResult();
-        using (var http2 = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server2.Port}") })
-        {
-            http2.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            var tk2 = http2.PostAsJsonAsync("/api/mic/open", new { deviceId = "mic-1" }).Result
-                .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>().Result.GetProperty("ticket").GetString();
-            using var ws = new System.Net.WebSockets.ClientWebSocket();
-            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{server2.Port}/api/mic/stream?ticket={tk2}"), System.Threading.CancellationToken.None).Wait();
-            var r = ws.ReceiveAsync(new byte[64], new System.Threading.CancellationTokenSource(5000).Token).Result;
-            Check("mic: consentimento pendente avisa o iPhone", r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close
-                && ws.CloseStatusDescription == MicStream.ConsentReason);
-            Check("mic: e avisa quem está no PC", events.Any(e => e.Title.Contains("Autorize") && e.Device == "iPhone teste"));
-            gate.Set(); // "autorizaram" depois
-            for (int i = 0; i < 50 && !lateStopped; i++) System.Threading.Thread.Sleep(20);
-            Check("mic: autorizado tarde = solto na hora", lateStopped);
-        }
-        MicStream.ConsentTimeout = oldTimeout;
-        server2.StopAsync().GetAwaiter().GetResult();
         Directory.Delete(dir, recursive: true);
     }
 
@@ -1289,22 +1142,13 @@ public static class Program
         Check("pwa: cartão de câmera", html.Contains("id=\"cam-card\""));
         var appjs = File.ReadAllText(Path.Combine(web, "app.js"));
         Check("pwa: foto via share", appjs.Contains("navigator.share"));
-        Check("pwa: tíquete na URL do stream", appjs.Contains("/api/camera/stream?ticket="));
+        Check("pwa: sem caminho MJPEG de câmera/microfone", !appjs.Contains("/api/camera/stream") && !appjs.Contains("/api/mic/stream"));
         var jsCheck = new System.Diagnostics.ProcessStartInfo("node") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         jsCheck.ArgumentList.Add("-e");
         jsCheck.ArgumentList.Add("""
             const fs=require('fs'),vm=require('vm');
-            const s=fs.readFileSync(process.argv[1],'utf8'),ctx={};
-            vm.runInNewContext(s.slice(s.indexOf('function micSlot('),s.indexOf('function micPlay(')),ctx);
-            let next=0,last=-1,count=0;
-            for(let i=0;i<20;i++){
-              const at=ctx.micSlot(next,0,.05);if(at===null)continue;
-              if(at<last||at+.05>.30001)process.exit(1);
-              last=at+.05;next=last;count++;
-            }
-            if(count<1||count>6||ctx.micSlot(0,10,.05)!==10.08)process.exit(1);
-            console.log('buffer-ok');
-            let stopped=0,disconnected=0,closed=0,inset='';
+            const s=fs.readFileSync(process.argv[1],'utf8');
+            let closed=0,inset='';
             const nodes=new Map(),$=k=>{
               if(!nodes.has(k)){
                 const classes=new Set();
@@ -1316,13 +1160,13 @@ public static class Program
             };
             const media={$,camPref:()=>null,setInterval(){},clearTimeout(){},mediaClose(){},
               document:{addEventListener(){},documentElement:{style:{setProperty(k,v){inset=v}}}},
-              window:{addEventListener(){}},clearInterval(){},stopped:()=>stopped++,disconnected:()=>disconnected++,closed:()=>closed++};
+              window:{addEventListener(){}},clearInterval(){},closed:()=>closed++};
             vm.createContext(media);
             vm.runInContext(s.slice(s.indexOf('const mic = {'),s.indexOf('// --- Foto direto pro clipboard')),media);
-            const clean=vm.runInContext("mic.want=true;mic.confirmed=true;mic.id='old';mic.next=100;mic.ctx={close(){closed();return Promise.resolve()}};mic.sources.add({stop(){stopped()},disconnect(){disconnected()}});mic.ws={close(){closed()}};micUi();micRecovery(true);",media);
+            const clean=vm.runInContext("mic.want=true;mic.confirmed=true;mic.id='old';mic.ctx={close(){closed();return Promise.resolve()}};micUi();micRecovery(true);",media);
             if(inset!=='76px')process.exit(1);
-            const empty=vm.runInContext("micStop();!mic.want&&!mic.ctx&&!mic.ws&&mic.next===0&&mic.sources.size===0",media);
-            if(!empty||stopped!==1||disconnected!==1||closed!==2||inset!=='0px')process.exit(1);
+            const empty=vm.runInContext("micStop();!mic.want&&!mic.ctx",media);
+            if(!empty||closed!==1||inset!=='0px')process.exit(1);
             console.log('stop-ok');
             (async()=>{
               let requests=0,releases=0,resolve;
@@ -1340,8 +1184,7 @@ public static class Program
         {
             var jsResult = node.StandardOutput.ReadToEnd();
             node.WaitForExit();
-            Check("pwa: rajada não sobrepõe áudio e respeita 300 ms", node.ExitCode == 0 && jsResult.Contains("buffer-ok"));
-            Check("pwa: Parar solta fontes/socket/contexto e reserva espaço da barra", node.ExitCode == 0 && jsResult.Contains("stop-ok"));
+            Check("pwa: Parar solta o contexto de áudio e reserva espaço da barra", node.ExitCode == 0 && jsResult.Contains("stop-ok"));
             Check("pwa: wake lock pendente não duplica nem sobrevive à parada", node.ExitCode == 0 && jsResult.Contains("wake-ok"));
         }
         var manifest = http.GetAsync("/manifest.webmanifest").Result;
@@ -1942,41 +1785,9 @@ public static class Program
         Check("preset: lixo vira padrão", CameraPreset.Parse(null, null) == CameraPreset.Default && CameraPreset.Parse("4k", "x") == CameraPreset.Default);
     }
 
-    private static void StreamTicketTests()
-    {
-        var t = new StreamTickets();
-        var now = new DateTime(2026, 1, 1, 12, 0, 0);
-        var tk = t.Issue("dono", "dev-A", new CameraPreset(1280, 24), now);
-        Check("tíquete: não vazio", !string.IsNullOrEmpty(tk));
-        Check("tíquete: claim certo devolve device+preset", t.Claim(tk, now) is { Owner: "dono", DeviceId: "dev-A", Preset.Width: 1280 });
-        Check("tíquete: uso único (2ª vez falha)", t.Claim(tk, now) is null);
-        var tk2 = t.Issue("dono", "dev-B", CameraPreset.Default, now);
-        Check("tíquete: expira", t.Claim(tk2, now.AddSeconds(31)) is null);
-        Check("tíquete: errado falha", t.Claim("naoexiste", now) is null);
-        var tk3 = t.Issue("dono", "dev-C", CameraPreset.Default, now);
-        t.Issue("dono", "dev-D", CameraPreset.Default, now); // emitir de novo invalida o anterior
-        Check("tíquete: emitir substitui", t.Claim(tk3, now) is null);
-        var valid = t.Issue("B", "dev-B", CameraPreset.Default, now);
-        var rejected = t.Issue("A", "dev-A", CameraPreset.Default, now, _ => false);
-        Check("tíquete: retomada recusada poupa novo dono", rejected is null && t.Claim(valid, now)?.Owner == "B");
-    }
-
     private static void CameraTests()
     {
-        var pacer = new FramePacer();
-        int accepted = Enumerable.Range(0, 300).Count(i => pacer.Accept(i * 1000.0 / 30, 24));
-        Check("câmera: 30 Hz amostrado a 24 fps não cai a 15", accepted == 240);
-        Check("câmera: pausa longa não gera rajada", pacer.Accept(20000, 24) && !pacer.Accept(20001, 24));
-        Check("câmera: econômico limita largura, taxa e JPEG", CameraPreset.Parse("eco", null) is { Width: 640, Fps: 12, JpegQuality: .55f });
-        Check("câmera: automático permite redução", CameraPreset.Parse("auto", null).Automatic && CameraPreset.Parse("auto", null).Reduced.Width == 640);
-        Check("câmera: formato considera taxa além da largura", CameraPreset.FormatCost(1280, 24, CameraPreset.Default)
-            < CameraPreset.FormatCost(1280, 60, CameraPreset.Default));
-        var automatic = CameraPreset.Parse("auto", null);
-        var adaptive = automatic; int slow = 0, fast = 0;
-        for (int i = 0; i < 3; i++) adaptive = adaptive.Adapt(100, ref slow, ref fast, automatic);
-        Check("câmera: rede lenta reduz trabalho", adaptive.Width == 640 && adaptive.Fps == 12);
-        for (int i = 0; i < 120; i++) adaptive = adaptive.Adapt(1, ref slow, ref fast, automatic);
-        Check("câmera: folga restaura apenas o preset pedido", adaptive == automatic);
+        Check("câmera: econômico limita largura e taxa", CameraPreset.Parse("eco", null) is { Width: 640, Fps: 12 });
         var sessions = new RemoteSessions(_ => { });
         var owner = new SessionOwner("A", "iPhone");
         sessions.PrepareMedia("camera", "old", owner);
@@ -2064,30 +1875,29 @@ public static class Program
             assert.equal(c.rtcDevice([...devices,{...devices[0],deviceId:'c'}],'videoinput','x','câmera usb'),null);
             assert.equal(c.rtcDevice(devices,'audioinput','x','câmera usb'),null);
             vm.runInNewContext(app.slice(app.indexOf('function rtcNext('),app.indexOf('const rtcAvailable')),c);
-            assert.equal(c.rtcNext('waiting','media',true),'live');
-            assert.equal(c.rtcNext('waiting','timeout',true),'fallback');
-            assert.equal(c.rtcNext('live','lost',true),'fallback');
-            assert.equal(c.rtcNext('waiting','timeout',false),'failed');
-            assert.equal(c.rtcNext('live','stop',true),'stopped');
-            for(const state of ['stopped','fallback','failed'])for(const event of ['timeout','lost','media'])assert.equal(c.rtcNext(state,event,true),state);
+            assert.equal(c.rtcNext('waiting','media'),'live');
+            assert.equal(c.rtcNext('waiting','timeout'),'failed');
+            assert.equal(c.rtcNext('live','lost'),'failed');
+            assert.equal(c.rtcNext('live','stop'),'stopped');
+            for(const state of ['stopped','failed'])for(const event of ['timeout','lost','media'])assert.equal(c.rtcNext(state,event),state);
             console.log('map-ok fallback-ok');
             (async()=>{
               const waits=[],calls=[];
-              const state={camStreaming:true,camId:'old',camGen:1,camRtc:{},camFalling:false,camCompatible:false,camBroken:false,
+              const state={camStreaming:true,camId:'old',camGen:1,camRtc:{},camFalling:false,camBroken:false,
                 camOpening:0,camWatch:1,camVideo:{pause(){}},camView:{classList:{contains(){return true}}},document:{hidden:false},
                 clearInterval(){},stillWanted:(g,cur)=>g===cur,camSay(){},camStop(){throw Error('parada inesperada')},
-                api(){return new Promise(resolve=>waits.push(resolve))},async camStart(id,compat){calls.push([id,compat]);state.camGen++}};
+                api(){return new Promise(resolve=>waits.push(resolve))},async camStart(id){calls.push([id]);state.camGen++}};
               vm.createContext(state);
               vm.runInContext(app.slice(app.indexOf('async function camRtcFailed('),app.indexOf('camVideo.onclick')),state);
               vm.runInContext(app.slice(app.indexOf('async function camCheck('),app.indexOf('const BLANK')),state);
-              const poll=state.camCheck(),fall=state.camRtcFailed(1,'old',true);
+              const poll=state.camCheck(),fall=state.camRtcFailed(1,'old');
               waits[0]({allowed:true,active:false});await poll;
               assert.equal(calls.length,0);
               waits[1]({allowed:true,active:false});await fall;
-              assert.equal(JSON.stringify(calls),JSON.stringify([['old',true]]));
+              assert.equal(JSON.stringify(calls),JSON.stringify([['old']]));
               // Parar enquanto a verificação aguarda não reabre sensores.
               calls.length=0;state.camGen=3;state.camStreaming=true;
-              const late=state.camRtcFailed(3,'old',true);state.camGen++;state.camStreaming=false;
+              const late=state.camRtcFailed(3,'old');state.camGen++;state.camStreaming=false;
               waits[2]({allowed:true,active:false});await late;assert.equal(calls.length,0);
               console.log('race-ok');
               let resolveCapture,entered,ended=0;const messages=[];let requestedCapture=new Promise(resolve=>entered=resolve);
@@ -2164,7 +1974,6 @@ public static class Program
 
     private static void CameraAuditTests()
     {
-        Check("audit: ignora o stream", !BridgeRules.ShouldAudit("GET", "/api/camera/stream"));
         Check("audit: lista de câmeras não audita", !BridgeRules.ShouldAudit("GET", "/api/camera/devices"));
         Check("audit: abrir câmera audita", BridgeRules.ShouldAudit("POST", "/api/camera/open"));
     }

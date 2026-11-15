@@ -82,9 +82,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   `2026-10-17-tela-remota-design.md`): permissões Tela e Controle; vídeo MJPEG e WebSocket de entrada
   por tíquete; `RemoteInput.Parse` recusa o que não conhece; sessão ativa = atividade `TelaRemota`
   (prioridade máxima) na pílula + "Encerrar" na aba Dispositivos. Testes nunca executam `SendInput`.
-  **Microfone** (`Bridge/MicStream`, `Services/MicCapture`): permissão própria, independente da câmera;
-  WebSocket por tíquete com PCM 16 bits mono ~24 kHz, Web Audio no aparelho. Na 1ª vez o Windows pede
-  consentimento NA TELA DO PC e abrir trava até responder: `ConsentTimeout` avisa o aparelho e a ilha.
+  **Câmera e microfone** (`Bridge/RtcStream`, `Services/WebRtcCapture`; `docs/webrtc.md`): só WebRTC, sem plano B. O PC
+  captura num WebView2 oculto (`getUserMedia`); sinalização por tíquete de uso único. Permissões Câmera e Microfone
+  independentes. `Services/Camera` só lista câmeras e tira foto; `MicCapture` só lista microfones. Queda = o PWA reconecta
+  com `resume`. Na 1ª vez o Windows pede consentimento NA TELA DO PC.
   **PC → aparelho** (`Bridge/Outbox`): caixa de saída de 24 h **por destinatário** (cópias em `outbox\`), alimentada por Explorer
   → Enviar para (`Orbit.exe --send-device`, pipe `CurrentUserOnly`; atalho existe só com a ponte ligada),
   arrastar pra pílula e o botão da aba Clipboard; o destino sai de `IslandViewModel.ChooseDevice` (1 aparelho: direto;

@@ -114,7 +114,6 @@ public static class BridgeRules
         !(string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
           && (path.EndsWith("/stats", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/media", StringComparison.OrdinalIgnoreCase)
               || path.EndsWith("/media/cover", StringComparison.OrdinalIgnoreCase)
-              || path.EndsWith("/camera/stream", StringComparison.OrdinalIgnoreCase)
               || path.EndsWith("/camera/devices", StringComparison.OrdinalIgnoreCase)
               || path.EndsWith("/screen/owner", StringComparison.OrdinalIgnoreCase)));
 
@@ -122,8 +121,8 @@ public static class BridgeRules
     // handler valida o tíquete e, depois do claim, o dono (ver BridgeServer.TicketOwnerAllowed).
     private static readonly string[] TicketPaths =
     {
-        "/api/camera/stream", "/api/pcfiles/download", "/api/screen/stream", "/api/remote/input",
-        "/api/mic/stream", "/api/outbox/download", "/api/keyboard/input",
+        "/api/pcfiles/download", "/api/screen/stream", "/api/remote/input",
+        "/api/outbox/download", "/api/keyboard/input",
         "/api/camera/rtc/signal", "/api/mic/rtc/signal",
     };
 

@@ -57,10 +57,19 @@ public static class RtcSignal
 
 public static class RtcStream
 {
-    internal static readonly SemaphoreSlim CameraGate = new(1, 1);
+    // Um dispositivo de cada tipo por vez.
+    private static readonly SemaphoreSlim CameraGate = new(1, 1), MicGate = new(1, 1);
     private sealed record Source(string Kind, string Id, string Label, CameraPreset Preset);
     public static void Map(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, RemoteSessions sessions)
     {
+        api.MapGet("/mic/devices", () => Results.Ok(h.MicDevices().Select(d => new { id = d.Id, name = d.Name })));
+        api.MapPost("/mic/close", (HttpContext ctx, string? id) => { sessions.StopMedia("mic", BridgeServer.DeviceOf(ctx).Hash, id); return Results.NoContent(); });
+        api.MapGet("/mic/status", (HttpContext ctx, string id) =>
+        {
+            var state = sessions.MediaStatus("mic", BridgeServer.DeviceOf(ctx).Hash, id);
+            return Results.Ok(new { allowed = state.Allowed, active = state.Active, name = state.Name });
+        });
+
         foreach (var kind in new[] { "camera", "mic" })
         {
             var tickets = new OneShotTickets<Source>();
@@ -96,7 +105,7 @@ public static class RtcStream
                 // Cancela o documento sem esperar Initialize/getUserMedia retornarem.
                 using var cut = ct.Register(() => { _ = capture.CloseAsync(); });
                 Task? receive = null, send = null;
-                var gate = kind == "camera" ? CameraGate : MicStream.CaptureGate;
+                var gate = kind == "camera" ? CameraGate : MicGate;
                 bool held = false;
                 async Task Listen()
                 {
@@ -118,7 +127,7 @@ public static class RtcStream
                     session.Cancel();
                     await capture.CloseAsync();
                     if (held) gate.Release();
-                    // Uma queda permite fallback com resume; StopMedia/StopAll já invalidaram a intenção.
+                    // Uma queda permite reconectar com resume; StopMedia/StopAll já invalidaram a intenção.
                     if (send is not null) try { await send; } catch { }
                     await RemoteScreen.CloseAsync(ws, sessions, session);
                     if (receive is not null) try { await receive; } catch { }

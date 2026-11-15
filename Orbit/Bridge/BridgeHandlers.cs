@@ -54,10 +54,8 @@ public sealed class BridgeHandlers
     // Janelas abertas no PC (trocar de janela pelo aparelho) e trazer uma pra frente.
     public Func<IReadOnlyList<Orbit.Services.OpenWindow>> Windows { get; init; } = () => Array.Empty<Orbit.Services.OpenWindow>();
     public Func<long, bool> FocusWindow { get; init; } = _ => false;
-    // Microfone. OpenMic devolve a taxa do PCM e quem para a captura.
+    // Microfones do PC.
     public Func<IReadOnlyList<MicDevice>> MicDevices { get; init; } = () => Array.Empty<MicDevice>();
-    public Func<string?, Action<byte[]>, Action<Exception?>, (int Rate, IDisposable Stop)> OpenMic { get; init; } =
-        (_, _, _) => throw new InvalidOperationException("Sem microfone");
 
     // Vendo/controlando/ouvindo — pro indicador na pílula. Chamado de thread do Kestrel.
     public Action<RemoteState> RemoteChanged { get; init; } = _ => { };

@@ -25,7 +25,6 @@ public sealed record TextRequest(string? Text);
 public sealed record NotesRequest(string? Text, string? Rev);
 public sealed record VolumeRequest(double Percent);
 public sealed record PairRequest(string? Code);
-public sealed record CameraOpenRequest(string? DeviceId, string? Name, string? Quality, string? Fps, string? Resume);
 public sealed record CameraPhotoRequest(string? DeviceId, string? Name);
 public sealed record PcFileRequest(string? Root, string? Path);
 public sealed record PushKeys(string? P256dh, string? Auth);
@@ -53,7 +52,7 @@ public sealed class BridgeServer : IAsyncDisposable
     // port 0 = porta efêmera (testes).
     // codes: pareamento por código de 6 dígitos (POST /pair, sem token). null = rota desligada.
     public async Task StartAsync(int port, string webRoot, TokenStore tokens, AuditLog audit, BridgeHandlers h,
-        PairingCodes? codes = null, Orbit.Services.Camera? camera = null, StreamTickets? tickets = null)
+        PairingCodes? codes = null)
     {
         if (_app is not null) return;
         bool hasWeb = Directory.Exists(webRoot);
@@ -169,11 +168,10 @@ public sealed class BridgeServer : IAsyncDisposable
             return await next(ctx);
         });
         _remote = new RemoteSessions(h.RemoteChanged);
-        MapApi(api, h, tokens, camera, tickets, _remote);
+        MapApi(api, h, tokens, _remote);
         MapPcFiles(api, h, tokens, new FileTickets(), _remote);
         if (h.Push is { } push) MapPush(api, h, push);
         RemoteScreen.Map(api, h, tokens, _remote);
-        MicStream.Map(api, h, tokens, _remote);
         RtcStream.Map(api, h, tokens, _remote);
         OutboxRoutes.Map(api, h, tokens, _remote);
 
@@ -191,8 +189,7 @@ public sealed class BridgeServer : IAsyncDisposable
     internal static bool TicketOwnerAllowed(TokenStore tokens, string owner, PathString path) =>
         tokens.Find(owner) is not null && BridgeRules.RequiredCapabilities(path).All(c => tokens.Allows(owner, c));
 
-    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, Orbit.Services.Camera? camera, StreamTickets? tickets,
-        RemoteSessions sessions)
+    private static void MapApi(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, RemoteSessions sessions)
     {
         api.MapGet("/me", (HttpContext ctx) =>
         {
@@ -304,131 +301,40 @@ public sealed class BridgeServer : IAsyncDisposable
             return Results.Ok(new { saved, folder = dir });
         });
 
-        if (camera is not null && tickets is not null)
+        api.MapGet("/camera/devices", async () =>
+            Results.Ok((await Orbit.Services.Camera.DevicesAsync()).Select(d => new { id = d.Id, name = d.Name })));
+
+        api.MapPost("/camera/close", (HttpContext ctx, string? id) =>
         {
-            api.MapGet("/camera/devices", async () =>
-                Results.Ok((await Orbit.Services.Camera.DevicesAsync()).Select(d => new { id = d.Id, name = d.Name })));
+            sessions.StopMedia("camera", DeviceOf(ctx).Hash, id);
+            return Results.NoContent();
+        });
 
-            api.MapPost("/camera/open", (CameraOpenRequest req, HttpContext ctx) =>
-            {
-                if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
-                var preset = CameraPreset.Parse(req.Quality, req.Fps);
-                var ticket = tickets.Issue(DeviceOf(ctx).Hash, req.DeviceId, preset, DateTime.Now,
-                    id => sessions.PrepareMedia("camera", id, RemoteScreen.Who(tokens, DeviceOf(ctx).Hash), req.Resume));
-                if (ticket is null) return Results.Conflict();
-                h.Notify(new BridgeEvent("Câmera aberta", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
-                return Results.Ok(new { ticket });
-            });
+        api.MapGet("/camera/status", (HttpContext ctx, string id) =>
+        {
+            var state = sessions.MediaStatus("camera", DeviceOf(ctx).Hash, id);
+            return Results.Ok(new { allowed = state.Allowed, active = state.Active, name = state.Name });
+        });
 
-            api.MapGet("/camera/stream", async (HttpContext ctx, string? ticket) =>
+        api.MapPost("/camera/photo", async (CameraPhotoRequest req, HttpContext ctx) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
+            var owner = DeviceOf(ctx).Hash;
+            using var cut = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, sessions.TransferToken(owner));
+            if (!TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) return Results.StatusCode(403);
+            try
             {
-                if (tickets.Claim(ticket, DateTime.Now) is not { } claim)
-                {
-                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    return;
-                }
-                ctx.Items["device"] = tokens.Find(claim.Owner); // a auditoria mostra o aparelho do tíquete
-                if (!TicketOwnerAllowed(tokens, claim.Owner, ctx.Request.Path))
-                {
-                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    return;
-                }
-                // Vaga antes de abrir: Encerrar/revogar durante a inicialização também alcança este stream
-                // (o laço abaixo sai na hora e o finally fecha a câmera).
-                var slot = sessions.BeginMedia("camera", ticket!, ctx.RequestAborted, RemoteScreen.Who(tokens, claim.Owner));
-                if (slot is null) { ctx.Response.StatusCode = StatusCodes.Status409Conflict; return; }
-                if (!TicketOwnerAllowed(tokens, claim.Owner, ctx.Request.Path)) slot.Cancel();
-                System.Threading.CancellationTokenSource session;
-                System.Threading.CancellationToken sessionToken;
-                bool held = false;
-                try
-                {
-                    await RtcStream.CameraGate.WaitAsync(slot.Token); held = true;
-                    (session, sessionToken) = await camera.OpenStreamAsync(claim.DeviceId, claim.Preset, claim.Owner, slot.Token, ticket);
-                }
-                catch (Exception ex)
-                {
-                    sessions.StopMedia("camera", claim.Owner, ticket);
-                    sessions.End(slot);
-                    if (held) RtcStream.CameraGate.Release();
-                    Log.Warning(ex, "Câmera: não abriu");
-                    ctx.Response.StatusCode = StatusCodes.Status409Conflict; // ocupada por outro app, etc.
-                    return;
-                }
-                // Encerra por: conexão caiu (RequestAborted), parar explícito ou troca (sessionToken),
-                // revogação ou Encerrar (slot).
-                using var link = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(slot.Token, sessionToken);
-                try
-                {
-                    ctx.Response.ContentType = Mjpeg.ContentType;
-                    ctx.Response.Headers.CacheControl = "no-cache, no-store";
-                    var body = ctx.Response.BodyWriter;
-                    // Desligar a permissão no meio corta a câmera no próximo quadro (revogar já cancela a vaga).
-                    while (!link.Token.IsCancellationRequested && tokens.Allows(claim.Owner, Capability.Camera))
-                    {
-                        byte[] jpeg;
-                        try { jpeg = await camera.NextFrameAsync(link.Token); }
-                        catch (Exception ex) when (ex is TimeoutException or IOException)
-                        {
-                            sessions.StopMedia("camera", claim.Owner, ticket);
-                            Log.Warning(ex, "Câmera: sem sinal");
-                            break;
-                        }
-                        var sentAt = System.Diagnostics.Stopwatch.GetTimestamp();
-                        using var send = CancellationTokenSource.CreateLinkedTokenSource(link.Token);
-                        send.CancelAfter(TimeSpan.FromSeconds(5));
-                        await body.WriteAsync(Mjpeg.PartHeader(jpeg.Length), send.Token);
-                        await body.WriteAsync(jpeg, send.Token);
-                        await body.FlushAsync(send.Token);
-                        camera.ReportSend(System.Diagnostics.Stopwatch.GetElapsedTime(sentAt).TotalMilliseconds);
-                    }
-                }
-                catch (OperationCanceledException) { /* parar, troca ou aparelho fechou */ }
-                catch (IOException) { /* queda de rede: a intenção permite reconectar */ }
-                finally
-                {
-                    sessions.End(slot);
-                    try { await camera.EndStream(session); }
-                    finally { RtcStream.CameraGate.Release(); }
-                }
-            });
-
-            api.MapPost("/camera/close", (HttpContext ctx, string? id) =>
-            {
-                sessions.StopMedia("camera", DeviceOf(ctx).Hash, id);
-                return Results.NoContent();
-            });
-
-            api.MapGet("/camera/status", (HttpContext ctx, string id) =>
-            {
-                var state = sessions.MediaStatus("camera", DeviceOf(ctx).Hash, id);
-                var video = camera.Status;
-                bool ready = state.Active && video.Id == id;
-                return Results.Ok(new { allowed = state.Allowed, active = state.Active, name = state.Name,
-                    width = ready ? video.Width : 0, height = ready ? video.Height : 0,
-                    fps = ready ? Math.Round(video.Fps, 1) : 0, reduced = ready && video.Reduced });
-            });
-
-            api.MapPost("/camera/photo", async (CameraPhotoRequest req, HttpContext ctx) =>
-            {
-                if (string.IsNullOrWhiteSpace(req.DeviceId)) return Results.BadRequest(new { erro = "Sem câmera." });
-                var owner = DeviceOf(ctx).Hash;
-                using var cut = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, sessions.TransferToken(owner));
+                var jpeg = await Orbit.Services.Camera.PhotoAsync(req.DeviceId, cut.Token);
+                cut.Token.ThrowIfCancellationRequested();
                 if (!TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) return Results.StatusCode(403);
-                try
-                {
-                    var jpeg = await camera.PhotoAsync(req.DeviceId, cut.Token);
-                    cut.Token.ThrowIfCancellationRequested();
-                    if (!TicketOwnerAllowed(tokens, owner, ctx.Request.Path)) return Results.StatusCode(403);
-                    ctx.Response.ContentType = "image/jpeg";
-                    ctx.Response.Headers.CacheControl = "no-store";
-                    await ctx.Response.Body.WriteAsync(jpeg, cut.Token);
-                    h.Notify(new BridgeEvent("Foto capturada", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
-                    return Results.Empty;
-                }
-                catch (OperationCanceledException) { return ctx.Response.HasStarted ? Results.Empty : Results.StatusCode(409); }
-            });
-        }
+                ctx.Response.ContentType = "image/jpeg";
+                ctx.Response.Headers.CacheControl = "no-store";
+                await ctx.Response.Body.WriteAsync(jpeg, cut.Token);
+                h.Notify(new BridgeEvent("Foto capturada", string.IsNullOrWhiteSpace(req.Name) ? "Câmera" : req.Name, Device: DeviceOf(ctx).Name));
+                return Results.Empty;
+            }
+            catch (OperationCanceledException) { return ctx.Response.HasStarted ? Results.Empty : Results.StatusCode(409); }
+        });
     }
 
     private static void MapPcFiles(RouteGroupBuilder api, BridgeHandlers h, TokenStore tokens, FileTickets tickets, RemoteSessions sessions)

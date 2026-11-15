@@ -33,8 +33,6 @@ public sealed partial class DispositivosViewModel : TabViewModel
 
     public BridgeServer Server { get; } = new();
     private readonly PairingCodes _codes = new();
-    private readonly Orbit.Services.Camera _camera = new();
-    private readonly StreamTickets _tickets = new();
     public ObservableCollection<DeviceRow> Devices { get; } = new();
     public ObservableCollection<AuditRow> Activity { get; } = new();
 
@@ -134,7 +132,7 @@ public sealed partial class DispositivosViewModel : TabViewModel
         {
             Status = "Ligando…";
             var handlers = _handlers(); // na UI thread: captura o Dispatcher
-            await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers, _codes, _camera, _tickets));
+            await Task.Run(() => Server.StartAsync(_settings.BridgePort, _webRoot, _tokens, _audit, handlers, _codes));
             Status = $"Ligada · 127.0.0.1:{Server.Port}";
             // "Enviar para → Dispositivo (Orbit)" só existe com a ponte ligada
             if (Environment.ProcessPath is { } exe) SendToDevice.EnsureShortcut(exe);
@@ -156,7 +154,6 @@ public sealed partial class DispositivosViewModel : TabViewModel
         try { await Task.Run(() => Server.StopAsync()); }
         catch (Exception ex) { Log.Warning(ex, "Ponte: falha ao desligar"); }
         Status = "Desligada";
-        _camera.Dispose();
         SendToDevice.RemoveShortcut();
     }
 

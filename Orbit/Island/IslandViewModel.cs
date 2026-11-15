@@ -388,7 +388,6 @@ public sealed partial class IslandViewModel : ObservableObject
             Windows = OpenWindows.List,
             FocusWindow = OpenWindows.Focus,
             MicDevices = MicCapture.Devices,
-            OpenMic = MicCapture.Open,
             RemoteChanged = state => ui.BeginInvoke(() =>
             {
                 SetActivity(ActivityKind.TelaRemota, RemoteActivity(state));

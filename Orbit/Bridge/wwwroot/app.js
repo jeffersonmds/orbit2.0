@@ -304,12 +304,12 @@ document.querySelectorAll('[data-power]').forEach(b => b.onclick = async () => {
   run(() => api('/power/' + b.dataset.power, { method: 'POST' }), `${label}: enviado`);
 });
 
-// WebRTC cai uma vez para o modo compatível; Parar nunca dispara fallback.
-function rtcNext(state, event, automatic) {
+// Perder a mídia é falha (quem chamou decide se reconecta); Parar nunca é falha.
+function rtcNext(state, event) {
   if (event === 'stop') return 'stopped';
-  if (state === 'stopped' || state === 'fallback' || state === 'failed') return state;
+  if (state === 'stopped' || state === 'failed') return state;
   if (event === 'media') return 'live';
-  if (event === 'timeout' || event === 'lost') return automatic ? 'fallback' : 'failed';
+  if (event === 'timeout' || event === 'lost') return 'failed';
   return state;
 }
 const rtcAvailable = () => window.isSecureContext && typeof RTCPeerConnection === 'function';
@@ -318,23 +318,22 @@ const remoteMedia = typeof MediaStream === 'function' ? new MediaStream() : null
 function rtcConnect(kind, ticket, wanted, onTrack, onLive, onFail) {
   let pc = null, ws = null, state = 'waiting', incoming = Promise.resolve(), outgoing = [], answerSent = false;
   let lastBytes = 0, lastMedia = Date.now(), checking = false;
-  const automatic = $('#mediaTransport').value === 'auto';
   const tracks = new Set();
   const close = () => {
-    state = rtcNext(state, 'stop', automatic); clearTimeout(timer); clearInterval(watch);
+    state = rtcNext(state, 'stop'); clearTimeout(timer); clearInterval(watch);
     if (ws) { ws.onclose = ws.onmessage = ws.onerror = null; ws.close(); }
     if (pc) { pc.ontrack = pc.onconnectionstatechange = pc.onicecandidate = null; pc.close(); }
     for (const t of tracks) { remoteMedia?.removeTrack(t); t.stop(); }
     tracks.clear();
   };
   const fail = event => {
-    if (!wanted() || state === 'stopped' || state === 'fallback' || state === 'failed') return;
-    const next = rtcNext(state, event, automatic);
-    close(); state = next; onFail(next === 'fallback');
+    if (!wanted() || state === 'stopped' || state === 'failed') return;
+    const next = rtcNext(state, event);
+    close(); state = next; onFail();
   };
   const live = () => {
     if (!wanted() || state !== 'waiting') return;
-    state = rtcNext(state, 'media', automatic); clearTimeout(timer); onLive();
+    state = rtcNext(state, 'media'); clearTimeout(timer); onLive();
   };
   const timer = setTimeout(() => fail('timeout'), 6000);
   const watch = setInterval(async () => {
@@ -360,14 +359,14 @@ function rtcConnect(kind, ticket, wanted, onTrack, onLive, onFail) {
     };
     pc.onconnectionstatechange = () => { if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) fail('lost'); };
     pc.ontrack = e => {
-      if (!wanted() || ['stopped', 'fallback', 'failed'].includes(state) || e.track.kind !== (kind === 'camera' ? 'video' : 'audio')) { e.track.stop(); return; }
+      if (!wanted() || ['stopped', 'failed'].includes(state) || e.track.kind !== (kind === 'camera' ? 'video' : 'audio')) { e.track.stop(); return; }
       tracks.add(e.track); remoteMedia.addTrack(e.track);
       e.track.onended = () => fail('lost');
       onTrack(remoteMedia, e.track, live);
     };
     ws.onmessage = e => {
       incoming = incoming.then(async () => {
-        if (!wanted() || state === 'stopped' || state === 'fallback' || state === 'failed') return;
+        if (!wanted() || state === 'stopped' || state === 'failed') return;
         const m = JSON.parse(e.data);
         if (m.t === 'error') { fail('lost'); return; }
         if (m.t === 'offer') {
@@ -387,8 +386,8 @@ function rtcConnect(kind, ticket, wanted, onTrack, onLive, onFail) {
 
 // --- Câmera ---
 const camVideo = $('#camVideo');
-let camRtc = null, camCompatible = false, camFalling = false;
-const camImg = $('#camImg'), camToggle = $('#camToggle'), camShot = $('#camShot');
+let camRtc = null, camFalling = false;
+const camToggle = $('#camToggle'), camShot = $('#camShot');
 const camDevice = $('#camDevice'), camQuality = $('#camQuality'), camView = $('#camView'), camMsg = $('#camMsg');
 let camStreaming = false, camGen = 0, camId = null, camWatch = null, camBroken = false, camOpening = 0;
 const stillWanted = (gen, cur, want) => gen === cur && page === want && !document.hidden;
@@ -406,10 +405,10 @@ const mediaClose = (kind, id) => {
 };
 // Serializa pedidos: respostas de aberturas antigas nunca invalidam a mais nova no PC.
 const mediaOpening = { camera: Promise.resolve(), mic: Promise.resolve() };
-function mediaOpen(kind, wanted, json, rtc = false) {
+function mediaOpen(kind, wanted, json) {
   const pending = mediaOpening[kind].catch(() => {}).then(async () => {
     if (!wanted()) return null;
-    const result = await api('/' + kind + (rtc ? '/rtc/open' : '/open'), { method: 'POST', json });
+    const result = await api('/' + kind + '/rtc/open', { method: 'POST', json });
     if (!wanted()) { await mediaClose(kind, result.ticket); return null; }
     return result;
   });
@@ -440,41 +439,30 @@ async function camLoadDevices() {
   } catch (e) { camSay(/403/.test(e.message) ? 'Ligue "Câmera" na aba Dispositivos do PC.' : e.message); }
   finally { camLoadDevices.busy = false; }
 }
-async function camStart(resume = null, compatible = false) {
+async function camStart(resume = null) {
   if (!camDevice.value) { camSay('Escolha uma câmera conectada.'); return; }
   if (!resume) camStop();
   camRtc?.close(); camRtc = null; camVideo.pause(); camVideo.srcObject = null;
-  const mode = $('#mediaTransport').value;
-  const rtc = !compatible && mode !== 'compat' && rtcAvailable();
-  if (!rtc && !compatible && mode === 'rtc') { camStop(); camSay('WebRTC indisponível neste navegador. Escolha Compatível.'); return; }
-  camCompatible = compatible || mode === 'auto' && !rtc;
-  camVideo.classList.toggle('hidden', !rtc); camImg.classList.toggle('hidden', rtc);
-  if (rtc) camVideo.play().catch(() => {}); // Safari: tentativa já no toque; vídeo mudo pode retomar ao receber mídia.
+  if (!rtcAvailable()) { camStop(); camSay('WebRTC indisponível neste navegador (precisa de HTTPS).'); return; }
+  camVideo.play().catch(() => {}); // Safari: tentativa já no toque; vídeo mudo pode retomar ao receber mídia.
   camFalling = false;
   const gen = ++camGen;
   camStreaming = true; camBroken = false; camOpening = Date.now();
-  camToggle.textContent = 'Parar'; camSay(camCompatible ? 'WebRTC indisponível · abrindo Compatível…' : resume ? 'Reconectando…' : 'Abrindo…');
+  camToggle.textContent = 'Parar'; camSay(resume ? 'Reconectando…' : 'Abrindo…');
   try {
     const opened = await mediaOpen('camera', () => stillWanted(gen, camGen, 'camera') && camStreaming, {
       deviceId: camDevice.value, name: camName(), quality: camQuality.value, resume,
-    }, rtc);
+    });
     if (!opened) return;
     const { ticket } = opened;
     if (!stillWanted(gen, camGen, 'camera') || !camStreaming) { mediaClose('camera', ticket); return; }
     camId = ticket;
-    if (rtc) {
-      camRtc = rtcConnect('camera', ticket, () => stillWanted(gen, camGen, 'camera') && camStreaming,
-        (stream, track, live) => {
-          camVideo.srcObject = stream;
-          camVideo.onplaying = () => { if (gen === camGen) live(); };
-          camVideo.play().catch(() => { if (gen === camGen) camSay('Toque no vídeo para reproduzir.'); });
-        }, camLive, automatic => camRtcFailed(gen, ticket, automatic));
-      clearInterval(camWatch); camWatch = setInterval(camCheck, 2000);
-      scrWake($('#camWake').checked); return;
-    }
-    camImg.onload = () => { if (gen === camGen && camImg.naturalWidth > 1) camLive(); };
-    camImg.onerror = () => { if (gen === camGen) { camBroken = true; camSay('Sem sinal · verificando conexão…'); } };
-    camImg.src = '/api/camera/stream?ticket=' + encodeURIComponent(ticket);
+    camRtc = rtcConnect('camera', ticket, () => stillWanted(gen, camGen, 'camera') && camStreaming,
+      (stream, track, live) => {
+        camVideo.srcObject = stream;
+        camVideo.onplaying = () => { if (gen === camGen) live(); };
+        camVideo.play().catch(() => { if (gen === camGen) camSay('Toque no vídeo para reproduzir.'); });
+      }, camLive, () => camRtcFailed(gen, ticket));
     clearInterval(camWatch); camWatch = setInterval(camCheck, 2000);
     scrWake($('#camWake').checked);
   } catch (e) {
@@ -489,9 +477,9 @@ function camLive() {
     camView.classList.add('live'); camRestore();
     if (landscape.matches) camImmersive(true);
   }
-  camSay(camRtc ? 'Ao vivo · WebRTC' : camCompatible ? 'Ao vivo · Compatível (WebRTC indisponível)' : 'Ao vivo');
+  camSay('Ao vivo · WebRTC');
 }
-async function camRtcFailed(gen, id, automatic) {
+async function camRtcFailed(gen, id) {
   if (!stillWanted(gen, camGen, 'camera') || !camStreaming) return;
   camFalling = true;
   camRtc = null; camVideo.pause(); camVideo.srcObject = null; camVideo.onplaying = null;
@@ -500,8 +488,8 @@ async function camRtcFailed(gen, id, automatic) {
     const state = await api('/camera/status?id=' + encodeURIComponent(id));
     if (!stillWanted(gen, camGen, 'camera') || !camStreaming) return;
     if (!state.allowed) { camStop(); camSay(state.name ? 'O ' + state.name + ' assumiu a câmera.' : 'Transmissão encerrada no PC.'); return; }
-    if (automatic) { camSay('WebRTC indisponível · abrindo Compatível…'); await camStart(id, true); }
-    else { camStop(); camSay('WebRTC sem conexão. Escolha Compatível ou Automático.'); }
+    camSay('Sem sinal · reconectando…');
+    await camStart(id);
   } catch (e) { if (gen === camGen) { camStop(); camSay(e.message); } }
 }
 camVideo.onclick = () => { if (camStreaming) camVideo.play().catch(() => camSay('Toque em Parar e abra de novo.')); };
@@ -515,14 +503,9 @@ async function camCheck() {
     if (!state.allowed) { camStop(); camSay(state.name ? 'O ' + state.name + ' assumiu a câmera.' : 'Transmissão encerrada no PC.'); return; }
     if (!state.active || camBroken) {
       if (!state.active && Date.now() - camOpening < 15000 && !camView.classList.contains('live')) return;
-      if (!camRtc) await camStart(id, camCompatible); return;
+      if (!camRtc) await camStart(id); return;
     }
-    if (camRtc) {
-      $('#camStats').textContent = camVideo.videoWidth ? camVideo.videoWidth + ' × ' + camVideo.videoHeight + ' · WebRTC' : '';
-      return;
-    }
-    if (state.width && camImg.naturalWidth > 1) camLive();
-    $('#camStats').textContent = state.width ? state.width + ' × ' + state.height + ' · ' + state.fps + ' fps' + (state.reduced ? ' · rede lenta' : '') : '';
+    $('#camStats').textContent = camVideo.videoWidth ? camVideo.videoWidth + ' × ' + camVideo.videoHeight + ' · WebRTC' : '';
   } catch (e) {
     if (gen !== camGen) return;
     if (/401|403/.test(e.message)) { camStop(); camSay('Permissão encerrada no PC.'); }
@@ -533,9 +516,8 @@ const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAI
 function camStop() {
   camGen++; camStreaming = false; camFalling = false; clearInterval(camWatch); camWatch = null;
   const id = camId; camId = null; mediaClose('camera', id);
-  camRtc?.close(); camRtc = null; camCompatible = false;
+  camRtc?.close(); camRtc = null;
   camVideo.onplaying = null; camVideo.pause(); camVideo.srcObject = null;
-  camImg.onerror = camImg.onload = null; camImg.src = BLANK;
   camView.classList.remove('live'); camToggle.textContent = 'Ver câmera';
   $('#camStats').textContent = ''; camSay('Câmera desligada');
   camImmersive(false); scrWake(false); camDiscard();
@@ -580,8 +562,8 @@ $('#camShare').onclick = async () => {
   } catch (e) { if (e.name !== 'AbortError') toast('Toque em compartilhar de novo.'); }
 };
 const camZoom = { z: 1, tx: 0, ty: 0 };
-const camApply = () => applyView(true, camZoom, camView, camRtc ? camVideo : camImg, camPref, camDevice.value, $('#camZoomReset'));
-const camRestore = () => restoreView(camZoom, camView, camRtc ? camVideo : camImg, camPref, camDevice.value, $('#camZoomReset'));
+const camApply = () => applyView(true, camZoom, camView, camVideo, camPref, camDevice.value, $('#camZoomReset'));
+const camRestore = () => restoreView(camZoom, camView, camVideo, camPref, camDevice.value, $('#camZoomReset'));
 function camImmersive(on) {
   $('#cam-card').classList.toggle('immersive', on);
   document.body.classList.toggle('immersive', on || scr.live && $('section[data-page="tela"]').classList.contains('immersive'));
@@ -1354,18 +1336,9 @@ scrIn.addEventListener('beforeinput', e => {
   }
 });
 
-const transportSelect = $('#mediaTransport');
-if (['auto', 'rtc', 'compat'].includes(scrPref('mediaTransport'))) transportSelect.value = scrPref('mediaTransport');
-transportSelect.onchange = () => {
-  scrPref('mediaTransport', transportSelect.value);
-  if (camStreaming) camStart();
-  if (mic.want) micStart();
-};
-
 // --- Microfone (independente da câmera) ---
-const mic = { ws: null, ctx: null, gain: null, next: 0, rate: 24000, gen: 0, want: false, confirmed: false,
-  rtc: null, rtcSource: null, analyser: null, meter: null, compatible: false,
-  id: null, sources: new Set(), sequence: 0, offset: Infinity, meterAt: 0, retry: null, opening: 0 };
+const mic = { ctx: null, gain: null, gen: 0, want: false, confirmed: false,
+  rtc: null, rtcSource: null, analyser: null, meter: null, id: null, retry: null, opening: 0 };
 const micSay = msg => { $('#micMsg').textContent = msg || ''; $('#micMsg').classList.toggle('hidden', !msg); };
 async function micLoad() {
   if (!token || mic.want || micLoad.busy) return;
@@ -1399,10 +1372,6 @@ function micRecovery(on) {
   if (on) { micSay('Áudio pausado pelo iPhone. Toque em Retomar áudio.'); $('#micGlobalState').textContent = 'Áudio pausado'; }
   micInset();
 }
-function micClearSources() {
-  for (const src of mic.sources) { try { src.stop(); } catch {} src.disconnect(); }
-  mic.sources.clear(); mic.next = 0;
-}
 function micContext() {
   if (mic.ctx) return;
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1410,7 +1379,6 @@ function micContext() {
   mic.gain.connect(ctx.destination);
   ctx.onstatechange = () => {
     if (mic.ctx !== ctx || !mic.want) return;
-    if (ctx.state !== 'running') micClearSources();
     micRecovery(ctx.state !== 'running');
   };
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
@@ -1421,44 +1389,14 @@ async function micResume() {
   try { await ctx.resume(); if (mic.ctx === ctx && mic.want) { micRecovery(ctx.state !== 'running'); if (ctx.state === 'running') micSay(mic.confirmed ? micLiveText() : 'Abrindo…'); } }
   catch { if (mic.ctx === ctx && mic.want) micRecovery(true); }
 }
-// Descarta excesso antes de criar a fonte: nunca rebobina fontes já agendadas.
-function micSlot(next, now, duration) {
-  const start = next < now + .02 ? now + .08 : next;
-  return start + duration <= now + .3 ? start : null;
-}
-function micPlay(buf) {
-  if (!mic.ctx || mic.ctx.state !== 'running' || buf.byteLength <= 16 || buf.byteLength % 2) return;
-  const header = new DataView(buf), sequence = header.getUint32(0, true), age = header.getUint32(4, true), timestamp = header.getFloat64(8, true);
-  if (!Number.isFinite(timestamp) || sequence <= mic.sequence) return;
-  mic.sequence = sequence;
-  const arrived = performance.now();
-  mic.offset = Math.min(mic.offset, arrived - timestamp);
-  if (age > 300 || arrived - timestamp - mic.offset > 300) return;
-  const pcm = new Int16Array(buf, 16), now = mic.ctx.currentTime, at = micSlot(mic.next, now, pcm.length / mic.rate);
-  if (at === null) return;
-  const f = new Float32Array(pcm.length);
-  let sum = 0;
-  for (let i = 0; i < pcm.length; i++) { f[i] = pcm[i] / 32768; sum += f[i] * f[i]; }
-  if (arrived - mic.meterAt > 80) {
-    mic.meterAt = arrived;
-    $('#micLevel').style.transform = 'scaleX(' + Math.min(1, Math.sqrt(sum / pcm.length) * 4 * mic.gain.gain.value) + ')';
-  }
-  const b = mic.ctx.createBuffer(1, f.length, mic.rate); b.copyToChannel(f, 0);
-  const src = mic.ctx.createBufferSource(); src.buffer = b; src.connect(mic.gain);
-  mic.sources.add(src); src.onended = () => { mic.sources.delete(src); src.disconnect(); };
-  src.start(at); mic.next = at + b.duration;
-  if (!mic.confirmed) { mic.confirmed = true; micUi(); micSay(micLiveText()); }
-}
-function micLiveText() { return mic.rtc ? 'Ao vivo · WebRTC' : mic.compatible ? 'Ao vivo · Compatível (WebRTC indisponível)' : 'Ao vivo'; }
-function micStart(resume = null, compatible = false) {
+const micLiveText = () => 'Ao vivo · WebRTC';
+function micStart(resume = null) {
   if (!$('#micDevice').value) { micSay('Escolha um microfone conectado.'); return; }
   if (!resume) micStop();
   mic.rtc?.close(); mic.rtc = null; micRtcOutputStop();
-  const mode = $('#mediaTransport').value, rtc = !compatible && mode !== 'compat' && rtcAvailable();
-  if (!rtc && !compatible && mode === 'rtc') { micStop(); micSay('WebRTC indisponível neste navegador. Escolha Compatível.'); return; }
-  mic.compatible = compatible || mode === 'auto' && !rtc;
+  if (!rtcAvailable()) { micStop(); micSay('WebRTC indisponível neste navegador (precisa de HTTPS).'); return; }
   mic.confirmed = false;
-  mic.want = true; mic.opening = Date.now(); micUi(); micSay(mic.compatible ? 'WebRTC indisponível · abrindo Compatível…' : resume ? 'Reconectando…' : 'Abrindo…');
+  mic.want = true; mic.opening = Date.now(); micUi(); micSay(resume ? 'Reconectando…' : 'Abrindo…');
   // Nasce e destrava no toque, antes da requisição.
   try { micContext(); micResume(); } catch { micStop(); micSay('Este navegador não abriu o áudio.'); return; }
   const gen = ++mic.gen;
@@ -1467,51 +1405,26 @@ function micStart(resume = null, compatible = false) {
     try {
       const sel = $('#micDevice');
       const opened = await mediaOpen('mic', () => gen === mic.gen && mic.want && !document.hidden && (resume || page === 'camera'),
-        { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent, resume }, rtc);
+        { deviceId: sel.value, name: sel.selectedOptions[0]?.textContent, resume });
       if (!opened) return;
       const { ticket } = opened;
       if (gen !== mic.gen || !mic.want || document.hidden || !resume && page !== 'camera') { mediaClose('mic', ticket); return; }
-      if (rtc) {
-        mic.id = ticket;
-        mic.rtc = rtcConnect('mic', ticket, () => gen === mic.gen && mic.want && !document.hidden,
-          (stream, track, live) => {
-            if (!mic.ctx) return;
-            mic.rtcSource = mic.ctx.createMediaStreamSource(stream);
-            mic.analyser = mic.ctx.createAnalyser(); mic.analyser.fftSize = 256;
-            mic.rtcSource.connect(mic.analyser); mic.analyser.connect(mic.gain);
-            const data = new Float32Array(256);
-            mic.meter = setInterval(() => {
-              if (gen !== mic.gen || !mic.analyser) return;
-              mic.analyser.getFloatTimeDomainData(data);
-              $('#micLevel').style.transform = 'scaleX(' + Math.min(1, Math.sqrt(data.reduce((n, v) => n + v * v, 0) / data.length) * 4 * mic.gain.gain.value) + ')';
-            }, 100);
-            track.onunmute = live; if (!track.muted) live();
-          }, () => { mic.confirmed = true; micUi(); micSay(micLiveText()); if (mic.ctx?.state !== 'running') micRecovery(true); },
-          automatic => micRtcFailed(gen, ticket, automatic));
-        return;
-      }
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(proto + '//' + location.host + '/api/mic/stream?ticket=' + encodeURIComponent(ticket));
-      mic.id = ticket; mic.ws = ws; mic.sequence = 0; mic.offset = Infinity; micClearSources();
-      ws.binaryType = 'arraybuffer';
-      ws.onmessage = e => {
-        if (gen !== mic.gen || mic.ws !== ws || !mic.want) return;
-        try {
-          if (typeof e.data === 'string') {
-            const rate = JSON.parse(e.data).rate;
-            if (!Number.isFinite(rate) || rate < 8000 || rate > 192000) throw new Error('Taxa inválida');
-            mic.rate = rate;
-          } else micPlay(e.data);
-        } catch { micStop(); micSay('Áudio inválido recebido do PC.'); }
-      };
-      ws.onclose = e => {
-        if (gen !== mic.gen || mic.ws !== ws) return;
-        mic.ws = null; micClearSources();
-        if (e.code === 1006) { mic.confirmed = false; micUi(); micSay('Sem sinal · reconectando…'); micRetry(gen, ticket); return; }
-        micStop();
-        micSay(e.code === TAKEN ? 'O ' + e.reason + ' assumiu o microfone.' : e.reason === 'autorize no PC'
-          ? 'Autorize o microfone na tela do PC e toque Ouvir de novo.' : e.code === 1011 ? 'Microfone indisponível no PC.' : 'Áudio encerrado no PC.');
-      };
+      mic.id = ticket;
+      mic.rtc = rtcConnect('mic', ticket, () => gen === mic.gen && mic.want && !document.hidden,
+        (stream, track, live) => {
+          if (!mic.ctx) return;
+          mic.rtcSource = mic.ctx.createMediaStreamSource(stream);
+          mic.analyser = mic.ctx.createAnalyser(); mic.analyser.fftSize = 256;
+          mic.rtcSource.connect(mic.analyser); mic.analyser.connect(mic.gain);
+          const data = new Float32Array(256);
+          mic.meter = setInterval(() => {
+            if (gen !== mic.gen || !mic.analyser) return;
+            mic.analyser.getFloatTimeDomainData(data);
+            $('#micLevel').style.transform = 'scaleX(' + Math.min(1, Math.sqrt(data.reduce((n, v) => n + v * v, 0) / data.length) * 4 * mic.gain.gain.value) + ')';
+          }, 100);
+          track.onunmute = live; if (!track.muted) live();
+        }, () => { mic.confirmed = true; micUi(); micSay(micLiveText()); if (mic.ctx?.state !== 'running') micRecovery(true); },
+        () => micRtcFailed(gen, ticket));
     } catch (e) {
       if (gen !== mic.gen) return;
       if (resume && !/401|403|409/.test(e.message)) micRetry(gen, resume);
@@ -1527,7 +1440,7 @@ function micRetry(gen, id) {
       const state = await api('/mic/status?id=' + encodeURIComponent(id));
       if (gen !== mic.gen || !mic.want || document.hidden) return;
       if (!state.allowed) { micStop(); micSay(state.name ? 'O ' + state.name + ' assumiu o microfone.' : 'Áudio encerrado no PC.'); return; }
-      micStart(id, mic.compatible);
+      micStart(id);
     } catch (e) {
       if (gen !== mic.gen) return;
       if (/401|403|409/.test(e.message)) { micStop(); micSay('Permissão encerrada no PC.'); }
@@ -1539,15 +1452,15 @@ function micRtcOutputStop() {
   clearInterval(mic.meter); mic.meter = null;
   mic.rtcSource?.disconnect(); mic.analyser?.disconnect(); mic.rtcSource = mic.analyser = null;
 }
-async function micRtcFailed(gen, id, automatic) {
+async function micRtcFailed(gen, id) {
   if (gen !== mic.gen || !mic.want || document.hidden) return;
   mic.rtc = null; micRtcOutputStop(); mic.confirmed = false; micUi();
   try {
     const state = await api('/mic/status?id=' + encodeURIComponent(id));
     if (gen !== mic.gen || !mic.want || document.hidden) return;
     if (!state.allowed) { micStop(); micSay(state.name ? 'O ' + state.name + ' assumiu o microfone.' : 'Áudio encerrado no PC.'); return; }
-    if (automatic) { micSay('WebRTC indisponível · abrindo Compatível…'); micStart(id, true); }
-    else { micStop(); micSay('WebRTC sem conexão. Escolha Compatível ou Automático.'); }
+    micSay('Sem sinal · reconectando…');
+    micStart(id);
   } catch (e) { if (gen === mic.gen) { micStop(); micSay(e.message); } }
 }
 async function micCheck() {
@@ -1558,16 +1471,13 @@ async function micCheck() {
     const state = await api('/mic/status?id=' + encodeURIComponent(id));
     if (gen !== mic.gen || !mic.want) return;
     if (!state.allowed) { micStop(); micSay(state.name ? 'O ' + state.name + ' assumiu o microfone.' : 'Áudio encerrado no PC.'); }
-    else if (!state.active && mic.ws && Date.now() - mic.opening > 25000) { micStop(); micSay('Microfone sem sinal. Toque Ouvir de novo.'); }
   } catch (e) { if (gen === mic.gen && /401|403/.test(e.message)) { micStop(); micSay('Permissão encerrada no PC.'); } }
   finally { micCheck.busy = false; }
 }
 function micStop() {
   mic.gen++; mic.want = false; mic.confirmed = false; clearTimeout(mic.retry);
   const id = mic.id; mic.id = null; mediaClose('mic', id);
-  const ws = mic.ws; mic.ws = null; if (ws) { ws.onmessage = ws.onclose = null; ws.close(); }
-  mic.rtc?.close(); mic.rtc = null; mic.compatible = false; micRtcOutputStop();
-  micClearSources();
+  mic.rtc?.close(); mic.rtc = null; micRtcOutputStop();
   const ctx = mic.ctx; mic.ctx = mic.gain = null;
   if (ctx) { ctx.onstatechange = null; ctx.close().catch(() => {}); }
   micRecovery(false); micUi(); micSay('Microfone desligado');
