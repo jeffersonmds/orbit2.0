@@ -52,7 +52,11 @@ public sealed class Peek
     public bool Compact { get; init; }
     // Miniatura à esquerda do título (ex.: capa da música; ImageSource, object pra máquina ficar sem WPF).
     public object? Image { get; init; }
-    public string Bullet => Image is null ? "● " : "";
+    // Ícone da origem (glifo da aba que abre no clique) num quadradinho à esquerda; sem ícone nem imagem, a bolinha.
+    public string? Icon => Image is null ? Orbit.Tabs.TabViewModel.IconFor(TabId) : null;
+    public string Bullet => Image is null && Icon is null ? "● " : "";
+    // Aviso (PC no limite): ícone e barra em laranja em vez da cor de destaque.
+    public bool Warning { get; init; }
 }
 
 public sealed record PeekAction(string Label, System.Action Run);

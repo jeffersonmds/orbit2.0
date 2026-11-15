@@ -2560,6 +2560,46 @@ public static class Program
         Check("todos: round-trip", back.Count == 3 && back[0].Text == "a" && back[0].Done && !back[1].Done);
         File.WriteAllText(path, "{ quebrado");
         Check("todos: corrompido = vazio", TodoStore.Load(path).Count == 0);
+        File.WriteAllText(path, "[{\"Text\":\"velho\",\"Done\":false}]");
+        Check("todos: JSON sem lembrete ainda abre", TodoStore.Load(path) is [{ Text: "velho", Due: null, Reminded: false }]);
+        var lembrete = new DateTime(2026, 10, 15, 15, 30, 0);
+        TodoStore.Save(new[] { new TodoItem("ligar", false, lembrete, true) }, path);
+        Check("todos: lembrete round-trip", TodoStore.Load(path) is [{ Due: var d, Reminded: true }] && d == lembrete);
+
+        // Lembrete pelo texto (agora: quinta 15/10/2026 14:00)
+        var agora = new DateTime(2026, 10, 15, 14, 0, 0);
+        Check("lembrete: sem horário = sem lembrete", TodoItem.ParseDue("comprar 2 pães", agora) == ("comprar 2 pães", null));
+        Check("lembrete: 15:30 hoje", TodoItem.ParseDue("ligar pro cliente 15:30", agora) == ("ligar pro cliente", agora.Date.AddHours(15.5)));
+        Check("lembrete: às 15h", TodoItem.ParseDue("reunião às 15h", agora) == ("reunião", agora.Date.AddHours(15)));
+        Check("lembrete: 9h30 já passou = amanhã", TodoItem.ParseDue("café 9h30", agora) == ("café", agora.Date.AddDays(1).AddHours(9.5)));
+        Check("lembrete: amanhã 16h", TodoItem.ParseDue("pagar conta amanhã 16h", agora) == ("pagar conta", agora.Date.AddDays(1).AddHours(16)));
+        Check("lembrete: em 30 min", TodoItem.ParseDue("tirar o bolo em 30 min", agora) == ("tirar o bolo", agora.AddMinutes(30)));
+        Check("lembrete: em 2h", TodoItem.ParseDue("alongar em 2h", agora) == ("alongar", agora.AddHours(2)));
+        Check("lembrete: hora inválida fica texto", TodoItem.ParseDue("x 25:00", agora).Due is null && TodoItem.ParseDue("x 10:75", agora).Due is null);
+        Check("lembrete: só horário fica texto", TodoItem.ParseDue("15:30", agora) == ("15:30", null));
+        Check("lembrete: rótulo", TodoItem.DueText(agora, agora.Date) == "14:00" && TodoItem.DueText(agora.AddDays(1), agora.Date) == "amanhã 14:00"
+            && TodoItem.DueText(agora.AddDays(3), agora.Date) == "18/10 14:00" && TodoItem.DueText(null, agora.Date) is null);
+        var lista = new List<TodoItem> { new("vencida", false, agora.AddMinutes(-1)), new("futura", false, agora.AddMinutes(5)),
+            new("feita", true, agora.AddMinutes(-1)), new("avisada", false, agora.AddMinutes(-1), true), new("sem hora", false) };
+        Check("lembrete: só vencida, pendente e não avisada dispara", HojeViewModel.DueNow(lista, agora) is [{ Text: "vencida" }]);
+
+        var comAba = new Orbit.Island.Peek("Lembrete", "x", "hoje");
+        var semAba = new Orbit.Island.Peek("Volume", null, null);
+        Check("alerta: ícone da aba no lugar da bolinha", comAba.Icon is not null && comAba.Bullet == "" && semAba.Icon is null && semAba.Bullet == "● ");
+
+        // PC no limite: CPU precisa de 2 leituras seguidas; RAM avisa na hora; rearma só com histerese.
+        var lim = new PcLimit();
+        Check("pc: CPU alta 1 leitura não avisa", lim.Step(95, 50) == (false, false));
+        Check("pc: CPU alta 2 leituras avisa", lim.Step(95, 50) == (true, false));
+        Check("pc: continua alta não repete", lim.Step(95, 50) == (false, false));
+        lim.Step(80, 50); lim.Step(95, 50);
+        Check("pc: caiu só a 80 não rearma", lim.Step(95, 50) == (false, false));
+        lim.Step(50, 50); lim.Step(95, 50);
+        Check("pc: caiu abaixo de 70 rearma", lim.Step(95, 50) == (true, false));
+        Check("pc: RAM 92 avisa", lim.Step(10, 92) == (false, true));
+        Check("pc: RAM 85 não rearma", lim.Step(10, 85) == (false, false) && lim.Step(10, 92) == (false, false));
+        lim.Step(10, 70);
+        Check("pc: RAM abaixo de 80 rearma", lim.Step(10, 92) == (false, true));
         Directory.Delete(dir, recursive: true);
 
         // Clima (portado do 1.0)

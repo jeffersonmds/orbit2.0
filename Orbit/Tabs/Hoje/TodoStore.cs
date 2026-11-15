@@ -14,7 +14,7 @@ public static class TodoStore
     private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
 
     // DTO separado: o TodoItem é ObservableObject e não precisa saber de JSON.
-    private sealed record TodoDto(string? Text, bool Done);
+    private sealed record TodoDto(string? Text, bool Done, System.DateTime? Due = null, bool Reminded = false); // campos novos opcionais: JSON antigo abre
 
     public static List<TodoItem> Load(string path)
     {
@@ -22,7 +22,7 @@ public static class TodoStore
         {
             if (!File.Exists(path)) return new();
             var dtos = JsonSerializer.Deserialize<List<TodoDto>>(File.ReadAllText(path));
-            return dtos?.Select(d => new TodoItem(d.Text ?? "", d.Done)).ToList() ?? new();
+            return dtos?.Select(d => new TodoItem(d.Text ?? "", d.Done, d.Due, d.Reminded)).ToList() ?? new();
         }
         catch
         {
@@ -34,7 +34,7 @@ public static class TodoStore
     {
         try
         {
-            var dtos = items.Select(i => new TodoDto(i.Text, i.Done)).ToList();
+            var dtos = items.Select(i => new TodoDto(i.Text, i.Done, i.Due, i.Reminded)).ToList();
             AtomicFile.WriteAllText(path, JsonSerializer.Serialize(dtos, WriteOptions));
         }
         catch (System.Exception ex)

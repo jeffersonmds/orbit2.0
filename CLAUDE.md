@@ -37,7 +37,8 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 - **Abas** herdam `Tabs/TabViewModel` e ficam em `Tabs/<Nome>/` (`XViewModel` + `XView.xaml`, com
   `DataTemplate` por tipo em `IslandWindow.xaml`). São registradas no construtor de
   `IslandViewModel` (`Register(...)`, acima da linha-âncora) e ordenadas por
-  `IslandViewModel.TabOrder`; o usuário esconde abas em Ajustes (`HiddenTabs`). **Contrato de
+  `IslandViewModel.TabOrder`; o usuário esconde abas em Ajustes (`HiddenTabs`). O painel mostra as abas num trilho
+  de ícones à esquerda (`TabRail`; glifo em `TabViewModel.IconFor`, que também dá o ícone dos alertas). **Contrato de
   leveza:** só a aba visível do painel expandido recebe `SetActive(true)`; timers e fetches só
   rodam ativos. Abas com rede usam `Freshness.IsStale` pra não buscar de novo a cada abertura.
   Leitura pesada (contadores, processos) vai em `Task.Run`, nunca na UI thread.
@@ -101,6 +102,10 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   Agenda (`Services/Agenda` + `Tabs/Hoje/AgendaViewModel`): links iCal de Ajustes (Google "endereço secreto",
   Outlook/Teams "publicar"), Ical.Net resolve recorrência e fuso; busca a cada 15 min só com link; aviso 5 min antes
   por `Notify`, com "Entrar" se houver link Teams/Meet/Zoom. A semana da aba marca dias com evento; clicar num dia mostra a agenda dele; cor por link (com 2+); contagem na pílula de 10 min antes a 5 min depois; clicar nela entra na reunião (`JoinMeetingIfShowing`). A URL é segredo: nunca logar inteira.
+  Tarefas da aba Hoje: horário opcional no fim do texto vira lembrete (`TodoItem.ParseDue`: "15:30", "às 9h",
+  "amanhã 9h", "em 30 min"); avisa uma vez por `Notify` com Feito/+10 min; timer de 30 s só com lembrete pendente.
+  PC no limite (`PcLimit`, dentro de `SystemSignals`, leitura a cada 30 s): RAM ≥ 90% ou CPU ≥ 90% por 1 min, com
+  histerese; alerta laranja (`Peek.Warning`). Alerta com `Actions` fica mais alto, com botões largos embaixo.
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
 - **Claude "visto"**: o hook acrescenta `orbit_host_pid` (1º processo pai com janela: terminal/VS Code); focar
   essa janela tira a sessão da pílula (continua na aba); aviso novo volta. Já olhando = nem alerta.

@@ -19,6 +19,10 @@ public sealed partial class HojeViewModel : TabViewModel
 
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly string _todosPath;
+    // Lembretes das tarefas: confere a cada 30 s, e só com algum lembrete pendente (roda com a ilha recolhida).
+    private readonly DispatcherTimer _reminders = new() { Interval = TimeSpan.FromSeconds(30) };
+
+    public event Action<TodoItem>? Reminder;
 
     public override string Id => "hoje";
     public override string Title => "Hoje";
@@ -44,6 +48,8 @@ public sealed partial class HojeViewModel : TabViewModel
         _todosPath = todosPath;
         foreach (var t in TodoStore.Load(todosPath)) Todos.Add(t);
         TodoCounter = Counter(Todos);
+        _reminders.Tick += (_, _) => FireReminders();
+        _reminders.IsEnabled = Todos.Any(Pending); // venceu com o PC desligado: avisa no 1º tick (já com quem ouve inscrito)
         _clock.Tick += (_, _) => UpdateClock();
         agenda.Changed += RebuildWeek;
     }
@@ -89,7 +95,8 @@ public sealed partial class HojeViewModel : TabViewModel
     {
         var text = NewTodo.Trim();
         if (text.Length == 0) return;
-        Todos.Add(new TodoItem(text, false));
+        var (task, due) = TodoItem.ParseDue(text, DateTime.Now);
+        Todos.Add(new TodoItem(task, false, due));
         NewTodo = "";
         Persist();
     }
@@ -112,6 +119,41 @@ public sealed partial class HojeViewModel : TabViewModel
     {
         TodoStore.Save(Todos, _todosPath);
         TodoCounter = Counter(Todos);
+        _reminders.IsEnabled = Todos.Any(Pending);
+    }
+
+    private void FireReminders()
+    {
+        var due = DueNow(Todos, DateTime.Now);
+        foreach (var t in due)
+        {
+            t.Reminded = true;
+            Reminder?.Invoke(t);
+        }
+        if (due.Count > 0) Persist();
+        else _reminders.IsEnabled = Todos.Any(Pending);
+    }
+
+    private static bool Pending(TodoItem t) => t.Due is not null && !t.Done && !t.Reminded;
+
+    public static List<TodoItem> DueNow(IEnumerable<TodoItem> items, DateTime now) =>
+        items.Where(t => Pending(t) && t.Due <= now).ToList();
+
+    // Botão "+10 min" do alerta: volta a avisar daqui a 10 min.
+    public void Snooze(TodoItem item, TimeSpan delay)
+    {
+        if (item.Done || !Todos.Contains(item)) return;
+        item.Due = DateTime.Now + delay;
+        item.Reminded = false;
+        Persist();
+    }
+
+    // Botão "Feito" do alerta.
+    public void MarkDone(TodoItem item)
+    {
+        if (item.Done || !Todos.Contains(item)) return;
+        item.Done = true;
+        Persist();
     }
 
     // Semana de segunda a domingo que contém `today`; `selected` só marca se não for hoje (hoje já tem destaque).

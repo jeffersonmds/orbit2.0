@@ -13,7 +13,7 @@ using Serilog;
 
 namespace Orbit.Services;
 
-public enum SignalKind { Volume, AudioDevice, Power, CapsLock, Network, Bluetooth }
+public enum SignalKind { Volume, AudioDevice, Power, CapsLock, Network, Bluetooth, PcLimit }
 
 // Um evento do sistema pra pílula. Level (0..1) desenha barra; Key = Kind (o novo substitui o anterior).
 public sealed record SystemSignal(SignalKind Kind, string Title, string? Detail, double? Level = null);
@@ -31,7 +31,9 @@ public sealed class SystemSignals : IDisposable, IMMNotificationClient
     private bool? _plugged;
     private bool _caps;
     private string? _network; // "Wi-Fi Casa", "Cabo", null = sem internet
-    private Timer? _capsTimer, _netDebounce;
+    private Timer? _capsTimer, _netDebounce, _limitTimer;
+    private readonly SystemStats _stats = new();
+    private readonly PcLimit _limit = new();
     private bool _started;
     private readonly BluetoothBattery _bluetooth = new();
 
@@ -48,6 +50,8 @@ public sealed class SystemSignals : IDisposable, IMMNotificationClient
         NetworkChange.NetworkAddressChanged += (_, _) => DebounceNetwork();
         _bluetooth.Raised += s => Raised?.Invoke(s);
         _bluetooth.Start();
+        _stats.Read(ram: false, disk: false); // 1ª leitura de CPU só zera o delta
+        _limitTimer = new Timer(_ => CheckLimit(), null, 30_000, 30_000);
         _started = true;
     }
 
@@ -102,6 +106,20 @@ public sealed class SystemSignals : IDisposable, IMMNotificationClient
         charging
             ? new(SignalKind.Power, $"Carregando · {percent}%", null, percent / 100.0)
             : new(SignalKind.Power, $"Na bateria · {percent}%", secondsLeft is > 0 ? $"{Battery.FormatDuration(TimeSpan.FromSeconds(secondsLeft.Value))} restantes" : null, percent / 100.0);
+
+    // --- PC no limite (timer do pool; GetSystemTimes + GlobalMemoryStatusEx custam microssegundos) ---
+
+    private void CheckLimit()
+    {
+        try
+        {
+            var s = _stats.Read(disk: false);
+            var (cpu, ram) = _limit.Step(s.CpuPercent, s.Ram.Percent);
+            if (ram) Raised?.Invoke(new SystemSignal(SignalKind.PcLimit, $"RAM no limite · {s.Ram.Percent:0}%", PcLimit.TopMemoryProcess(), s.Ram.Percent / 100));
+            else if (cpu) Raised?.Invoke(new SystemSignal(SignalKind.PcLimit, $"CPU no limite · {s.CpuPercent:0}%", "há mais de 1 min", s.CpuPercent / 100));
+        }
+        catch (Exception ex) { Log.Warning(ex, "Sinais: falhou a leitura de CPU/RAM"); }
+    }
 
     // --- Caps Lock ---
 
@@ -181,6 +199,7 @@ public sealed class SystemSignals : IDisposable, IMMNotificationClient
     {
         _capsTimer?.Dispose();
         _netDebounce?.Dispose();
+        _limitTimer?.Dispose();
         _bluetooth.Dispose();
         SystemEvents.PowerModeChanged -= OnPower;
         try { _enumerator.UnregisterEndpointNotificationCallback(this); } catch { }

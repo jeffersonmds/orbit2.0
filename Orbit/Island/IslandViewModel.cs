@@ -94,6 +94,8 @@ public sealed partial class IslandViewModel : ObservableObject
     [ObservableProperty] private bool _showCameraMic;
     [ObservableProperty] private bool _showPomodoroBar;
     [ObservableProperty] private bool _showUpdating;
+    // Contagem da reunião com link: "Entrar" visível na pílula (o clique na pílula já entra).
+    [ObservableProperty] private bool _showJoin;
     [ObservableProperty] private double _pomodoroProgress;
     private double TimerProgress { get; set; }
     [ObservableProperty] private CameraMicDisplay? _cameraMicView;
@@ -177,7 +179,13 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke(),
             SelfUpdate.CheckAsync, UpdateNowAsync, () => OnPropertyChanged(nameof(NotchShape))));
         var agenda = _agenda = new AgendaViewModel(_api, settings);
-        Register(new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath, agenda));
+        var hoje = new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath, agenda);
+        Register(hoje);
+        hoje.Reminder += t => Notify(new Peek("Lembrete", t.Text, "hoje")
+        {
+            Duration = TimeSpan.FromSeconds(15),
+            Actions = new[] { new PeekAction("Feito", () => hoje.MarkDone(t)), new PeekAction("+10 min", () => hoje.Snooze(t, TimeSpan.FromMinutes(10))) },
+        }, sound: true);
         // 5 min antes: alerta com "Entrar" se o evento tem link de reunião.
         agenda.Reminder += e => Notify(new Peek($"Em 5 min · {e.Title}", e.When, "hoje")
         {
@@ -887,11 +895,12 @@ public sealed partial class IslandViewModel : ObservableObject
     public static bool SignalAllowed(OrbitSettings s, SignalKind kind) =>
         s.SystemSignalsEnabled && !s.MutedSignals.Contains(kind.ToString());
 
-    // Volume some rápido (1,5 s); os outros ficam 2,5 s. A mesma chave substitui o alerta anterior.
-    public static Peek SignalPeek(SystemSignal s) => new(s.Title, s.Detail, null)
+    // Volume some rápido (1,5 s); PC no limite fica 6 s (e o clique abre Stats); os outros 2,5 s. A mesma chave substitui o alerta anterior.
+    public static Peek SignalPeek(SystemSignal s) => new(s.Title, s.Detail, s.Kind == SignalKind.PcLimit ? "stats" : null)
     {
         Key = "sinal:" + s.Kind,
-        Duration = TimeSpan.FromSeconds(s.Kind == SignalKind.Volume ? 1.5 : 2.5),
+        Warning = s.Kind == SignalKind.PcLimit,
+        Duration = TimeSpan.FromSeconds(s.Kind switch { SignalKind.Volume => 1.5, SignalKind.PcLimit => 6, _ => 2.5 }),
         Level = s.Level,
     };
 
@@ -953,6 +962,7 @@ public sealed partial class IslandViewModel : ObservableObject
         if (_machine.CurrentActivity == ActivityKind.Timer) PomodoroProgress = TimerProgress;
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         ShowUpdating = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Atualizacao;
+        ShowJoin = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Agenda && _agenda.CountdownEvent is { HasJoin: true };
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
         UpdateGameTimer();
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);
