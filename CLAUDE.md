@@ -147,6 +147,7 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
 
 ## Convenções
 
+- Opção liga/desliga é `CheckRow` (caixinha numa linha; `Tag="radio"` = escolha única), não `Chip` (parecia não clicável). Ajustes usa menu lateral (`SideTabs`).
 - Botões com conteúdo próprio usam `PlainButton`/`RowButton` (o `Button` padrão herda texto preto).
 - Instalar os hooks do Claude remove hooks `Orbit.exe --claude-hook` de outro caminho (ex.: o do 1.0).
 - Glifos da Segoe Fluent: `\uXXXX` em C#, `&#xXXXX;` em XAML — nunca o caractere literal.

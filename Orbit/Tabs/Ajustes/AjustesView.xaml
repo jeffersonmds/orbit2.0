@@ -1,120 +1,138 @@
 <UserControl x:Class="Orbit.Tabs.Ajustes.AjustesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer VerticalScrollBarVisibility="Hidden">
-        <StackPanel Margin="5,0">
-            <TextBlock Text="Cor de destaque" Style="{StaticResource Label}"/>
-            <ItemsControl ItemsSource="{Binding Opcoes}" Margin="-5,0,0,10">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Button Style="{StaticResource CardButton}" Margin="5"
-                                Command="{Binding DataContext.EscolherAcentoCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                CommandParameter="{Binding}">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="14" Height="14" Fill="{Binding Amostra}" Margin="0,0,8,0"/>
-                                <TextBlock Text="{Binding Nome}" FontSize="12" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <TextBlock Text="Abas" Style="{StaticResource Label}"/>
-            <ItemsControl ItemsSource="{Binding Abas}" Margin="0,0,0,10">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <CheckBox Style="{StaticResource Chip}" Content="{Binding Title}" IsChecked="{Binding Visible}"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <TextBlock Text="Monitor da ilha" Style="{StaticResource Label}"/>
-            <ItemsControl ItemsSource="{Binding Monitores}" Margin="0,0,0,10">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <CheckBox Style="{StaticResource Chip}" Content="{Binding Name}" IsChecked="{Binding Selected}"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <TextBlock Text="Aparência" Style="{StaticResource Label}"/>
-            <WrapPanel Margin="0,0,0,10">
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding FormatoNotch}" Content="Formato notch (cantos curvando na borda)"/>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding FaixaDeJogo}" Content="Jogo em tela cheia: faixa com CPU, GPU e RAM"/>
-            </WrapPanel>
-
-            <TextBlock Text="Alertas" Style="{StaticResource Label}"/>
-            <WrapPanel Margin="0,0,0,10">
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AlertasComoToast}"
-                          Content="Em tela cheia, virar notificação do Windows"/>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding SomClaude}" Content="Som nos alertas do Claude"/>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding EventosDoSistema}"
-                          Content="Volume, carregador, som, Caps Lock e internet na pílula"/>
-                <ItemsControl ItemsSource="{Binding Sinais}" IsEnabled="{Binding EventosDoSistema}">
+    <!-- Menu lateral de seções; liga/desliga é lista com caixinha (Chip parecia não clicável). -->
+    <TabControl Style="{StaticResource SideTabs}">
+        <TabItem Header="Aparência">
+            <StackPanel>
+                <TextBlock Text="Cor de destaque" Style="{StaticResource Label}"/>
+                <ItemsControl ItemsSource="{Binding Opcoes}" Margin="-5,-5,0,8">
                     <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding IsOn}" Content="{Binding Label}"/>
+                            <Button Style="{StaticResource CardButton}" Margin="5"
+                                    Command="{Binding DataContext.EscolherAcentoCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="14" Height="14" Fill="{Binding Amostra}" Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding Nome}" FontSize="12" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDePrint}" Content="Print novo: aviso com abrir, ler texto e mandar"/>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding OfertaDeDownload}" Content="Download concluído: aviso com abrir e pasta"/>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AvisoDeChuva}" Content="Avisar quando for chover"/>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding AvisoDeAgenda}" Content="Avisar 5 min antes de evento da agenda"/>
-            </WrapPanel>
-            <!-- Google: Configurações da agenda → "Endereço secreto no formato iCal". Outlook/Teams: Calendário →
-                 Calendários compartilhados → Publicar → link ICS. -->
-            <TextBlock Text="Agenda (links iCal, um por linha)" Style="{StaticResource Label}"/>
-            <TextBox Style="{StaticResource Field}" Margin="0,0,0,10" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="34"
-                     Text="{Binding AgendaLinks, UpdateSourceTrigger=LostFocus}"
-                     ToolTip="Google: endereço secreto no formato iCal. Outlook/Teams: publicar calendário → link ICS."/>
-            <TextBlock Text="Pomodoro (minutos)" Style="{StaticResource Label}"/>
-            <WrapPanel Margin="0,0,0,10">
-                <StackPanel Margin="0,0,10,0">
-                    <TextBlock Text="Foco" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
-                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding FocoTexto, UpdateSourceTrigger=LostFocus}"/>
-                </StackPanel>
-                <StackPanel Margin="0,0,10,0">
-                    <TextBlock Text="Pausa" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
-                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding PausaTexto, UpdateSourceTrigger=LostFocus}"/>
-                </StackPanel>
-                <StackPanel Margin="0,0,10,0">
-                    <TextBlock Text="Pausa longa" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
-                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding PausaLongaTexto, UpdateSourceTrigger=LostFocus}"/>
-                </StackPanel>
-                <StackPanel Margin="0,0,10,0">
-                    <TextBlock Text="Ciclos" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
-                    <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding CiclosTexto, UpdateSourceTrigger=LostFocus}"/>
-                </StackPanel>
-                <CheckBox Style="{StaticResource Chip}" IsChecked="{Binding SomPomodoro}" Content="Som na troca de fase"
-                          VerticalAlignment="Bottom"/>
-            </WrapPanel>
-            <TextBlock Text="Versão" Style="{StaticResource Label}"/>
-            <DockPanel Margin="0,0,0,10">
-                <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Atualizar agora"
-                        Command="{Binding AtualizarAgoraCommand}" IsEnabled="{Binding CanUpdate}" Margin="10,0,0,0"/>
-                <TextBlock Text="{Binding VersionText}" FontSize="12" Foreground="{StaticResource InkLo}" TextWrapping="Wrap"
-                           VerticalAlignment="Center"/>
-            </DockPanel>
-            <!-- novas seções entram acima desta linha -->
-        </StackPanel>
-    </ScrollViewer>
+
+                <TextBlock Text="Ilha" Style="{StaticResource Label}"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding FormatoNotch}" Content="Formato notch (cantos curvando na borda)"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding FaixaDeJogo}" Content="Jogo em tela cheia: faixa com CPU, GPU e RAM"
+                          Margin="0,0,0,10"/>
+
+                <TextBlock Text="Monitor da ilha" Style="{StaticResource Label}"/>
+                <ItemsControl ItemsSource="{Binding Monitores}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Style="{StaticResource CheckRow}" Tag="radio" Content="{Binding Name}" IsChecked="{Binding Selected}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </TabItem>
+
+        <TabItem Header="Abas">
+            <StackPanel>
+                <TextBlock Text="Abas que aparecem no painel" Style="{StaticResource Label}"/>
+                <ItemsControl ItemsSource="{Binding Abas}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="2"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Style="{StaticResource CheckRow}" Content="{Binding Title}" IsChecked="{Binding Visible}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </TabItem>
+
+        <TabItem Header="Alertas">
+            <StackPanel>
+                <TextBlock Text="Avisos" Style="{StaticResource Label}"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding AvisoDeChuva}" Content="Avisar quando for chover"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding OfertaDePrint}" Content="Print novo: aviso com abrir, ler texto e mandar"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding OfertaDeDownload}" Content="Download concluído: aviso com abrir e pasta"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding SomClaude}" Content="Som nos alertas do Claude"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding AlertasComoToast}" Content="Em tela cheia, virar notificação do Windows"
+                          Margin="0,0,0,10"/>
+
+                <TextBlock Text="Eventos do sistema na pílula" Style="{StaticResource Label}"/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding EventosDoSistema}" Content="Mostrar eventos do sistema"/>
+                <ItemsControl ItemsSource="{Binding Sinais}" IsEnabled="{Binding EventosDoSistema}" Margin="24,0,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="2"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding IsOn}" Content="{Binding Label}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </TabItem>
+
+        <TabItem Header="Agenda">
+            <StackPanel>
+                <!-- Google: Configurações da agenda → "Endereço secreto no formato iCal". Outlook/Teams: Calendário →
+                     Calendários compartilhados → Publicar → link ICS. -->
+                <TextBlock Text="Links iCal, um por linha" Style="{StaticResource Label}"/>
+                <TextBox Style="{StaticResource Field}" Margin="0,0,0,6" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="64"
+                         Text="{Binding AgendaLinks, UpdateSourceTrigger=LostFocus}"/>
+                <TextBlock FontSize="11" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,0,0,10"
+                           Text="Google: Configurações da agenda → endereço secreto no formato iCal. Outlook/Teams: publicar o calendário → link ICS."/>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding AvisoDeAgenda}" Content="Avisar 5 min antes de cada evento"/>
+            </StackPanel>
+        </TabItem>
+
+        <TabItem Header="Pomodoro">
+            <StackPanel>
+                <TextBlock Text="Duração (minutos)" Style="{StaticResource Label}"/>
+                <WrapPanel Margin="0,0,0,10">
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="Foco" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                        <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding FocoTexto, UpdateSourceTrigger=LostFocus}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="Pausa" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                        <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding PausaTexto, UpdateSourceTrigger=LostFocus}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="Pausa longa" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                        <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding PausaLongaTexto, UpdateSourceTrigger=LostFocus}"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Ciclos" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,4"/>
+                        <TextBox Style="{StaticResource Field}" Width="64" Text="{Binding CiclosTexto, UpdateSourceTrigger=LostFocus}"/>
+                    </StackPanel>
+                </WrapPanel>
+                <CheckBox Style="{StaticResource CheckRow}" IsChecked="{Binding SomPomodoro}" Content="Som na troca de fase"/>
+            </StackPanel>
+        </TabItem>
+
+        <TabItem Header="Sobre">
+            <StackPanel>
+                <TextBlock Text="Versão" Style="{StaticResource Label}"/>
+                <TextBlock Text="{Binding VersionText}" FontSize="12" Foreground="{StaticResource InkLo}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                <Button Style="{StaticResource AccentButton}" Content="Atualizar agora" HorizontalAlignment="Left"
+                        Command="{Binding AtualizarAgoraCommand}" IsEnabled="{Binding CanUpdate}"/>
+            </StackPanel>
+        </TabItem>
+        <!-- novas seções entram acima desta linha -->
+    </TabControl>
 </UserControl>
