@@ -10,7 +10,7 @@ ponte segura com iPhone e iPad.
 ![Testes](https://img.shields.io/badge/checks-850%2B-2ea44f)
 
 <p align="center">
-  <img src="docs/screenshots/controles.png" width="820" alt="Painel expandido na aba Controles: Wi-Fi, Bluetooth, modo escuro, volume e mídia tocando">
+  <img src="docs/screenshots/controles.png" width="820" alt="Painel expandido na aba Controles: trilho de abas, Wi-Fi, Bluetooth, modo escuro, microfone, volume e mídia tocando">
 </p>
 
 Inspirado no [Hitodama](https://hitodama.in). Em repouso é uma pílula preta pequena que não chama atenção;
@@ -20,13 +20,13 @@ Some sozinha em vídeos em tela cheia e, em jogos, vira uma faixa fina com CPU, 
 
 ## Telas
 
-> Os prints abaixo são de antes do trilho de ícones e do novo Ajustes; o layout atual mudou.
-
-| Stats | Mercado |
+| Hoje | Stats |
 |---|---|
-| ![Stats](docs/screenshots/stats.png) | ![Mercado](docs/screenshots/mercado.png) |
-| **Energia** | **Ajustes** |
-| ![Energia](docs/screenshots/energia.png) | ![Ajustes](docs/screenshots/ajustes.png) |
+| ![Hoje](docs/screenshots/hoje.png) | ![Stats](docs/screenshots/stats.png) |
+| **Mercado** | **Energia** |
+| ![Mercado](docs/screenshots/mercado.png) | ![Energia](docs/screenshots/energia.png) |
+| **Ajustes** | |
+| ![Ajustes](docs/screenshots/ajustes.png) | |
 
 ## O que faz
 
