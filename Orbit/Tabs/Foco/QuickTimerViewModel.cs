@@ -3,7 +3,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace Orbit.Tabs.Hoje;
+namespace Orbit.Tabs.Foco;
 
 // Timer rápido (café, ligação), separado do Pomodoro. Conta pelo relógio (hora de terminar), não por
 // ticks: suspender o PC ou a UI engasgar não atrasa. Roda com a ilha recolhida e alimenta a pílula.

@@ -8,7 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Orbit.Island;
 using Orbit.Models;
 using Orbit.Services;
-using Orbit.Tabs.Hoje;
+using Orbit.Tabs.Foco;
 
 namespace Orbit.Tabs.Ajustes;
 

@@ -7,7 +7,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace Orbit.Tabs.Hoje;
+namespace Orbit.Tabs.Foco;
 
 // Vários timers rápidos ao mesmo tempo ("forno 40", "chá 3", "5") e um cronômetro.
 // A pílula mostra o que termina primeiro (+N se houver mais); cada timer avisa sozinho ao acabar.

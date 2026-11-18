@@ -15,6 +15,7 @@ public abstract class TabViewModel : ObservableObject
     {
         "controles" => "",
         "hoje" => "",
+        "foco" => "",
         "stats" => "",
         "clipboard" => "",
         "notas" => "",

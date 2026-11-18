@@ -14,6 +14,7 @@ using Orbit.Island;
 using Orbit.Services;
 using Orbit.Tabs;
 using Orbit.Tabs.Energia;
+using Orbit.Tabs.Foco;
 using Orbit.Tabs.Hoje;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Stats;
@@ -66,11 +67,11 @@ public static class Program
                 && Orbit.Services.TextFromImage.Summary("") == "Nenhum texto na imagem" && Orbit.Services.TextFromImage.Summary(null) == "Não consegui ler a imagem");
         }
         {
-            Check("timer: formato", Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromSeconds(272)) == "04:32"
-                && Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromSeconds(0.2)) == "00:01"
-                && Orbit.Tabs.Hoje.QuickTimerViewModel.Format(TimeSpan.FromMinutes(90)) == "1:30:00");
+            Check("timer: formato", Orbit.Tabs.Foco.QuickTimerViewModel.Format(TimeSpan.FromSeconds(272)) == "04:32"
+                && Orbit.Tabs.Foco.QuickTimerViewModel.Format(TimeSpan.FromSeconds(0.2)) == "00:01"
+                && Orbit.Tabs.Foco.QuickTimerViewModel.Format(TimeSpan.FromMinutes(90)) == "1:30:00");
             int done = -1;
-            var qt = new Orbit.Tabs.Hoje.QuickTimerViewModel(m => done = m);
+            var qt = new Orbit.Tabs.Foco.QuickTimerViewModel(m => done = m);
             qt.StartCommand.Execute("10");
             var t0 = DateTime.Now;
             Check("timer: começa com a pílula cheia", qt.IsRunning && qt.ActivityText!.StartsWith("Timer · ") && !qt.Quiet(t0));
@@ -80,12 +81,12 @@ public static class Program
             Check("timer: cancelar some da pílula sem avisar", !qt.IsRunning && qt.ActivityText is null && done == -1);
         }
         {
-            Check("timers: número sozinho", Orbit.Tabs.Hoje.TimersViewModel.Parse("5") == (null, 5));
-            Check("timers: com nome", Orbit.Tabs.Hoje.TimersViewModel.Parse("forno 40") == ("Forno", 40)
-                && Orbit.Tabs.Hoje.TimersViewModel.Parse("chá 3 min") == ("Chá", 3));
-            Check("timers: sem número é inválido", Orbit.Tabs.Hoje.TimersViewModel.Parse("forno").Minutes == 0
-                && Orbit.Tabs.Hoje.TimersViewModel.Parse(null).Minutes == 0);
-            var ts = new Orbit.Tabs.Hoje.TimersViewModel((_, _) => { });
+            Check("timers: número sozinho", Orbit.Tabs.Foco.TimersViewModel.Parse("5") == (null, 5));
+            Check("timers: com nome", Orbit.Tabs.Foco.TimersViewModel.Parse("forno 40") == ("Forno", 40)
+                && Orbit.Tabs.Foco.TimersViewModel.Parse("chá 3 min") == ("Chá", 3));
+            Check("timers: sem número é inválido", Orbit.Tabs.Foco.TimersViewModel.Parse("forno").Minutes == 0
+                && Orbit.Tabs.Foco.TimersViewModel.Parse(null).Minutes == 0);
+            var ts = new Orbit.Tabs.Foco.TimersViewModel((_, _) => { });
             ts.StartCommand.Execute("forno 40");
             ts.StartCommand.Execute("chá 3");
             Check("timers: pílula mostra o que acaba primeiro +N", ts.Running.Count == 2 && ts.ActivityText!.StartsWith("Chá · ") && ts.ActivityText.EndsWith("+1"));
@@ -1282,7 +1283,8 @@ public static class Program
         var order = string.Join(",", IslandViewModel.TabOrder);
         Check("abas: clipboard, notas e apps entre stats e mercado", order.Contains("stats,clipboard,notas,apps,mercado"));
         Check("abas: dispositivos antes de energia", order.Contains("claude,dispositivos,energia"));
-        Check("abas: 12 ids na ordem", IslandViewModel.TabOrder.Length == 12);
+        Check("abas: 13 ids na ordem", IslandViewModel.TabOrder.Length == 13);
+        Check("abas: foco logo depois de hoje", order.Contains("hoje,foco,stats"));
     }
 
     private static ClipItem Txt(string t, DateTime at, bool pinned = false) =>
@@ -2354,6 +2356,15 @@ public static class Program
         Check("pomodoro: tempo arredonda pra cima", PomodoroViewModel.Format(TimeSpan.FromSeconds(1499.4)) == "25:00"
             && PomodoroViewModel.Format(TimeSpan.FromSeconds(0.2)) == "00:01" && PomodoroViewModel.Format(TimeSpan.FromSeconds(-3)) == "00:00");
         Check("pomodoro: texto da pílula parado = null", PomodoroViewModel.BuildActivity(false, "Foco", "25:00") is null);
+        Check("pomodoro: ciclo atual no foco e na pausa", PomodoroViewModel.CycleLabel(PomodoroPhase.Focus, 1, 4) == "Ciclo 2 de 4"
+            && PomodoroViewModel.CycleLabel(PomodoroPhase.ShortBreak, 2, 4) == "Ciclo 2 de 4");
+        Check("pomodoro: pausa longa mostra o último ciclo", PomodoroViewModel.CycleLabel(PomodoroPhase.LongBreak, 0, 4) == "Ciclo 4 de 4"
+            && PomodoroViewModel.CycleLabel(PomodoroPhase.Focus, 0, 0) == "Ciclo 1 de 1");
+        var dia = new DateTime(2026, 11, 18, 23, 50, 0);
+        Check("pomodoro: contagem de hoje vale só no mesmo dia", PomodoroViewModel.CountToday(3, dia, dia.Date) == 3
+            && PomodoroViewModel.CountToday(3, dia, dia.Date.AddDays(1)) == 0 && PomodoroViewModel.CountToday(5, default, dia) == 0);
+        Check("pomodoro: texto de hoje", PomodoroViewModel.TodayLabel(0) == "Nenhum foco hoje"
+            && PomodoroViewModel.TodayLabel(1) == "1 foco hoje" && PomodoroViewModel.TodayLabel(4) == "4 focos hoje");
         Check("pomodoro: texto da pílula rodando", PomodoroViewModel.BuildActivity(true, "Foco", "12:04") == "Foco · 12:04");
 
         Check("ajustes: número válido", AjustesViewModel.ParseRange("50", 25, 1, 180) == 50);

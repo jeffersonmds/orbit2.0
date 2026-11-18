@@ -37,7 +37,8 @@ Some sozinha em vídeos em tela cheia e, em jogos, vira uma faixa fina com CPU, 
   - **Tarefas com lembrete**: escreva o horário no fim (`ligar pro cliente 15:30`, `amanhã 9h`, `em 30 min`).
     Na hora chega um alerta com **Feito** e **+10 min**; tarefas com horário entram na agenda do dia e as
     vencidas ficam em laranja no topo.
-  - **Foco**: Pomodoro, vários timers ao mesmo tempo (`forno 40`, `chá 3`) e cronômetro.
+- **Foco**: Pomodoro com anel grande, ciclo atual ("Ciclo 2 de 4") e focos concluídos no dia; vários timers ao
+  mesmo tempo (`forno 40`, `chá 3`) e cronômetro. Clicar na pílula com o Pomodoro ou um timer abre direto aqui.
 - **Controles**: Wi-Fi, Bluetooth, modo escuro, volume geral e por app, mídia tocando (SMTC) com capa,
   mudo global do microfone (`Ctrl+Alt+M`).
 - **Stats**: CPU, RAM, GPU, disco, rede e os apps que mais usam memória.

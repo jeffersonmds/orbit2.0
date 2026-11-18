@@ -501,6 +501,7 @@ public partial class IslandWindow : Window
     {
         if (_vm.CancelSendIfShowing() || _vm.JoinMeetingIfShowing()) return;
         if (_vm.Mode == IslandMode.Alerta) { _vm.OpenPeekTab(); Activate(); }
+        else if (_vm.OpenFocusIfShowing()) Activate();
         else if (_vm.Mode != IslandMode.Expandida) ExpandFocused();
     }
 

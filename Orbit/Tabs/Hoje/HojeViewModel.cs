@@ -28,8 +28,6 @@ public sealed partial class HojeViewModel : TabViewModel
     public override string Title => "Hoje";
 
     public WeatherViewModel Weather { get; }
-    public PomodoroViewModel Pomodoro { get; }
-    public TimersViewModel Timer { get; }
     public AgendaViewModel Agenda { get; }
     public ObservableCollection<WeekDay> Week { get; } = new();
     public ObservableCollection<TodoItem> Todos { get; } = new();
@@ -39,12 +37,10 @@ public sealed partial class HojeViewModel : TabViewModel
     [ObservableProperty] private string _newTodo = "";
     [ObservableProperty] private string _todoCounter = "0/0";
 
-    public HojeViewModel(ApiService api, PomodoroViewModel pomodoro, TimersViewModel timer, string todosPath, AgendaViewModel agenda)
+    public HojeViewModel(ApiService api, string todosPath, AgendaViewModel agenda)
     {
         Agenda = agenda;
-        Timer = timer;
         Weather = new WeatherViewModel(api);
-        Pomodoro = pomodoro;
         _todosPath = todosPath;
         foreach (var t in TodoStore.Load(todosPath)) Todos.Add(t);
         RefreshOverdue();

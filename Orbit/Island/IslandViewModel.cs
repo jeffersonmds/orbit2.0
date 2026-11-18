@@ -18,6 +18,7 @@ using Orbit.Tabs.Claude;
 using Orbit.Tabs.Clips;
 using Orbit.Tabs.Controles;
 using Orbit.Tabs.Energia;
+using Orbit.Tabs.Foco;
 using Orbit.Tabs.Hoje;
 using Orbit.Tabs.Dispositivos;
 using Orbit.Tabs.Mercado;
@@ -36,7 +37,7 @@ public sealed partial class IslandViewModel : ObservableObject
 {
     // Ordem fixa das abas no painel. Ids ainda não registrados são pulados.
     public static readonly string[] TabOrder =
-        { "controles", "hoje", "stats", "clipboard", "notas", "apps", "mercado", "noticias", "claude", "dispositivos", "energia", "ajustes" };
+        { "controles", "hoje", "foco", "stats", "clipboard", "notas", "apps", "mercado", "noticias", "claude", "dispositivos", "energia", "ajustes" };
 
     private readonly IslandMachine _machine = new();
     private readonly OrbitSettings _settings;
@@ -139,7 +140,8 @@ public sealed partial class IslandViewModel : ObservableObject
         _settings = settings;
         // Serviços de fundo (rodam com a ilha recolhida e alimentam a pílula).
         Pomodoro = new PomodoroViewModel(settings.PomodoroFocusMinutes, settings.PomodoroShortBreakMinutes,
-            settings.PomodoroLongBreakMinutes, settings.PomodoroCyclesUntilLongBreak, OnPomodoroPhase);
+            settings.PomodoroLongBreakMinutes, settings.PomodoroCyclesUntilLongBreak, OnPomodoroPhase,
+            settings.FocusToday, settings.FocusDay);
         Pomodoro.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(PomodoroViewModel.ActivityText))
@@ -179,8 +181,9 @@ public sealed partial class IslandViewModel : ObservableObject
         Register(new AjustesViewModel(settings, Pomodoro, () => _allTabs, ApplyTabVisibility, () => MonitorChanged?.Invoke(),
             SelfUpdate.CheckAsync, UpdateNowAsync, () => OnPropertyChanged(nameof(NotchShape))));
         var agenda = _agenda = new AgendaViewModel(_api, settings);
-        var hoje = new HojeViewModel(_api, Pomodoro, Timer, TodoStore.FilePath, agenda);
+        var hoje = new HojeViewModel(_api, TodoStore.FilePath, agenda);
         Register(hoje);
+        Register(new FocoViewModel(Pomodoro, Timer));
         hoje.Reminder += t => Notify(new Peek("Lembrete", t.Text, "hoje")
         {
             Duration = TimeSpan.FromSeconds(15),
@@ -402,10 +405,18 @@ public sealed partial class IslandViewModel : ObservableObject
     public static string PeekTitle(BridgeEvent e) => e.Device is { Length: > 0 } d ? d + " · " + e.Title : e.Title;
 
     private void OnTimerFinished(string? name, int minutes) =>
-        Notify(new Peek(name is null ? "Timer acabou" : $"{name} · acabou", $"{minutes} min", "hoje"), true);
+        Notify(new Peek(name is null ? "Timer acabou" : $"{name} · acabou", $"{minutes} min", "foco"), true);
 
-    private void OnPomodoroPhase(PomodoroPhase phase, int minutes) =>
-        Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "hoje"), _settings.PomodoroSoundEnabled);
+    private void OnPomodoroPhase(PomodoroPhase phase, int minutes)
+    {
+        if (phase != PomodoroPhase.Focus) // um foco acabou de fechar: grava a contagem do dia
+        {
+            _settings.FocusToday = Pomodoro.FocusToday;
+            _settings.FocusDay = Pomodoro.FocusDay;
+            SettingsStore.Save(_settings);
+        }
+        Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "foco"), _settings.PomodoroSoundEnabled);
+    }
 
     private void Register(TabViewModel tab) => _allTabs.Add(tab);
 
@@ -652,6 +663,15 @@ public sealed partial class IslandViewModel : ObservableObject
     private readonly AgendaViewModel _agenda;
 
     // Clique na pílula com a reunião na vez: entra nela em vez de abrir a ilha.
+    // Clique na pílula com Pomodoro/timer na vez: abre direto na aba Foco.
+    public bool OpenFocusIfShowing()
+    {
+        if (_machine.Mode is not (IslandMode.Atividade or IslandMode.Discreta)
+            || _machine.CurrentActivity is not (ActivityKind.Pomodoro or ActivityKind.Timer)) return false;
+        OpenTab("foco");
+        return true;
+    }
+
     public bool JoinMeetingIfShowing() =>
         _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Agenda && _agenda.JoinCountdown();
 

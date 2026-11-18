@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Orbit.Models;
@@ -56,6 +57,9 @@ public sealed class OrbitSettings
     public int PomodoroLongBreakMinutes { get; set; } = 15;
     public int PomodoroCyclesUntilLongBreak { get; set; } = 4;
     public bool PomodoroSoundEnabled { get; set; } = true;
+    // Focos concluídos no dia FocusDay (a aba Foco mostra "N focos hoje"; sobrevive ao reinício).
+    public int FocusToday { get; set; }
+    public DateTime FocusDay { get; set; }
 
     // Ponte com o aparelho (desligada até o usuário ligar na aba Dispositivos).
     public bool BridgeEnabled { get; set; }

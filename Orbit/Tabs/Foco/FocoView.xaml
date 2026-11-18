@@ -1,0 +1,161 @@
+<UserControl x:Class="Orbit.Tabs.Foco.FocoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Pomodoro com anel grande | timers com nome e cronômetro -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="10"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Pomodoro -->
+        <Border Style="{StaticResource Card}" Padding="12" DataContext="{Binding Pomodoro}">
+            <StackPanel VerticalAlignment="Center">
+                <!-- Tamanho e espessura = PomodoroViewModel.RingDiameter/RingStroke (o tracejado é calculado com eles). -->
+                <Grid Width="168" Height="168" HorizontalAlignment="Center">
+                    <Ellipse Stroke="#2A2A2E" StrokeThickness="8"/>
+                    <Ellipse Stroke="{DynamicResource AccentBrush}" StrokeThickness="8" StrokeDashCap="Round"
+                             StrokeDashArray="{Binding RingDashArray}" RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.RenderTransform>
+                            <RotateTransform Angle="-90"/>
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding Display}" FontSize="36" FontWeight="Light" HorizontalAlignment="Center"
+                                   Typography.NumeralAlignment="Tabular"/>
+                        <TextBlock Text="{Binding Mode}" FontSize="12" Foreground="{StaticResource InkLo}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
+                    <ItemsControl ItemsSource="{Binding CycleDots}" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Ellipse x:Name="dot" Width="7" Height="7" Margin="2,0" Fill="#3A3A40"/>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding}" Value="True">
+                                        <Setter TargetName="dot" Property="Fill" Value="{DynamicResource AccentBrush}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding CycleText}" FontSize="12" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
+                    <Button Style="{StaticResource RoundButton}" Content="{Binding PlayGlyph}" Command="{Binding ToggleCommand}"
+                            Width="44" Height="44" FontSize="16" Margin="0,0,10,0"/>
+                    <Button Style="{StaticResource RoundButton}" Content="&#xE72C;" Command="{Binding ResetCommand}" ToolTip="Recomeçar"
+                            Width="44" Height="44"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding TodayText}" FontSize="11" Foreground="{StaticResource InkLo}" HorizontalAlignment="Center"
+                           Margin="0,10,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Column="2" DataContext="{Binding Timer}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="10"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Timers: correndo (nome, tempo, cancelar) e novo: 5 / 10 / 25 ou texto livre ("forno 40") -->
+            <Border Style="{StaticResource Card}" Padding="12,10">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Timers" FontSize="11" Foreground="{StaticResource InkLo}" Margin="0,0,0,8"/>
+                    <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <Button DockPanel.Dock="Left" Style="{StaticResource SmallButton}" Content="5" Command="{Binding StartCommand}" CommandParameter="5" Margin="0,0,4,0"/>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource SmallButton}" Content="10" Command="{Binding StartCommand}" CommandParameter="10" Margin="0,0,4,0"/>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource SmallButton}" Content="25" Command="{Binding StartCommand}" CommandParameter="25" Margin="0,0,6,0"/>
+                        <Grid>
+                            <TextBox x:Name="newTimer" Style="{StaticResource FieldInCard}" FontSize="12" Padding="0"
+                                     Text="{Binding NewTimer, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding StartCommand}" CommandParameter="{Binding NewTimer}"/>
+                                </TextBox.InputBindings>
+                            </TextBox>
+                            <TextBlock Text="forno 40" FontSize="12" Foreground="#5A5A60" Margin="11,7,0,0" IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=newTimer}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </DockPanel>
+                    <Grid>
+                        <TextBlock Text="Nenhum timer correndo" FontSize="12" Foreground="#5A5A60" VerticalAlignment="Center"
+                                   HorizontalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Running.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Running}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,0,0,6">
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostRound}" Content="&#xE711;" ToolTip="Cancelar"
+                                                    Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"/>
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Display}" FontSize="16" FontWeight="SemiBold"
+                                                       Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" Margin="6,0"/>
+                                            <TextBlock Text="{Binding Label}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <!-- Cronômetro (só na aba, sem pílula) -->
+            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="12,10">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource RoundButton}" Content="&#xE72C;" ToolTip="Zerar"
+                            Command="{Binding ResetWatchCommand}"/>
+                    <Button DockPanel.Dock="Right" Command="{Binding ToggleWatchCommand}" Margin="0,0,6,0">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource RoundButton}">
+                                <Setter Property="Content" Value="&#xE768;"/>
+                                <Setter Property="ToolTip" Value="Iniciar cronômetro"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding WatchRunning}" Value="True">
+                                        <Setter Property="Content" Value="&#xE769;"/>
+                                        <Setter Property="ToolTip" Value="Pausar"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Cronômetro" FontSize="11" Foreground="{StaticResource InkLo}"/>
+                        <TextBlock Text="{Binding WatchDisplay}" FontSize="22" FontWeight="Light" Typography.NumeralAlignment="Tabular"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

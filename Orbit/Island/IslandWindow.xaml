@@ -7,6 +7,7 @@
         xmlns:stats="clr-namespace:Orbit.Tabs.Stats"
         xmlns:mercado="clr-namespace:Orbit.Tabs.Mercado"
         xmlns:hoje="clr-namespace:Orbit.Tabs.Hoje"
+        xmlns:foco="clr-namespace:Orbit.Tabs.Foco"
         xmlns:noticias="clr-namespace:Orbit.Tabs.Noticias"
         xmlns:claude="clr-namespace:Orbit.Tabs.Claude"
         xmlns:clips="clr-namespace:Orbit.Tabs.Clips"
@@ -27,6 +28,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type hoje:HojeViewModel}">
             <hoje:HojeView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type foco:FocoViewModel}">
+            <foco:FocoView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type ajustes:AjustesViewModel}">
             <ajustes:AjustesView/>

@@ -6,18 +6,18 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Orbit.Services;
 
-namespace Orbit.Tabs.Hoje;
+namespace Orbit.Tabs.Foco;
 
 public enum PomodoroPhase { Focus, ShortBreak, LongBreak }
 
 // Portado do PomodoroTileViewModel do 1.0. Não é aba: roda em segundo plano (inclusive com
-// a ilha recolhida); a aba Hoje o exibe e a pílula mostra o tempo enquanto roda.
+// a ilha recolhida); a aba Foco o exibe e a pílula mostra o tempo enquanto roda.
 // Parado, não há timer nenhum.
 public sealed partial class PomodoroViewModel : ObservableObject
 {
-    // Mantido em sincronia com a Ellipse do anel em HojeView.xaml.
-    public const double RingDiameter = 112;
-    public const double RingStroke = 6;
+    // Mantido em sincronia com a Ellipse do anel em FocoView.xaml.
+    public const double RingDiameter = 168;
+    public const double RingStroke = 8;
 
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly Action<PomodoroPhase, int> _phaseChanged;
@@ -38,6 +38,12 @@ public sealed partial class PomodoroViewModel : ObservableObject
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private DoubleCollection _ringDashArray = new() { 0, 0 };
     [ObservableProperty] private string? _activityText;
+    [ObservableProperty] private string _cycleText = "";
+    [ObservableProperty] private string _todayText = "";
+
+    // Focos concluídos hoje; o dono (IslandViewModel) grava nos settings a cada um que fecha.
+    public int FocusToday { get; private set; }
+    public DateTime FocusDay { get; private set; }
 
     // Uma bolinha por ciclo até a pausa longa; preenchida = ciclo de foco concluído.
     public ObservableCollection<bool> CycleDots { get; } = new();
@@ -46,8 +52,10 @@ public sealed partial class PomodoroViewModel : ObservableObject
 
     // phaseChanged(novaFase, minutos): a ilha transforma em alerta.
     public PomodoroViewModel(int focusMinutes, int shortBreakMinutes, int longBreakMinutes,
-        int cyclesUntilLongBreak, Action<PomodoroPhase, int> phaseChanged)
+        int cyclesUntilLongBreak, Action<PomodoroPhase, int> phaseChanged, int focusToday = 0, DateTime focusDay = default)
     {
+        FocusToday = focusToday;
+        FocusDay = focusDay.Date;
         _focusMinutes = focusMinutes;
         _shortBreakMinutes = shortBreakMinutes;
         _longBreakMinutes = longBreakMinutes;
@@ -96,6 +104,11 @@ public sealed partial class PomodoroViewModel : ObservableObject
         {
             var (next, cycles) = NextPhase(_phase, _completedCycles, EffectiveCycles);
             _completedCycles = cycles;
+            if (_phase == PomodoroPhase.Focus)
+            {
+                FocusToday = CountToday(FocusToday, FocusDay, DateTime.Today) + 1;
+                FocusDay = DateTime.Today;
+            }
             EnterPhase(next);
             _endsAt = DateTime.UtcNow + _remaining; // ponytail: voltou de horas suspenso = avança uma fase só
             _phaseChanged(next, PhaseMinutes(next));
@@ -127,7 +140,12 @@ public sealed partial class PomodoroViewModel : ObservableObject
     {
         CycleDots.Clear();
         for (int i = 0; i < EffectiveCycles; i++) CycleDots.Add(i < _completedCycles);
+        CycleText = CycleLabel(_phase, _completedCycles, EffectiveCycles);
+        RefreshToday();
     }
+
+    // A aba chama ao abrir: virou o dia sem fechar foco nenhum → "Nenhum foco hoje".
+    public void RefreshToday() => TodayText = TodayLabel(CountToday(FocusToday, FocusDay, DateTime.Today));
 
     private void UpdateDisplay()
     {
@@ -160,6 +178,29 @@ public sealed partial class PomodoroViewModel : ObservableObject
         PomodoroPhase.LongBreak => "Pausa longa",
         _ => "Foco",
     };
+
+    // Contagem salva de outro dia não vale hoje.
+    public static int CountToday(int count, DateTime countedOn, DateTime today) => countedOn.Date == today.Date ? count : 0;
+
+    public static string TodayLabel(int n) => n switch
+    {
+        0 => "Nenhum foco hoje",
+        1 => "1 foco hoje",
+        _ => $"{n} focos hoje",
+    };
+
+    // Na pausa longa o ciclo já fechou (contador zerado): mostra o último, não "1 de 4".
+    public static string CycleLabel(PomodoroPhase phase, int completedCycles, int cyclesUntilLongBreak)
+    {
+        int total = Math.Max(1, cyclesUntilLongBreak);
+        int current = phase switch
+        {
+            PomodoroPhase.Focus => completedCycles + 1,
+            PomodoroPhase.ShortBreak => completedCycles,
+            _ => total,
+        };
+        return $"Ciclo {Math.Clamp(current, 1, total)} de {total}";
+    }
 
     public static (PomodoroPhase Phase, int CompletedCycles) NextPhase(
         PomodoroPhase phase, int completedCycles, int cyclesUntilLongBreak)

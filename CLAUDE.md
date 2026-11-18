@@ -106,8 +106,11 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   Tarefas da aba Hoje: horário opcional no fim do texto vira lembrete (`TodoItem.ParseDue`: "15:30", "às 9h",
   "amanhã 9h", "em 30 min"); avisa uma vez por `Notify` com Feito/+10 min; timer de 30 s só com lembrete pendente.
   Tarefa aberta com horário também entra na agenda do dia (`AgendaViewModel.Tasks`/`Merge`); vencida e aberta fica
-  laranja e sobe pro topo (`HojeViewModel.Ordered`). Timers rápidos são vários (`TimersViewModel`: "forno 40"), a pílula
-  mostra o que acaba primeiro (+N); cronômetro só na aba.
+  laranja e sobe pro topo (`HojeViewModel.Ordered`).
+  Aba **Foco** (`Tabs/Foco/`): só exibe Pomodoro e timers (serviços de fundo criados no `IslandViewModel`). Timers rápidos
+  são vários (`TimersViewModel`: "forno 40"), a pílula mostra o que acaba primeiro (+N); cronômetro só na aba. Focos do
+  dia ficam em `FocusToday`/`FocusDay` dos settings (gravados a cada foco que fecha). Clique na pílula com Pomodoro/timer
+  na vez abre a aba Foco (`OpenFocusIfShowing`).
   PC no limite (`PcLimit`, dentro de `SystemSignals`, leitura a cada 30 s): RAM ≥ 90% ou CPU ≥ 90% por 1 min, com
   histerese; alerta laranja (`Peek.Warning`). Alerta com `Actions` fica mais alto, com botões largos embaixo.
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
