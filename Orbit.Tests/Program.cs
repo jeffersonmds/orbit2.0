@@ -1292,6 +1292,11 @@ public static class Program
         var tinted = new Peek("Claude · orbit", "esperando", "claude") { Tint = IslandViewModel.ClaudeTint };
         Check("pílula: alerta usa a cor do alerta", T(IslandMode.Alerta, ActivityKind.Midia, tinted) == IslandViewModel.ClaudeTint
             && T(IslandMode.Alerta, ActivityKind.Claude, new Peek("Volume", null, null)) is null);
+        Check("pílula: reunião só colore no último minuto", T(IslandMode.Atividade, ActivityKind.Agenda) is null
+            && IslandViewModel.TintFor(IslandMode.Atividade, ActivityKind.Agenda, null, false, meetingNow: true) == IslandViewModel.MeetingTint);
+        Check("pílula: bateria fraca do fone fica laranja, conectar não",
+            IslandViewModel.SignalPeek(new SystemSignal(SignalKind.Bluetooth, "Fone com bateria fraca", "18%", 0.18, Low: true)).Tint == IslandViewModel.WarningTint
+            && IslandViewModel.SignalPeek(BluetoothBattery.ConnectedSignal("Fone", 18)).Tint is null);
         Check("pílula: painel aberto, repouso e jogo nunca colorem", T(IslandMode.Expandida, ActivityKind.Claude, tinted) is null
             && T(IslandMode.Repouso, null) is null && T(IslandMode.Jogo, ActivityKind.Claude) is null);
     }

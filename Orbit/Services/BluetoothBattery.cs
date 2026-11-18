@@ -90,7 +90,7 @@ public sealed class BluetoothBattery : IDisposable
             if (await ReadBattery(dev.Container) is not { } pct) continue;
             int level = LowLevel(pct), before;
             lock (_lock) { before = dev.LowLevel; dev.LowLevel = level; }
-            if (level > before) Raised?.Invoke(new SystemSignal(SignalKind.Bluetooth, $"{dev.Name} com bateria fraca", $"{pct}%", pct / 100.0));
+            if (level > before) Raised?.Invoke(new SystemSignal(SignalKind.Bluetooth, $"{dev.Name} com bateria fraca", $"{pct}%", pct / 100.0, Low: true));
         }
     }
 

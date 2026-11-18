@@ -16,7 +16,8 @@ namespace Orbit.Services;
 public enum SignalKind { Volume, AudioDevice, Power, CapsLock, Network, Bluetooth, PcLimit }
 
 // Um evento do sistema pra pílula. Level (0..1) desenha barra; Key = Kind (o novo substitui o anterior).
-public sealed record SystemSignal(SignalKind Kind, string Title, string? Detail, double? Level = null);
+// Low = algo acabando (bateria do fone fraca): a pílula fica laranja.
+public sealed record SystemSignal(SignalKind Kind, string Title, string? Detail, double? Level = null, bool Low = false);
 
 // Eventos do sistema que a Dynamic Island mostra: volume, saída de som (fone ↔ caixa), carregador,
 // Caps Lock, internet e fone Bluetooth (BluetoothBattery). Por evento do Windows sempre que existe; só o Caps Lock é conferido a cada

@@ -101,16 +101,20 @@ public sealed partial class IslandViewModel : ObservableObject
     [ObservableProperty] private string? _pillTint;
 
     // Escuras o bastante pro texto branco ficar legível em cima.
-    public const string ClaudeTint = "#C15F3C", BreakTint = "#248A3D";
+    // Por significado: Claude, pausa, reunião, hora de algo (timer), algo acabando (cota, bateria).
+    public const string ClaudeTint = "#C15F3C", BreakTint = "#248A3D", MeetingTint = "#2B63C6",
+        TimerTint = "#8F6A00", WarningTint = "#B34700";
 
     // Só a pílula (alerta ou atividade) muda de cor; painel aberto, jogo e repouso continuam pretos.
-    public static string? TintFor(IslandMode mode, ActivityKind? activity, Peek? peek, bool pomodoroBreak) => mode switch
+    // meetingNow: a reunião da contagem começa em até 1 min (ou já começou).
+    public static string? TintFor(IslandMode mode, ActivityKind? activity, Peek? peek, bool pomodoroBreak, bool meetingNow = false) => mode switch
     {
         IslandMode.Alerta => peek?.Tint,
         IslandMode.Atividade or IslandMode.Discreta => activity switch
         {
             ActivityKind.Claude => ClaudeTint, // a atividade do Claude só existe com sessão esperando você
             ActivityKind.Pomodoro when pomodoroBreak => BreakTint,
+            ActivityKind.Agenda when meetingNow => MeetingTint,
             _ => null,
         },
         _ => null,
@@ -210,6 +214,7 @@ public sealed partial class IslandViewModel : ObservableObject
         // 5 min antes: alerta com "Entrar" se o evento tem link de reunião.
         agenda.Reminder += e => Notify(new Peek($"Em 5 min · {e.Title}", e.When, "hoje")
         {
+            Tint = MeetingTint,
             Duration = TimeSpan.FromSeconds(15),
             Actions = e.JoinUrl is { } join
                 ? new[] { new PeekAction("Entrar", () => { try { Process.Start(new ProcessStartInfo(join) { UseShellExecute = true }); } catch { } }) }
@@ -233,7 +238,7 @@ public sealed partial class IslandViewModel : ObservableObject
         };
         claude.Attention += info =>
             Notify(new Peek($"Claude · {info.ProjectName}", info.StatusText, "claude") { Tint = ClaudeTint }, _settings.ClaudeSoundEnabled);
-        claude.LimitReached += (title, detail) => Notify(new Peek(title, detail, "claude"), _settings.ClaudeSoundEnabled);
+        claude.LimitReached += (title, detail) => Notify(new Peek(title, detail, "claude") { Tint = WarningTint }, _settings.ClaudeSoundEnabled);
         // O servidor roda em background: volta pra UI thread antes de mexer na aba.
         // ponytail: sem Dispose — o pipe morre com o processo.
         _claudeServer.HookReceived += evt => Application.Current?.Dispatcher.BeginInvoke(() => claude.HandleHookEvent(evt));
@@ -426,7 +431,7 @@ public sealed partial class IslandViewModel : ObservableObject
     public static string PeekTitle(BridgeEvent e) => e.Device is { Length: > 0 } d ? d + " · " + e.Title : e.Title;
 
     private void OnTimerFinished(string? name, int minutes) =>
-        Notify(new Peek(name is null ? "Timer acabou" : $"{name} · acabou", $"{minutes} min", "foco"), true);
+        Notify(new Peek(name is null ? "Timer acabou" : $"{name} · acabou", $"{minutes} min", "foco") { Tint = TimerTint }, true);
 
     private void OnPomodoroPhase(PomodoroPhase phase, int minutes)
     {
@@ -941,6 +946,7 @@ public sealed partial class IslandViewModel : ObservableObject
     {
         Key = "sinal:" + s.Kind,
         Warning = s.Kind == SignalKind.PcLimit,
+        Tint = s.Low ? WarningTint : null,
         Duration = TimeSpan.FromSeconds(s.Kind switch { SignalKind.Volume => 1.5, SignalKind.PcLimit => 6, _ => 2.5 }),
         Level = s.Level,
     };
@@ -1004,7 +1010,8 @@ public sealed partial class IslandViewModel : ObservableObject
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         ShowUpdating = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Atualizacao;
         ShowJoin = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Agenda && _agenda.CountdownEvent is { HasJoin: true };
-        PillTint = TintFor(_machine.Mode, _machine.CurrentActivity, _machine.CurrentPeek, Pomodoro.Phase != PomodoroPhase.Focus);
+        PillTint = TintFor(_machine.Mode, _machine.CurrentActivity, _machine.CurrentPeek, Pomodoro.Phase != PomodoroPhase.Focus,
+            _agenda.CountdownEvent is { } meeting && meeting.Start - DateTime.Now <= TimeSpan.FromMinutes(1));
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
         UpdateGameTimer();
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);

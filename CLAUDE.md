@@ -114,8 +114,9 @@ rebuild (novo hash) e tente de novo. Evite pacotes NuGet com DLL nativa de terce
   PC no limite (`PcLimit`, dentro de `SystemSignals`, leitura a cada 30 s): RAM ≥ 90% ou CPU ≥ 90% por 1 min, com
   histerese; alerta laranja (`Peek.Warning`). Alerta com `Actions` fica mais alto, com botões largos embaixo.
   Chuva (`RainAlert`, Open-Meteo minutely_15 a cada 20 min) vai por `Notify`: um aviso por chuva.
-- **Pílula colorida** (`IslandViewModel.TintFor`, `Peek.Tint`): Claude esperando (`ClaudeTint`, terracota) e pausa do
-  Pomodoro (`BreakTint`, verde), na atividade e no alerta; painel aberto/jogo/repouso sempre pretos. A cor anima num pincel
+- **Pílula colorida** (`IslandViewModel.TintFor`, `Peek.Tint`), cor por significado e rara de propósito: Claude esperando
+  (terracota), pausa do Pomodoro (verde), reunião no aviso de 5 min e no último minuto da contagem (azul), timer acabou
+  (âmbar), cota do Claude e bateria fraca do fone (`SystemSignal.Low`) em laranja; painel aberto/jogo/repouso sempre pretos. A cor anima num pincel
   próprio da janela, dividido com as orelhas do notch.
 - **`--notify`** (`Services/NotifyCommand`): `Orbit.exe --notify "título" ["detalhe"] [--silent]` → pipe `Orbit2Notify`
   (`UserPipe`, só do usuário; o mesmo do `--send-device`) → `Notify` sem aba. O Orbit aberto re-sanitiza (tamanho).
