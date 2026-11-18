@@ -10,6 +10,8 @@ using Orbit.Services;
 namespace Orbit.Tabs.Hoje;
 
 public sealed record ForecastDay(string Day, string Icon, string MaxMin);
+// Bar = altura da barrinha de chuva em DIP (0 a HourBarMax; o XAML reserva essa altura).
+public sealed record ForecastHour(string Hour, string Icon, string Temp, string Rain, double Bar);
 
 // Portado do WeatherTileViewModel do 1.0. Diferenças: não busca nada no construtor; só
 // atualiza com a aba Hoje visível; ao reabrir, só busca de novo se o dado tiver >= 10 min.
@@ -37,6 +39,8 @@ public sealed partial class WeatherViewModel : ObservableObject
     [ObservableProperty] private bool _rainAlert;
 
     public ObservableCollection<ForecastDay> Forecast { get; } = new();
+    public ObservableCollection<ForecastHour> Hours { get; } = new();
+    public const double HourBarMax = 22; // = altura da faixa das barrinhas em HojeView.xaml
 
     public WeatherViewModel(ApiService api)
     {
@@ -90,14 +94,19 @@ public sealed partial class WeatherViewModel : ObservableObject
         Details = $"Sensação {Math.Round(w.FeelsLike)}° · Umidade {w.Humidity}% · Vento {Math.Round(w.WindKmh)} km/h";
 
         var fc = await _api.GetForecastAsync(_lat, _lon);
-        if (fc is { Count: > 0 })
+        if (fc is { Hours: var hours })
         {
-            var today = fc[0];
+            Hours.Clear();
+            foreach (var h in BuildHours(hours, DateTime.Now)) Hours.Add(h);
+        }
+        if (fc is { Days: { Count: > 0 } days })
+        {
+            var today = days[0];
             Sun = $"{today.Sunrise:HH:mm} – {today.Sunset:HH:mm}";
             RainChance = $"Chuva {today.PrecipProb}%";
             RainAlert = IsRainAlert(today.PrecipProb);
             Forecast.Clear();
-            foreach (var day in BuildForecast(fc)) Forecast.Add(day);
+            foreach (var day in BuildForecast(days)) Forecast.Add(day);
         }
     }
 
@@ -114,6 +123,22 @@ public sealed partial class WeatherViewModel : ObservableObject
             var (icon, _) = Describe(d.Code);
             var label = pt.TextInfo.ToTitleCase(d.Date.ToString("ddd", pt)).Replace(".", "");
             result.Add(new ForecastDay(label, icon, $"{Math.Round(d.Max)}°/{Math.Round(d.Min)}°"));
+        }
+        return result;
+    }
+
+    // As próximas 6 horas cheias depois de agora (15:27 → 16h, 17h…).
+    public static List<ForecastHour> BuildHours(IEnumerable<HourResult> hours, DateTime now)
+    {
+        var from = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddHours(1);
+        var result = new List<ForecastHour>();
+        foreach (var h in hours)
+        {
+            if (h.Time < from) continue;
+            int rain = Math.Clamp(h.PrecipProb, 0, 100);
+            result.Add(new ForecastHour($"{h.Time.Hour}h", Describe(h.Code).Icon, $"{Math.Round(h.Temp)}°", $"{rain}%",
+                rain == 0 ? 0 : Math.Max(2, HourBarMax * rain / 100)));
+            if (result.Count == 6) break;
         }
         return result;
     }

@@ -212,14 +212,38 @@ public class ApiService
         return list;
     }
 
-    public async Task<System.Collections.Generic.List<ForecastResult>?> GetForecastAsync(double lat, double lon)
+    // Horas sem temperatura (null) ficam de fora; sem bloco "hourly" = lista vazia.
+    public static System.Collections.Generic.List<HourResult> ParseHourly(string json)
+    {
+        var list = new System.Collections.Generic.List<HourResult>();
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("hourly", out var hourly)) return list;
+        var time = hourly.GetProperty("time");
+        var temp = hourly.GetProperty("temperature_2m");
+        var code = hourly.GetProperty("weather_code");
+        var precip = hourly.GetProperty("precipitation_probability");
+        for (int i = 0; i < time.GetArrayLength(); i++)
+        {
+            if (temp[i].ValueKind == JsonValueKind.Null) continue;
+            list.Add(new HourResult(
+                System.DateTime.Parse(time[i].GetString()!, System.Globalization.CultureInfo.InvariantCulture),
+                code[i].ValueKind == JsonValueKind.Null ? -1 : code[i].GetInt32(), temp[i].GetDouble(),
+                precip[i].ValueKind == JsonValueKind.Null ? 0 : precip[i].GetInt32()));
+        }
+        return list;
+    }
+
+    // Dias e horas na mesma chamada (as horas cobrem hoje e amanhã: dá pra pegar as próximas à noite).
+    public async Task<(System.Collections.Generic.List<ForecastResult> Days, System.Collections.Generic.List<HourResult> Hours)?> GetForecastAsync(double lat, double lon)
     {
         var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat.ToString(CultureInfo.InvariantCulture)}" +
                   $"&longitude={lon.ToString(CultureInfo.InvariantCulture)}" +
-                  "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max&forecast_days=4&timezone=auto";
+                  "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max&forecast_days=4" +
+                  "&hourly=temperature_2m,weather_code,precipitation_probability&timezone=auto";
         try
         {
-            return ParseForecast(await Http.GetStringAsync(url));
+            var json = await Http.GetStringAsync(url);
+            return (ParseForecast(json), ParseHourly(json));
         }
         catch (Exception ex)
         {
@@ -276,4 +300,5 @@ public record RainForecast(double NowMm, double[] Next15);
 public record ForecastResult(
     System.DateTime Date, int Code, double Max, double Min,
     System.DateTime Sunrise, System.DateTime Sunset, int PrecipProb);
+public record HourResult(System.DateTime Time, int Code, double Temp, int PrecipProb);
 public record NewsItem(int Id, string Title, string Url);

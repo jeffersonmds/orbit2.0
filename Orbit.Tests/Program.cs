@@ -157,6 +157,7 @@ public static class Program
         NoticiasTests();
         ClaudeTests();
         TabOrderTests();
+        NotifyCommandTests();
         ClipHistoryTests();
         ClipsTests();
         AppSearchTests();
@@ -1278,6 +1279,28 @@ public static class Program
             && Orbit.Services.Battery.Percent(1.5f, hasBattery: true) is null && Orbit.Services.Battery.Percent(0.5f, hasBattery: false) is null);
     }
 
+    private static void NotifyCommandTests()
+    {
+        var m = NotifyCommand.Parse(new[] { "Build", "terminou", "ok" });
+        Check("notify: título e detalhe (resto junta)", m == new NotifyCommand.Message("Build", "terminou ok", true));
+        Check("notify: --silent tira o som, em qualquer posição",
+            NotifyCommand.Parse(new[] { "--silent", "Deploy" }) == new NotifyCommand.Message("Deploy", null, false));
+        Check("notify: sem título = nada", NotifyCommand.Parse(new[] { "--silent", "  " }) is null
+            && NotifyCommand.Parse(Array.Empty<string>()) is null);
+        var longo = NotifyCommand.Parse(new[] { new string('a', 500), new string('b', 500) })!;
+        Check("notify: corta textos longos", longo.Title.Length == NotifyCommand.MaxTitle && longo.Title.EndsWith('…')
+            && longo.Detail!.Length == NotifyCommand.MaxDetail);
+
+        // Pipe de verdade, nome aleatório: o que um processo curto manda chega inteiro no Orbit aberto.
+        var pipe = "OrbitTest-" + Guid.NewGuid().ToString("N");
+        var got = new System.Threading.Tasks.TaskCompletionSource<string>();
+        using var cts = new System.Threading.CancellationTokenSource();
+        UserPipe.Listen(pipe, t => got.TrySetResult(t), cts.Token);
+        UserPipe.Send(pipe, "olá · pipe");
+        Check("pipe: mensagem chega", got.Task.Wait(3000) && got.Task.Result == "olá · pipe");
+        cts.Cancel();
+    }
+
     private static void TabOrderTests()
     {
         var order = string.Join(",", IslandViewModel.TabOrder);
@@ -1734,6 +1757,17 @@ public static class Program
         Check("api: previsão conta dias", fc.Count == 2);
         Check("api: previsão nascer do sol", fc[0].Sunrise.Hour == 6 && fc[0].Sunrise.Minute == 12);
         Check("api: previsão chuva null vira 0", fc[1].PrecipProb == 0);
+        Check("api: previsão sem horas = lista vazia", ApiService.ParseHourly(json).Count == 0);
+        var hj = "{\"hourly\":{\"time\":[\"2026-11-18T15:00\",\"2026-11-18T16:00\",\"2026-11-18T17:00\"]," +
+                 "\"temperature_2m\":[25.4,null,23.6],\"weather_code\":[51,3,null],\"precipitation_probability\":[67,10,null]}}";
+        var hs = ApiService.ParseHourly(hj);
+        Check("api: horas sem temperatura saem; nulls viram padrão", hs.Count == 2 && hs[1].Time.Hour == 17
+            && hs[1].Code == -1 && hs[1].PrecipProb == 0);
+        var proximas = Orbit.Tabs.Hoje.WeatherViewModel.BuildHours(hs, new DateTime(2026, 11, 18, 15, 27, 0));
+        Check("clima: próximas horas começam na hora cheia seguinte", proximas.Count == 1 && proximas[0].Hour == "17h"
+            && proximas[0].Temp == "24°" && proximas[0].Bar == 0 && proximas[0].Rain == "0%");
+        var chuva = Orbit.Tabs.Hoje.WeatherViewModel.BuildHours(hs, new DateTime(2026, 11, 18, 14, 10, 0));
+        Check("clima: barrinha proporcional à chuva", chuva[0].Hour == "15h" && Math.Abs(chuva[0].Bar - 22 * 0.67) < 0.01);
         var news = ApiService.ParseNewsItem("{\"id\":456,\"title\":\"Ask HN\"}");
         Check("api: notícia sem url cai no thread do HN", news.Url == "https://news.ycombinator.com/item?id=456");
     }

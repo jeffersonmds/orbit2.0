@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.IO;
 using System.Threading;
 using System.Windows;
@@ -28,6 +29,14 @@ public partial class App : Application
         if (e.Args.Length > 0 && e.Args[0] == SendToDevice.Arg)
         {
             SendToDevice.SendToRunning(SendToDevice.FilesFrom(e.Args));
+            Shutdown();
+            return;
+        }
+
+        // Script/terminal: `Orbit.exe --notify "título" ["detalhe"] [--silent]` vira alerta no Orbit aberto.
+        if (e.Args.Length > 0 && e.Args[0] == NotifyCommand.Arg)
+        {
+            NotifyCommand.SendToRunning(NotifyCommand.Parse(e.Args.Skip(1)));
             Shutdown();
             return;
         }

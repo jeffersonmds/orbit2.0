@@ -248,6 +248,9 @@ public sealed partial class IslandViewModel : ObservableObject
             if (files.Length == 0) return;
             ChooseDevice(files.Length == 1 ? Path.GetFileName(files[0]) : $"{files.Length} arquivos", d => SendFiles(files, d));
         }), _sendToCts.Token);
+        // `Orbit.exe --notify`: alerta de qualquer script (com a ponte ligada, vai pros aparelhos também).
+        NotifyCommand.Listen(m => Application.Current?.Dispatcher.BeginInvoke(() =>
+            Notify(new Peek(m.Title, m.Detail, null), m.Sound)), _sendToCts.Token);
         Register(new AppsViewModel(settings, AppIcons.CacheDir, Collapse));
         // Ponte com o aparelho: desligada até o usuário ligar na aba (BridgeEnabled).
         Dispositivos = new DispositivosViewModel(settings, _tokens, new AuditLog(AuditLog.FilePath),

@@ -31,7 +31,7 @@ Some sozinha em vídeos em tela cheia e, em jogos, vira uma faixa fina com CPU, 
 ## O que faz
 
 **No painel**
-- **Hoje**: relógio, clima, semana com a agenda do dia e tarefas.
+- **Hoje**: relógio, clima com as próximas 6 horas (temperatura e chance de chuva), semana com a agenda do dia e tarefas.
   - **Agenda** por link iCal (Google, Outlook/Teams): aviso 5 min antes, contagem na pílula e botão **Entrar**
     em reuniões do Teams, Meet e Zoom.
   - **Tarefas com lembrete**: escreva o horário no fim (`ligar pro cliente 15:30`, `amanhã 9h`, `em 30 min`).
@@ -57,6 +57,8 @@ Some sozinha em vídeos em tela cheia e, em jogos, vira uma faixa fina com CPU, 
 - Eventos do sistema: volume, saída de som, carregador, Caps Lock, internet, fone Bluetooth (com bateria) e
   **PC no limite** (RAM ou CPU acima de 90%, em laranja, com o app que mais come memória).
 - Aviso de chuva chegando (Open-Meteo).
+- **Alerta de qualquer script**: `Orbit.exe --notify "Build" "terminou"` (`--silent` sem som); com a ponte
+  ligada vai pros aparelhos também.
 - **Conta-gotas** (`Ctrl+Alt+C`) e **desenho sobre a tela** (`Ctrl+Alt+D`).
 
 **Ponte com iPhone e iPad (vários aparelhos)** (desligada por padrão)
