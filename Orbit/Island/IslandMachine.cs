@@ -57,6 +57,8 @@ public sealed class Peek
     public string Bullet => Image is null && Icon is null ? "● " : "";
     // Aviso (PC no limite): ícone e barra em laranja em vez da cor de destaque.
     public bool Warning { get; init; }
+    // Alerta importante (Claude esperando, hora da pausa): a pílula inteira ganha essa cor (#RRGGBB).
+    public string? Tint { get; init; }
 }
 
 public sealed record PeekAction(string Label, System.Action Run);

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -75,9 +76,12 @@ public partial class IslandWindow : Window
             _trim.Stop();
             if (_vm.Mode != IslandMode.Expandida) GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         };
+        // Pílula e orelhas do notch dividem um pincel próprio (não congelado): a cor de alerta anima nele.
+        Pill.Background = EarLeft.Fill = EarRight.Fill = _pillBrush;
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(IslandViewModel.Mode)) OnModeChanged();
+            else if (e.PropertyName == nameof(IslandViewModel.PillTint)) OnPillTintChanged();
             else if (e.PropertyName == nameof(IslandViewModel.ShowAudioBars)) OnAudioBarsChanged();
             else if (e.PropertyName == nameof(IslandViewModel.ShowCameraMic)) OnCameraMicChanged();
             else if (e.PropertyName == nameof(IslandViewModel.ShowUpdating)) OnUpdatingChanged();
@@ -291,6 +295,16 @@ public partial class IslandWindow : Window
         SetWindowPos(hwnd, IntPtr.Zero, b.X, b.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         var r = IslandGeometry.PlaceOn(b.X, b.Y, b.Width, scale);
         SetWindowPos(hwnd, IntPtr.Zero, r.X, r.Y, r.W, r.H, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    private static readonly Color PillBlack = (Color)ColorConverter.ConvertFromString("#0E0E10"); // = IslandBg
+    private readonly SolidColorBrush _pillBrush = new(PillBlack);
+
+    private void OnPillTintChanged()
+    {
+        var to = _vm.PillTint is { } hex ? (Color)ColorConverter.ConvertFromString(hex) : PillBlack;
+        _pillBrush.BeginAnimation(SolidColorBrush.ColorProperty,
+            new ColorAnimation(to, TimeSpan.FromMilliseconds(250)) { EasingFunction = new QuadraticEase() });
     }
 
     private void OnModeChanged()

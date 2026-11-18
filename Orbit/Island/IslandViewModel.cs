@@ -97,6 +97,24 @@ public sealed partial class IslandViewModel : ObservableObject
     [ObservableProperty] private bool _showUpdating;
     // Contagem da reunião com link: "Entrar" visível na pílula (o clique na pílula já entra).
     [ObservableProperty] private bool _showJoin;
+    // Cor de fundo da pílula (#RRGGBB) quando o que ela mostra é importante; null = preta.
+    [ObservableProperty] private string? _pillTint;
+
+    // Escuras o bastante pro texto branco ficar legível em cima.
+    public const string ClaudeTint = "#C15F3C", BreakTint = "#248A3D";
+
+    // Só a pílula (alerta ou atividade) muda de cor; painel aberto, jogo e repouso continuam pretos.
+    public static string? TintFor(IslandMode mode, ActivityKind? activity, Peek? peek, bool pomodoroBreak) => mode switch
+    {
+        IslandMode.Alerta => peek?.Tint,
+        IslandMode.Atividade or IslandMode.Discreta => activity switch
+        {
+            ActivityKind.Claude => ClaudeTint, // a atividade do Claude só existe com sessão esperando você
+            ActivityKind.Pomodoro when pomodoroBreak => BreakTint,
+            _ => null,
+        },
+        _ => null,
+    };
     [ObservableProperty] private double _pomodoroProgress;
     private double TimerProgress { get; set; }
     [ObservableProperty] private CameraMicDisplay? _cameraMicView;
@@ -214,7 +232,7 @@ public sealed partial class IslandViewModel : ObservableObject
                 SetActivity(ActivityKind.Claude, claude.ActivityText);
         };
         claude.Attention += info =>
-            Notify(new Peek($"Claude · {info.ProjectName}", info.StatusText, "claude"), _settings.ClaudeSoundEnabled);
+            Notify(new Peek($"Claude · {info.ProjectName}", info.StatusText, "claude") { Tint = ClaudeTint }, _settings.ClaudeSoundEnabled);
         claude.LimitReached += (title, detail) => Notify(new Peek(title, detail, "claude"), _settings.ClaudeSoundEnabled);
         // O servidor roda em background: volta pra UI thread antes de mexer na aba.
         // ponytail: sem Dispose — o pipe morre com o processo.
@@ -229,7 +247,7 @@ public sealed partial class IslandViewModel : ObservableObject
             if (canAlways) actions.Add(new("Sempre", () => answer(PermissionAnswer.AlwaysAllow)));
             actions.Add(new("Negar", () => answer(PermissionAnswer.Deny)));
             Notify(new Peek($"Claude · {info.ProjectName}", info.StatusText, "claude")
-                { Duration = TimeSpan.FromSeconds(30), Actions = actions }, _settings.ClaudeSoundEnabled);
+                { Duration = TimeSpan.FromSeconds(30), Actions = actions, Tint = ClaudeTint }, _settings.ClaudeSoundEnabled);
         };
         _claudeServer.Start();
         // Clipboard: captura sempre por evento; aba escondida em Ajustes = não grava nada.
@@ -418,7 +436,8 @@ public sealed partial class IslandViewModel : ObservableObject
             _settings.FocusDay = Pomodoro.FocusDay;
             SettingsStore.Save(_settings);
         }
-        Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "foco"), _settings.PomodoroSoundEnabled);
+        Notify(new Peek(PomodoroViewModel.PhaseLabel(phase), $"{minutes} min", "foco")
+            { Tint = phase == PomodoroPhase.Focus ? null : BreakTint }, _settings.PomodoroSoundEnabled);
     }
 
     private void Register(TabViewModel tab) => _allTabs.Add(tab);
@@ -985,6 +1004,7 @@ public sealed partial class IslandViewModel : ObservableObject
         ShowCameraMic = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.CameraMic;
         ShowUpdating = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Atualizacao;
         ShowJoin = _machine.Mode == IslandMode.Atividade && _machine.CurrentActivity == ActivityKind.Agenda && _agenda.CountdownEvent is { HasJoin: true };
+        PillTint = TintFor(_machine.Mode, _machine.CurrentActivity, _machine.CurrentPeek, Pomodoro.Phase != PomodoroPhase.Focus);
         Mode = _machine.Mode; // por último: a janela reage a Mode e já lê Peek/ActivityText novos
         UpdateGameTimer();
         if (before != IslandMode.Expandida && Mode == IslandMode.Expandida) SafeSetActive(SelectedTab, true);

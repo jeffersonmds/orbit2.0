@@ -48,6 +48,8 @@ public sealed partial class PomodoroViewModel : ObservableObject
     // Uma bolinha por ciclo até a pausa longa; preenchida = ciclo de foco concluído.
     public ObservableCollection<bool> CycleDots { get; } = new();
 
+    public PomodoroPhase Phase => _phase;
+
     private int EffectiveCycles => Math.Max(1, _cyclesUntilLongBreak);
 
     // phaseChanged(novaFase, minutos): a ilha transforma em alerta.

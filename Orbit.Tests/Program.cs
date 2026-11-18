@@ -158,6 +158,7 @@ public static class Program
         ClaudeTests();
         TabOrderTests();
         NotifyCommandTests();
+        PillTintTests();
         ClipHistoryTests();
         ClipsTests();
         AppSearchTests();
@@ -1277,6 +1278,22 @@ public static class Program
         Check("settings: ponte desligada por padrão", !d.BridgeEnabled && d.BridgePort == 5191 && d.BridgePublicUrl == "");
         Check("bateria: percentual", Orbit.Services.Battery.Percent(0.8f, hasBattery: true) == 80
             && Orbit.Services.Battery.Percent(1.5f, hasBattery: true) is null && Orbit.Services.Battery.Percent(0.5f, hasBattery: false) is null);
+    }
+
+    private static void PillTintTests()
+    {
+        string? T(IslandMode m, ActivityKind? a, Peek? p = null, bool pausa = false) => IslandViewModel.TintFor(m, a, p, pausa);
+        Check("pílula: Claude esperando fica colorida (cheia e discreta)", T(IslandMode.Atividade, ActivityKind.Claude) == IslandViewModel.ClaudeTint
+            && T(IslandMode.Discreta, ActivityKind.Claude) == IslandViewModel.ClaudeTint);
+        Check("pílula: Pomodoro só colore na pausa", T(IslandMode.Discreta, ActivityKind.Pomodoro, pausa: true) == IslandViewModel.BreakTint
+            && T(IslandMode.Discreta, ActivityKind.Pomodoro) is null);
+        Check("pílula: outras atividades continuam pretas", T(IslandMode.Atividade, ActivityKind.Midia, pausa: true) is null
+            && T(IslandMode.Atividade, ActivityKind.Agenda) is null);
+        var tinted = new Peek("Claude · orbit", "esperando", "claude") { Tint = IslandViewModel.ClaudeTint };
+        Check("pílula: alerta usa a cor do alerta", T(IslandMode.Alerta, ActivityKind.Midia, tinted) == IslandViewModel.ClaudeTint
+            && T(IslandMode.Alerta, ActivityKind.Claude, new Peek("Volume", null, null)) is null);
+        Check("pílula: painel aberto, repouso e jogo nunca colorem", T(IslandMode.Expandida, ActivityKind.Claude, tinted) is null
+            && T(IslandMode.Repouso, null) is null && T(IslandMode.Jogo, ActivityKind.Claude) is null);
     }
 
     private static void NotifyCommandTests()
