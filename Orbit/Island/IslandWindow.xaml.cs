@@ -80,7 +80,7 @@ public partial class IslandWindow : Window
         Pill.Background = EarLeft.Fill = EarRight.Fill = _pillBrush;
         _vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(IslandViewModel.Mode)) OnModeChanged();
+            if (e.PropertyName == nameof(IslandViewModel.Mode)) { OnModeChanged(); OnPillTintChanged(); }
             else if (e.PropertyName == nameof(IslandViewModel.PillTint)) OnPillTintChanged();
             else if (e.PropertyName == nameof(IslandViewModel.ShowAudioBars)) OnAudioBarsChanged();
             else if (e.PropertyName == nameof(IslandViewModel.ShowCameraMic)) OnCameraMicChanged();
@@ -297,12 +297,12 @@ public partial class IslandWindow : Window
         SetWindowPos(hwnd, IntPtr.Zero, r.X, r.Y, r.W, r.H, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
-    private static readonly Color PillBlack = (Color)ColorConverter.ConvertFromString("#0E0E10"); // = IslandBg
-    private readonly SolidColorBrush _pillBrush = new(PillBlack);
+    private readonly SolidColorBrush _pillBrush = new((Color)ColorConverter.ConvertFromString(IslandViewModel.PillBlack));
 
+    // Chamado na troca de cor e de modo (Discreta usa a cor cheia; com texto, a misturada).
     private void OnPillTintChanged()
     {
-        var to = _vm.PillTint is { } hex ? (Color)ColorConverter.ConvertFromString(hex) : PillBlack;
+        var to = (Color)ColorConverter.ConvertFromString(IslandViewModel.PillColor(_vm.PillTint, _vm.Mode));
         _pillBrush.BeginAnimation(SolidColorBrush.ColorProperty,
             new ColorAnimation(to, TimeSpan.FromMilliseconds(250)) { EasingFunction = new QuadraticEase() });
     }

@@ -183,6 +183,10 @@
                                 <DataTrigger Binding="{Binding Peek.Warning}" Value="True">
                                     <Setter Property="Background" Value="#33FF9F0A"/>
                                 </DataTrigger>
+                                <!-- Alerta colorido: quadradinho na cor cheia, glifo branco (fundo da pílula é a cor escurecida) -->
+                                <DataTrigger Binding="{Binding Peek.HasTint}" Value="True">
+                                    <Setter Property="Background" Value="{Binding Peek.Tint}"/>
+                                </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
@@ -194,6 +198,9 @@
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Peek.Warning}" Value="True">
                                         <Setter Property="Foreground" Value="#FF9F0A"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Peek.HasTint}" Value="True">
+                                        <Setter Property="Foreground" Value="White"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -211,9 +218,20 @@
                     <TextBlock FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
                         <Run Text="{Binding Peek.Bullet, Mode=OneWay}" Foreground="{DynamicResource AccentBrush}"/><Run Text="{Binding Peek.Title, Mode=OneWay}"/>
                     </TextBlock>
-                    <TextBlock Text="{Binding Peek.Detail}" FontSize="11" Foreground="{StaticResource InkLo}"
-                               TextTrimming="CharacterEllipsis"
-                               Visibility="{Binding Peek.Detail, Converter={StaticResource NullToCollapsed}}"/>
+                    <TextBlock Text="{Binding Peek.Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding Peek.Detail, Converter={StaticResource NullToCollapsed}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource InkLo}"/>
+                                <Style.Triggers>
+                                    <!-- Cinza some no fundo colorido: branco translúcido -->
+                                    <DataTrigger Binding="{Binding Peek.HasTint}" Value="True">
+                                        <Setter Property="Foreground" Value="#CCFFFFFF"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <!-- Barra de nível (volume, bateria) -->
                     <Border Height="4" CornerRadius="2" Background="#33FFFFFF" Margin="0,5,0,0"
                             Visibility="{Binding Peek.HasLevel, Converter={StaticResource BoolToVis}}">

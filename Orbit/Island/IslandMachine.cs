@@ -59,6 +59,7 @@ public sealed class Peek
     public bool Warning { get; init; }
     // Alerta importante (Claude esperando, hora da pausa): a pílula inteira ganha essa cor (#RRGGBB).
     public string? Tint { get; init; }
+    public bool HasTint => Tint is not null;
 }
 
 public sealed record PeekAction(string Label, System.Action Run);

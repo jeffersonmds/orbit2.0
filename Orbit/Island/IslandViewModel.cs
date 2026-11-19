@@ -106,6 +106,21 @@ public sealed partial class IslandViewModel : ObservableObject
         TimerTint = "#8F6A00", WarningTint = "#B34700";
 
     // Só a pílula (alerta ou atividade) muda de cor; painel aberto, jogo e repouso continuam pretos.
+    // Fundo da pílula: com texto (alerta/atividade), a cor misturada ao preto pra o texto contrastar (o ícone leva a
+    // cor cheia); a pílula fininha (Discreta) não tem texto e usa a cor cheia pra ser vista. null = preto.
+    public const string PillBlack = "#0E0E10"; // = IslandBg
+    public const double TintStrength = 0.4;
+
+    public static string PillColor(string? tint, IslandMode mode)
+    {
+        if (tint is null) return PillBlack;
+        if (mode == IslandMode.Discreta) return tint;
+        static int Ch(string hex, int i) => Convert.ToInt32(hex.Substring(1 + 2 * i, 2), 16);
+        var mix = new int[3];
+        for (int i = 0; i < 3; i++) mix[i] = (int)Math.Round(Ch(PillBlack, i) + (Ch(tint, i) - Ch(PillBlack, i)) * TintStrength);
+        return $"#{mix[0]:X2}{mix[1]:X2}{mix[2]:X2}";
+    }
+
     // meetingNow: a reunião da contagem começa em até 1 min (ou já começou).
     public static string? TintFor(IslandMode mode, ActivityKind? activity, Peek? peek, bool pomodoroBreak, bool meetingNow = false) => mode switch
     {

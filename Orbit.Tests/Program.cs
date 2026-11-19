@@ -1297,6 +1297,10 @@ public static class Program
         Check("pílula: bateria fraca do fone fica laranja, conectar não",
             IslandViewModel.SignalPeek(new SystemSignal(SignalKind.Bluetooth, "Fone com bateria fraca", "18%", 0.18, Low: true)).Tint == IslandViewModel.WarningTint
             && IslandViewModel.SignalPeek(BluetoothBattery.ConnectedSignal("Fone", 18)).Tint is null);
+        Check("pílula: com texto a cor é misturada ao preto; fininha usa a cheia; sem cor = preto",
+            IslandViewModel.PillColor("#C15F3C", IslandMode.Alerta) == "#562E22"
+            && IslandViewModel.PillColor("#C15F3C", IslandMode.Discreta) == "#C15F3C"
+            && IslandViewModel.PillColor(null, IslandMode.Atividade) == IslandViewModel.PillBlack);
         Check("pílula: painel aberto, repouso e jogo nunca colorem", T(IslandMode.Expandida, ActivityKind.Claude, tinted) is null
             && T(IslandMode.Repouso, null) is null && T(IslandMode.Jogo, ActivityKind.Claude) is null);
     }
